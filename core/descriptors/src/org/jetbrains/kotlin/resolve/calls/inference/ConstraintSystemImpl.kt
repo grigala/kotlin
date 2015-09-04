@@ -449,6 +449,9 @@ public class ConstraintSystemImpl : ConstraintSystem {
     override fun getCurrentSubstitutor() =
             getSubstitutor(substituteOriginal = true) { TypeProjectionImpl(TypeUtils.DONT_CARE) }
 
+    override fun getPartialSubstitutor() =
+            getSubstitutor(substituteOriginal = true) { TypeProjectionImpl(it.correspondingType) }
+
     private fun getSubstitutor(substituteOriginal: Boolean, getDefaultValue: (TypeParameterDescriptor) -> TypeProjection) =
             replaceUninferredBy(getDefaultValue, substituteOriginal).setApproximateCapturedTypes()
 
