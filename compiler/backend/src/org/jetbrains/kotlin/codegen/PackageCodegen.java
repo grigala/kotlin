@@ -23,9 +23,7 @@ import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.SmartList;
-import com.intellij.util.containers.ContainerUtil;
 import kotlin.jvm.functions.Function0;
-import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.Mutable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -53,12 +51,9 @@ import org.jetbrains.kotlin.resolve.MemberComparator;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature;
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter;
 import org.jetbrains.kotlin.resolve.scopes.JetScope;
-import org.jetbrains.kotlin.serialization.*;
-import org.jetbrains.kotlin.serialization.deserialization.NameResolver;
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor;
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedPropertyDescriptor;
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedSimpleFunctionDescriptor;
-import org.jetbrains.kotlin.serialization.jvm.BitEncoding;
 import org.jetbrains.org.objectweb.asm.AnnotationVisitor;
 import org.jetbrains.org.objectweb.asm.MethodVisitor;
 import org.jetbrains.org.objectweb.asm.Type;
@@ -257,7 +252,7 @@ public class PackageCodegen {
         }
 
         bindings.add(v.getSerializationBindings());
-        writeKotlinPackageAnnotationIfNeeded(JvmSerializationBindings.union(bindings), tasks.keySet());
+        writeKotlinPackageAnnotationIfNeeded();
     }
 
     private void generateKotlinPackageReflectionField() {
@@ -270,8 +265,6 @@ public class PackageCodegen {
     }
 
     private void writeKotlinPackageAnnotationIfNeeded(
-            @NotNull JvmSerializationBindings bindings,
-            @NotNull final Collection<CallableMemberDescriptor> relevantCallables
     ) {
         if (state.getClassBuilderMode() != ClassBuilderMode.FULL) {
             return;
@@ -282,31 +275,9 @@ public class PackageCodegen {
             if (file.isScript()) return;
         }
 
-        DescriptorSerializer serializer = DescriptorSerializer.createTopLevel(new JvmSerializerExtension(bindings, state.getTypeMapper()));
-        Collection<PackageFragmentDescriptor> packageFragments = Lists.newArrayList();
-        ContainerUtil.addIfNotNull(packageFragments, packageFragment);
-        ContainerUtil.addIfNotNull(packageFragments, compiledPackageFragment);
-        ProtoBuf.Package packageProto = serializer.packageProto(packageFragments, new Function1<DeclarationDescriptor, Boolean>() {
-            @Override
-            public Boolean invoke(DeclarationDescriptor descriptor) {
-//                return !(descriptor instanceof CallableMemberDescriptor && relevantCallables.contains(descriptor));
-                return true;
-            }
-        }).build();
-
-        //if (packageProto.getMemberCount() == 0) return;
-
-        StringTable strings = serializer.getStringTable();
-        NameResolver nameResolver = new NameResolver(strings.serializeSimpleNames(), strings.serializeQualifiedNames());
-        PackageData data = new PackageData(nameResolver, packageProto);
-
         AnnotationVisitor av = v.newAnnotation(asmDescByFqNameWithoutInnerClasses(JvmAnnotationNames.KOTLIN_PACKAGE), true);
         av.visit(JvmAnnotationNames.ABI_VERSION_FIELD_NAME, JvmAbi.VERSION);
-        AnnotationVisitor array = av.visitArray(JvmAnnotationNames.DATA_FIELD_NAME);
-        for (String string : BitEncoding.encodeBytes(SerializationUtil.serializePackageData(data))) {
-            array.visit(null, string);
-        }
-        array.visitEnd();
+        av.visitArray(JvmAnnotationNames.DATA_FIELD_NAME).visitEnd();
         av.visitEnd();
     }
 

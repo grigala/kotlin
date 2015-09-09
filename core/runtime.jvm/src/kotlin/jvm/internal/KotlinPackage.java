@@ -23,5 +23,6 @@ import java.lang.annotation.RetentionPolicy;
 public @interface KotlinPackage {
     int abiVersion();
 
+    @Deprecated
     String[] data();
 }
