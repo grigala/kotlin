@@ -246,8 +246,10 @@ public class AsmUtil {
         Classes in byte code should be public or package private
      */
     public static int getVisibilityAccessFlagForClass(ClassDescriptor descriptor) {
-        if (DescriptorUtils.isTopLevelDeclaration(descriptor) ||
-            descriptor.getVisibility() == Visibilities.PUBLIC ||
+        if (DescriptorUtils.isTopLevelDeclaration(descriptor)) {
+            return descriptor.getVisibility() == Visibilities.PRIVATE ? NO_FLAG_PACKAGE_PRIVATE : ACC_PUBLIC;
+        }
+        else if (descriptor.getVisibility() == Visibilities.PUBLIC ||
             // TODO: should be package private, but for now Kotlin's reflection can't access members of such classes
             descriptor.getVisibility() == Visibilities.LOCAL ||
             descriptor.getVisibility() == Visibilities.INTERNAL) {
