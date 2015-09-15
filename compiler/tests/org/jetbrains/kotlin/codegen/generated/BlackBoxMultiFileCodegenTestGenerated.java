@@ -124,4 +124,16 @@ public class BlackBoxMultiFileCodegenTestGenerated extends AbstractBlackBoxCodeg
         String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxMultiFile/simple/");
         doTestMultiFile(fileName);
     }
+
+    @TestMetadata("syntheticAccessorsToPrivateTopLevel")
+    public void testSyntheticAccessorsToPrivateTopLevel() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxMultiFile/syntheticAccessorsToPrivateTopLevel/");
+        doTestMultiFile(fileName);
+    }
+
+    @TestMetadata("syntheticAccessorsToPrivateTopLevelJvmMultifileClass")
+    public void testSyntheticAccessorsToPrivateTopLevelJvmMultifileClass() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxMultiFile/syntheticAccessorsToPrivateTopLevelJvmMultifileClass/");
+        doTestMultiFile(fileName);
+    }
 }
