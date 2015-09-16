@@ -39,6 +39,7 @@ import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.BindingContextUtils;
 import org.jetbrains.kotlin.resolve.BindingTrace;
 import org.jetbrains.kotlin.resolve.TemporaryBindingTrace;
+import org.jetbrains.kotlin.resolve.annotations.AnnotationsPackage;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.constants.ConstantValue;
 import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator;
@@ -134,6 +135,44 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
     @Nullable
     protected ClassDescriptor classForInnerClassRecord() {
         return null;
+    }
+
+    protected void generateMethodCallTo(
+            @NotNull FunctionDescriptor functionDescriptor,
+            @Nullable FunctionDescriptor accessorDescriptor,
+            @NotNull InstructionAdapter iv
+    ) {
+        CallableMethod callableMethod = typeMapper.mapToCallableMethod(
+                functionDescriptor,
+                accessorDescriptor instanceof AccessorForCallableDescriptor &&
+                ((AccessorForCallableDescriptor) accessorDescriptor).getSuperCallExpression() != null
+        );
+
+        int reg = 1;
+
+        boolean accessorIsConstructor = accessorDescriptor instanceof AccessorForConstructorDescriptor;
+        if (!accessorIsConstructor && functionDescriptor instanceof ConstructorDescriptor) {
+            iv.anew(callableMethod.getOwner());
+            iv.dup();
+            reg = 0;
+        }
+        else if (accessorIsConstructor || (accessorDescriptor != null && JetTypeMapper.isAccessor(accessorDescriptor))) {
+            if (!AnnotationsPackage.isPlatformStaticInObjectOrClass(functionDescriptor)) {
+                iv.load(0, OBJECT_TYPE);
+            }
+        }
+
+        for (Type argType : callableMethod.getParameterTypes()) {
+            if (AsmTypes.DEFAULT_CONSTRUCTOR_MARKER.equals(argType)) {
+                iv.aconst(null);
+            }
+            else {
+                iv.load(reg, argType);
+                reg += argType.getSize();
+            }
+        }
+
+        callableMethod.genInvokeInstruction(iv);
     }
 
     protected void done() {
