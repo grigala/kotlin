@@ -160,7 +160,7 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
             reg = 0;
         }
         else if (accessorIsConstructor || (accessorDescriptor != null && JetTypeMapper.isAccessor(accessorDescriptor))) {
-            if (!AnnotationsPackage.isPlatformStaticInObjectOrClass(functionDescriptor)) {
+            if (!AnnotationsPackage.isPlatformStaticInObjectOrClass(functionDescriptor) && !callableMethod.isStaticCall()) {
                 iv.load(0, OBJECT_TYPE);
             }
         }
