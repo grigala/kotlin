@@ -924,44 +924,6 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         }
     }
 
-    private void generateMethodCallTo(
-            @NotNull FunctionDescriptor functionDescriptor,
-            @Nullable FunctionDescriptor accessorDescriptor,
-            @NotNull InstructionAdapter iv
-    ) {
-        CallableMethod callableMethod = typeMapper.mapToCallableMethod(
-                functionDescriptor,
-                accessorDescriptor instanceof AccessorForCallableDescriptor &&
-                ((AccessorForCallableDescriptor) accessorDescriptor).getSuperCallExpression() != null
-        );
-
-        int reg = 1;
-
-        boolean accessorIsConstructor = accessorDescriptor instanceof AccessorForConstructorDescriptor;
-        if (!accessorIsConstructor && functionDescriptor instanceof ConstructorDescriptor) {
-            iv.anew(callableMethod.getOwner());
-            iv.dup();
-            reg = 0;
-        }
-        else if (accessorIsConstructor || (accessorDescriptor != null && JetTypeMapper.isAccessor(accessorDescriptor))) {
-            if (!AnnotationsPackage.isPlatformStaticInObjectOrClass(functionDescriptor)) {
-                iv.load(0, OBJECT_TYPE);
-            }
-        }
-
-        for (Type argType : callableMethod.getParameterTypes()) {
-            if (AsmTypes.DEFAULT_CONSTRUCTOR_MARKER.equals(argType)) {
-                iv.aconst(null);
-            }
-            else {
-                iv.load(reg, argType);
-                reg += argType.getSize();
-            }
-        }
-
-        callableMethod.genInvokeInstruction(iv);
-    }
-
     private void generateFieldForSingleton() {
         if (isEnumEntry(descriptor) || isCompanionObject(descriptor)) return;
 
