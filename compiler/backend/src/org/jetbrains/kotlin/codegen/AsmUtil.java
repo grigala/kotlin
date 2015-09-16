@@ -368,7 +368,7 @@ public class AsmUtil {
         }
 
         if (containingDeclaration instanceof PackageFragmentDescriptor) {
-            return ACC_PUBLIC;
+            return memberVisibility == Visibilities.PRIVATE ? ACC_PRIVATE : ACC_PUBLIC;
         }
         return null;
     }
