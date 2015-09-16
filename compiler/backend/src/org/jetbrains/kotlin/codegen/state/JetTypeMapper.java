@@ -160,6 +160,10 @@ public class JetTypeMapper {
     @NotNull
     private String internalNameForPackage(@NotNull CallableMemberDescriptor descriptor) {
         JetFile file = DescriptorToSourceUtils.getContainingFile(descriptor);
+        // TODO Extract to Utils? Unfortunately, AccessorForCallableDescriptor is in backend module, and DescriptorToSourceUtils is in frontend
+        if (file == null && descriptor instanceof AccessorForCallableDescriptor) {
+            file = DescriptorToSourceUtils.getContainingFile(((AccessorForCallableDescriptor) descriptor).getCalleeDescriptor());
+        }
         if (file != null) {
             Visibility visibility = descriptor.getVisibility();
             if (descriptor instanceof PropertyDescriptor || Visibilities.isPrivate(visibility)) {
