@@ -44,6 +44,7 @@ import org.jetbrains.kotlin.resolve.constants.ConstantValue;
 import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator;
 import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage;
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes;
+import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature;
 import org.jetbrains.kotlin.resolve.source.SourcePackage;
 import org.jetbrains.kotlin.storage.LockBasedStorageManager;
 import org.jetbrains.kotlin.storage.NotNullLazyValue;
@@ -61,8 +62,10 @@ import static org.jetbrains.kotlin.codegen.AsmUtil.calculateInnerClassAccessFlag
 import static org.jetbrains.kotlin.codegen.AsmUtil.isPrimitive;
 import static org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.SYNTHESIZED;
 import static org.jetbrains.kotlin.resolve.BindingContext.VARIABLE;
+import static org.jetbrains.kotlin.resolve.DescriptorUtils.isCompanionObject;
 import static org.jetbrains.kotlin.resolve.jvm.AsmTypes.*;
 import static org.jetbrains.kotlin.resolve.jvm.diagnostics.DiagnosticsPackage.OtherOrigin;
+import static org.jetbrains.kotlin.resolve.jvm.diagnostics.DiagnosticsPackage.Synthetic;
 import static org.jetbrains.kotlin.resolve.jvm.diagnostics.DiagnosticsPackage.TraitImpl;
 import static org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin.NO_ORIGIN;
 import static org.jetbrains.org.objectweb.asm.Opcodes.*;
@@ -192,6 +195,82 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
     }
 
     protected void markLineNumberForSyntheticFunction(@NotNull InstructionAdapter v) {
+    }
+
+    protected void generateSyntheticAccessor(@NotNull AccessorForCallableDescriptor<?> accessorForCallableDescriptor) {
+        if (accessorForCallableDescriptor instanceof FunctionDescriptor) {
+            final FunctionDescriptor accessor = (FunctionDescriptor) accessorForCallableDescriptor;
+            final FunctionDescriptor original = (FunctionDescriptor) accessorForCallableDescriptor.getCalleeDescriptor();
+            functionCodegen.generateMethod(
+                    Synthetic(null, original), accessor,
+                    new FunctionGenerationStrategy.CodegenBased<FunctionDescriptor>(state, accessor) {
+                        @Override
+                        public void doGenerateBody(@NotNull ExpressionCodegen codegen, @NotNull JvmMethodSignature signature) {
+                            markLineNumberForSyntheticFunction(codegen.v);
+
+                            generateMethodCallTo(original, accessor, codegen.v);
+                            codegen.v.areturn(signature.getReturnType());
+                        }
+                    }
+            );
+        }
+        else if (accessorForCallableDescriptor instanceof AccessorForPropertyDescriptor) {
+            final AccessorForPropertyDescriptor accessor = (AccessorForPropertyDescriptor) accessorForCallableDescriptor;
+            final PropertyDescriptor original = accessor.getCalleeDescriptor();
+
+            class PropertyAccessorStrategy extends FunctionGenerationStrategy.CodegenBased<PropertyAccessorDescriptor> {
+                public PropertyAccessorStrategy(@NotNull PropertyAccessorDescriptor callableDescriptor) {
+                    super(MemberCodegen.this.state, callableDescriptor);
+                }
+
+                @Override
+                public void doGenerateBody(@NotNull ExpressionCodegen codegen, @NotNull JvmMethodSignature signature) {
+                    boolean forceField = AsmUtil.isPropertyWithBackingFieldInOuterClass(original) &&
+                                         !isCompanionObject(accessor.getContainingDeclaration());
+                    StackValue property = codegen.intermediateValueForProperty(
+                            original, forceField, accessor.getSuperCallExpression(), true, StackValue.none()
+                    );
+
+                    InstructionAdapter iv = codegen.v;
+
+                    markLineNumberForSyntheticFunction(iv);
+
+                    Type[] argTypes = signature.getAsmMethod().getArgumentTypes();
+                    for (int i = 0, reg = 0; i < argTypes.length; i++) {
+                        Type argType = argTypes[i];
+                        iv.load(reg, argType);
+                        //noinspection AssignmentToForLoopParameter
+                        reg += argType.getSize();
+                    }
+
+                    if (callableDescriptor instanceof PropertyGetterDescriptor) {
+                        property.put(property.type, iv);
+                    }
+                    else {
+                        property.store(StackValue.onStack(property.type), iv, true);
+                    }
+
+                    iv.areturn(signature.getReturnType());
+                }
+            }
+
+            PropertyGetterDescriptor getter = accessor.getGetter();
+            assert getter != null;
+            functionCodegen.generateMethod(Synthetic(null, original.getGetter() != null ? original.getGetter() : original),
+                                           getter, new PropertyAccessorStrategy(getter));
+
+
+            if (accessor.isVar()) {
+                PropertySetterDescriptor setter = accessor.getSetter();
+                assert setter != null;
+
+                functionCodegen.generateMethod(Synthetic(null, original.getSetter() != null ? original.getSetter() : original),
+                                               setter, new PropertyAccessorStrategy(setter));
+            }
+        }
+        else {
+            throw new UnsupportedOperationException();
+        }
     }
 
     protected void done() {
