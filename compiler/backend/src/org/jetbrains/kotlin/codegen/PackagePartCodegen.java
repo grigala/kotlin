@@ -38,6 +38,7 @@ import org.jetbrains.org.objectweb.asm.AnnotationVisitor;
 import org.jetbrains.org.objectweb.asm.Type;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 import static org.jetbrains.kotlin.codegen.AsmUtil.asmDescByFqNameWithoutInnerClasses;
@@ -45,16 +46,19 @@ import static org.jetbrains.org.objectweb.asm.Opcodes.*;
 
 public class PackagePartCodegen extends MemberCodegen<JetFile> {
     private final Type packagePartType;
+    private final Collection<? extends AccessorForCallableDescriptor> accessors;
 
     public PackagePartCodegen(
             @NotNull ClassBuilder v,
             @NotNull JetFile file,
             @NotNull Type packagePartType,
             @NotNull FieldOwnerContext context,
-            @NotNull GenerationState state
+            @NotNull GenerationState state,
+            @NotNull Collection<? extends AccessorForCallableDescriptor> accessors
     ) {
         super(state, null, context, file, v);
         this.packagePartType = packagePartType;
+        this.accessors = accessors;
     }
 
     @Override
@@ -100,6 +104,17 @@ public class PackagePartCodegen extends MemberCodegen<JetFile> {
                     return createOrGetClInitCodegen();
                 }
             });
+        }
+    }
+
+    @Override
+    protected void generateSyntheticParts() {
+        generateSyntheticAccessors();
+    }
+
+    protected void generateSyntheticAccessors() {
+        for (AccessorForCallableDescriptor<?> accessor: accessors) {
+            generateSyntheticAccessor(accessor);
         }
     }
 

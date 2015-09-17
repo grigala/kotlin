@@ -29,7 +29,6 @@ import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.Mutable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.codegen.context.CodegenContext;
 import org.jetbrains.kotlin.codegen.context.FieldOwnerContext;
 import org.jetbrains.kotlin.codegen.context.MethodContext;
 import org.jetbrains.kotlin.codegen.context.PackageContext;
@@ -316,6 +315,7 @@ public class PackageCodegen {
         Type packagePartType = FileClassesPackage.getFileClassType(state.getFileClassesProvider(), file);
         PackageContext packagePartContext = state.getRootContext().intoPackagePart(packageFragment, packagePartType);
 
+        List<AccessorForCallableDescriptor> accessors = new ArrayList<AccessorForCallableDescriptor>();
         for (JetDeclaration declaration : file.getDeclarations()) {
             if (declaration instanceof JetProperty || declaration instanceof JetNamedFunction) {
                 generatePackagePart = true;
@@ -323,7 +323,7 @@ public class PackageCodegen {
             else if (declaration instanceof JetClassOrObject) {
                 JetClassOrObject classOrObject = (JetClassOrObject) declaration;
                 if (state.getGenerateDeclaredClassFilter().shouldGenerateClass(classOrObject)) {
-                    generateClassOrObject(classOrObject);
+                    accessors.addAll(generateClassOrObject(classOrObject));
                 }
             }
             else if (declaration instanceof JetScript) {
@@ -343,7 +343,7 @@ public class PackageCodegen {
 
         ClassBuilder builder = state.getFactory().newVisitor(PackagePart(file, packageFragment), packagePartType, file);
 
-        new PackagePartCodegen(builder, file, packagePartType, packagePartContext, state).generate();
+        new PackagePartCodegen(builder, file, packagePartType, packagePartContext, state, accessors).generate();
 
         FieldOwnerContext packageFacade = state.getRootContext().intoPackageFacade(packagePartType, packageFragment);
 
@@ -412,11 +412,12 @@ public class PackageCodegen {
         return fragments.get(0);
     }
 
-    public void generateClassOrObject(@NotNull JetClassOrObject classOrObject) {
+    public Collection<? extends AccessorForCallableDescriptor<?>> generateClassOrObject(@NotNull JetClassOrObject classOrObject) {
         JetFile file = classOrObject.getContainingJetFile();
         Type packagePartType = FileClassesPackage.getFileClassType(state.getFileClassesProvider(), file);
-        CodegenContext context = state.getRootContext().intoPackagePart(packageFragment, packagePartType);
+        PackageContext context = state.getRootContext().intoPackagePart(packageFragment, packagePartType);
         MemberCodegen.genClassOrObject(context, classOrObject, state, null);
+        return context.getAccessors();
     }
 
     public void done() {
