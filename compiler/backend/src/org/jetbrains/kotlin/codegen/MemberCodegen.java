@@ -191,6 +191,9 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
         }
     }
 
+    protected void markLineNumberForSyntheticFunction(@NotNull InstructionAdapter v) {
+    }
+
     protected void done() {
         if (clInit != null) {
             clInit.v.visitInsn(RETURN);
