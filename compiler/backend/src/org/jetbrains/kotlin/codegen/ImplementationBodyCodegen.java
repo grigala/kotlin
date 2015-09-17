@@ -837,6 +837,11 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         }
     }
 
+    @Override
+    protected void markLineNumberForSyntheticFunction(@NotNull InstructionAdapter v) {
+        markLineNumberForSyntheticFunction(descriptor, v);
+    }
+
     private void generateSyntheticAccessor(@NotNull AccessorForCallableDescriptor<?> accessorForCallableDescriptor) {
         if (accessorForCallableDescriptor instanceof FunctionDescriptor) {
             final FunctionDescriptor accessor = (FunctionDescriptor) accessorForCallableDescriptor;
@@ -846,7 +851,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
                     new FunctionGenerationStrategy.CodegenBased<FunctionDescriptor>(state, accessor) {
                         @Override
                         public void doGenerateBody(@NotNull ExpressionCodegen codegen, @NotNull JvmMethodSignature signature) {
-                            markLineNumberForSyntheticFunction(descriptor, codegen.v);
+                            markLineNumberForSyntheticFunction(codegen.v);
 
                             generateMethodCallTo(original, accessor, codegen.v);
                             codegen.v.areturn(signature.getReturnType());
@@ -873,7 +878,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
                     InstructionAdapter iv = codegen.v;
 
-                    markLineNumberForSyntheticFunction(descriptor, iv);
+                    markLineNumberForSyntheticFunction(iv);
 
                     Type[] argTypes = signature.getAsmMethod().getArgumentTypes();
                     for (int i = 0, reg = 0; i < argTypes.length; i++) {
