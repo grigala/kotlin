@@ -141,11 +141,13 @@ public class FunctionCodegen {
             @NotNull MethodContext methodContext,
             @NotNull FunctionGenerationStrategy strategy
     ) {
-        if (JvmCodegenUtil.isInterfacePrivateMember(functionDescriptor) && owner.getContextKind() != OwnerKind.TRAIT_IMPL) {
+        OwnerKind contextKind = methodContext.getContextKind();
+        if (isTrait(functionDescriptor.getContainingDeclaration()) &&
+            functionDescriptor.getVisibility() == Visibilities.PRIVATE &&
+            contextKind != OwnerKind.TRAIT_IMPL) {
             return;
         }
 
-        OwnerKind contextKind = methodContext.getContextKind();
         JvmMethodSignature jvmSignature = typeMapper.mapSignature(functionDescriptor, contextKind);
         Method asmMethod = jvmSignature.getAsmMethod();
 
