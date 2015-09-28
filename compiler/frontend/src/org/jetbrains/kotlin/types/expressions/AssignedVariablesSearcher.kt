@@ -18,23 +18,48 @@ package org.jetbrains.kotlin.types.expressions
 
 import org.jetbrains.kotlin.lexer.JetTokens
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.JetBinaryExpression
-import org.jetbrains.kotlin.psi.JetNameReferenceExpression
-import org.jetbrains.kotlin.psi.JetPsiUtil
-import org.jetbrains.kotlin.psi.JetTreeVisitorVoid
+import org.jetbrains.kotlin.psi.*
 import java.util.*
 
-abstract class AssignedVariablesSearcher: JetTreeVisitorVoid() {
+abstract class AssignedVariablesSearcher(val recordReadNames: Boolean = false): JetTreeVisitorVoid() {
 
-    protected val assignedNames: MutableSet<Name> = LinkedHashSet()
+    protected val assignedNames: MutableMap<Name, JetDeclaration?> = LinkedHashMap()
+
+    protected val readNames: MutableMap<Name, JetDeclaration?> = LinkedHashMap()
+
+    private var currentDeclaration: JetDeclaration? = null
+
+    override fun visitDeclaration(declaration: JetDeclaration) {
+        val previous = currentDeclaration
+        if (declaration is JetDeclarationWithBody || declaration is JetClassOrObject) {
+            currentDeclaration = declaration
+        }
+        super.visitDeclaration(declaration)
+        currentDeclaration = previous
+    }
+
+    override fun visitFunctionLiteralExpression(functionLiteralExpression: JetFunctionLiteralExpression) {
+        val previous = currentDeclaration
+        currentDeclaration = functionLiteralExpression.functionLiteral
+        super.visitFunctionLiteralExpression(functionLiteralExpression)
+        currentDeclaration = previous
+    }
 
     override fun visitBinaryExpression(binaryExpression: JetBinaryExpression) {
         if (binaryExpression.operationToken === JetTokens.EQ) {
             val left = JetPsiUtil.deparenthesize(binaryExpression.left)
             if (left is JetNameReferenceExpression) {
-                assignedNames += left.getReferencedNameAsName()
+                assignedNames.put(left.getReferencedNameAsName(), currentDeclaration)
             }
         }
+        super.visitBinaryExpression(binaryExpression)
     }
 
+    override fun visitSimpleNameExpression(expression: JetSimpleNameExpression) {
+        if (!recordReadNames) return
+        val name = expression.getReferencedNameAsName()
+        if (name !in assignedNames) {
+            readNames.put(name, currentDeclaration)
+        }
+    }
 }
