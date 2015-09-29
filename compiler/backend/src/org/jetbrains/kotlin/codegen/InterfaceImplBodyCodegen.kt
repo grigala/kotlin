@@ -57,6 +57,7 @@ public class InterfaceImplBodyCodegen(
     }
 
     override fun classForInnerClassRecord(): ClassDescriptor? {
+        if (DescriptorUtils.isLocal(descriptor)) return null
         val classDescriptorImpl = ClassDescriptorImpl(
                 descriptor, Name.identifier(JvmAbi.DEFAULT_IMPLS_CLASS_NAME),
                 Modality.FINAL, Collections.emptyList(), SourceElement.NO_SOURCE)
