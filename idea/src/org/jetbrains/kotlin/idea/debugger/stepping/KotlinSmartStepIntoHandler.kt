@@ -66,14 +66,23 @@ public class KotlinSmartStepIntoHandler : JvmSmartStepIntoHandler() {
         element.accept(object: JetTreeVisitorVoid() {
 
             override fun visitFunctionLiteralExpression(expression: JetFunctionLiteralExpression) {
-                val context = expression.analyze()
-                val resolvedCall = expression.getParentCall(context).getResolvedCall(context)
-                if (resolvedCall != null && !InlineUtil.isInline(resolvedCall.getResultingDescriptor())) {
-                    val arguments = resolvedCall.getValueArguments()
+                recordFunctionLiteral(expression.functionLiteral)
+            }
+
+            override fun visitNamedFunction(function: JetNamedFunction) {
+                super.visitNamedFunction(function)
+                recordFunctionLiteral(function)
+            }
+
+            private fun recordFunctionLiteral(function: JetFunction) {
+                val context = function.analyze()
+                val resolvedCall = function.getParentCall(context).getResolvedCall(context)
+                if (resolvedCall != null) {
+                    val arguments = resolvedCall.valueArguments
                     for ((param, argument) in arguments) {
-                        if (argument.getArguments().any { it.getArgumentExpression() == expression}) {
-                            val label = KotlinLambdaSmartStepTarget.calcLabel(resolvedCall.getResultingDescriptor(), param.getName())
-                            result.add(KotlinLambdaSmartStepTarget(label, expression, lines))
+                        if (argument.arguments.any { it.getArgumentExpression() == function }) {
+                            val label = KotlinLambdaSmartStepTarget.calcLabel(resolvedCall.resultingDescriptor, param.name)
+                            result.add(KotlinLambdaSmartStepTarget(label, function, lines, InlineUtil.isInline(resolvedCall.resultingDescriptor)))
                             break
                         }
                     }
@@ -181,7 +190,7 @@ public class KotlinSmartStepIntoHandler : JvmSmartStepIntoHandler() {
     override fun createMethodFilter(stepTarget: SmartStepTarget?): MethodFilter? {
         return when (stepTarget) {
             is KotlinMethodSmartStepTarget -> KotlinBasicStepMethodFilter(stepTarget.resolvedElement, stepTarget.getCallingExpressionLines()!!)
-            is KotlinLambdaSmartStepTarget -> KotlinLambdaMethodFilter(stepTarget.getLambda(), stepTarget.getCallingExpressionLines()!! )
+            is KotlinLambdaSmartStepTarget -> KotlinLambdaMethodFilter(stepTarget.getLambda(), stepTarget.getCallingExpressionLines()!!, stepTarget.isInline)
             else -> super.createMethodFilter(stepTarget)
         }
     }
