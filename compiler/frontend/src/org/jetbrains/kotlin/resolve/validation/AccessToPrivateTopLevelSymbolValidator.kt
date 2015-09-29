@@ -25,9 +25,10 @@ import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.BindingTrace
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import org.jetbrains.kotlin.resolve.DescriptorUtils
+import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 
 public class AccessToPrivateTopLevelSymbolValidator : SymbolUsageValidator {
-    override fun validateCall(targetDescriptor: CallableDescriptor, trace: BindingTrace, element: PsiElement) {
+    override fun validateCall(resolvedCall: ResolvedCall<*>?, targetDescriptor: CallableDescriptor, trace: BindingTrace, element: PsiElement) {
         val descriptor =
             if (DescriptorUtils.isTopLevelDeclaration(targetDescriptor)) targetDescriptor
             else DescriptorUtils.getContainingClass(targetDescriptor)
