@@ -17,6 +17,8 @@
 package org.jetbrains.kotlin.jps.incremental
 
 import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.jps.incremental.ProtoCompareGenerated.ProtoBufClassKind
+import org.jetbrains.kotlin.jps.incremental.ProtoCompareGenerated.ProtoBufPackageKind
 import org.jetbrains.kotlin.serialization.Flags
 import org.jetbrains.kotlin.serialization.ProtoBuf
 import org.jetbrains.kotlin.serialization.deserialization.Deserialization
@@ -122,11 +124,11 @@ private class DifferenceCalculatorForClass(oldData: ProtoMapValue, newData: Prot
         private val CONSTRUCTOR = "<init>"
 
         private val CLASS_SIGNATURE_ENUMS = EnumSet.of(
-                ProtoCompareGenerated.ProtoBufClassKind.FLAGS,
-                ProtoCompareGenerated.ProtoBufClassKind.FQ_NAME,
-                ProtoCompareGenerated.ProtoBufClassKind.TYPE_PARAMETER_LIST,
-                ProtoCompareGenerated.ProtoBufClassKind.SUPERTYPE_LIST,
-                ProtoCompareGenerated.ProtoBufClassKind.CLASS_ANNOTATION_LIST
+                ProtoBufClassKind.FLAGS,
+                ProtoBufClassKind.FQ_NAME,
+                ProtoBufClassKind.TYPE_PARAMETER_LIST,
+                ProtoBufClassKind.SUPERTYPE_LIST,
+                ProtoBufClassKind.CLASS_ANNOTATION_LIST
         )
     }
 
@@ -157,32 +159,33 @@ private class DifferenceCalculatorForClass(oldData: ProtoMapValue, newData: Prot
 
         for (kind in diff) {
             when (kind!!) {
-                ProtoCompareGenerated.ProtoBufClassKind.COMPANION_OBJECT_NAME -> {
+                ProtoBufClassKind.COMPANION_OBJECT_NAME -> {
                     if (oldProto.hasCompanionObjectName()) oldProto.companionObjectName.oldToNames()
                     if (newProto.hasCompanionObjectName()) newProto.companionObjectName.newToNames()
                 }
-                ProtoCompareGenerated.ProtoBufClassKind.NESTED_CLASS_NAME_LIST ->
+                ProtoBufClassKind.NESTED_CLASS_NAME_LIST ->
                     names.addAll(calcDifferenceForNames(oldProto.nestedClassNameList, newProto.nestedClassNameList))
-                ProtoCompareGenerated.ProtoBufClassKind.MEMBER_LIST -> {
+                ProtoBufClassKind.CONSTRUCTOR_LIST, ProtoBufClassKind.FUNCTION_LIST, ProtoBufClassKind.PROPERTY_LIST,
+                ProtoBufClassKind.MEMBER_LIST -> {
                     val oldMembers = oldProto.memberList.filter { !it.isPrivate }
                     val newMembers = newProto.memberList.filter { !it.isPrivate }
                     names.addAll(calcDifferenceForMembers(oldMembers, newMembers))
                 }
-                ProtoCompareGenerated.ProtoBufClassKind.ENUM_ENTRY_LIST ->
+                ProtoBufClassKind.ENUM_ENTRY_LIST ->
                     names.addAll(calcDifferenceForNames(oldProto.enumEntryList, newProto.enumEntryList))
-                ProtoCompareGenerated.ProtoBufClassKind.PRIMARY_CONSTRUCTOR ->
+                ProtoBufClassKind.PRIMARY_CONSTRUCTOR ->
                     if (areNonPrivatePrimaryConstructorsDifferent()) {
                         names.add(CONSTRUCTOR)
                     }
-                ProtoCompareGenerated.ProtoBufClassKind.SECONDARY_CONSTRUCTOR_LIST ->
+                ProtoBufClassKind.SECONDARY_CONSTRUCTOR_LIST ->
                     if (areNonPrivateSecondaryConstructorsDifferent()) {
                         names.add(CONSTRUCTOR)
                     }
-                ProtoCompareGenerated.ProtoBufClassKind.FLAGS,
-                ProtoCompareGenerated.ProtoBufClassKind.FQ_NAME,
-                ProtoCompareGenerated.ProtoBufClassKind.TYPE_PARAMETER_LIST,
-                ProtoCompareGenerated.ProtoBufClassKind.SUPERTYPE_LIST,
-                ProtoCompareGenerated.ProtoBufClassKind.CLASS_ANNOTATION_LIST ->
+                ProtoBufClassKind.FLAGS,
+                ProtoBufClassKind.FQ_NAME,
+                ProtoBufClassKind.TYPE_PARAMETER_LIST,
+                ProtoBufClassKind.SUPERTYPE_LIST,
+                ProtoBufClassKind.CLASS_ANNOTATION_LIST ->
                     throw IllegalArgumentException("Unexpected kind: $kind")
                 else ->
                     throw IllegalArgumentException("Unsupported kind: $kind")
@@ -239,7 +242,8 @@ private class DifferenceCalculatorForPackageFacade(oldData: ProtoMapValue, newDa
 
         for (kind in diff) {
             when (kind!!) {
-                ProtoCompareGenerated.ProtoBufPackageKind.MEMBER_LIST ->
+                ProtoBufPackageKind.CONSTRUCTOR_LIST, ProtoBufPackageKind.FUNCTION_LIST, ProtoBufPackageKind.PROPERTY_LIST,
+                ProtoBufPackageKind.MEMBER_LIST ->
                     names.addAll(calcDifferenceForMembers(oldProto.memberList.filter { !it.isPrivate }, newProto.memberList.filter { !it.isPrivate }))
                 else ->
                     throw IllegalArgumentException("Unsupported kind: $kind")
