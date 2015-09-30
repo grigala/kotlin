@@ -36,7 +36,6 @@ import org.jetbrains.kotlin.descriptors.annotations.Annotated;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget;
 import org.jetbrains.kotlin.jvm.RuntimeAssertionInfo;
-import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames;
 import org.jetbrains.kotlin.load.kotlin.nativeDeclarations.NativeDeclarationsPackage;
 import org.jetbrains.kotlin.name.FqName;
@@ -359,7 +358,7 @@ public class FunctionCodegen {
         else {
             FrameMap frameMap = createFrameMap(parentCodegen.state, functionDescriptor, signature, isStaticMethod(context.getContextKind(),
                                                                                                                   functionDescriptor));
-            if (context.isInlineFunction()) {
+            /*if (context.isInlineFunction()) {
                 functionFakeIndex = frameMap.enterTemp(Type.INT_TYPE);
                 mv.visitLdcInsn(0);
                 mv.visitVarInsn(Opcodes.ISTORE, functionFakeIndex);
@@ -370,7 +369,7 @@ public class FunctionCodegen {
                 mv.visitLdcInsn(0);
                 mv.visitVarInsn(Opcodes.ISTORE, lambdaFakeIndex);
             }
-
+*/
             Label methodEntry = new Label();
             mv.visitLabel(methodEntry);
             context.setMethodStartLabel(methodEntry);
@@ -388,7 +387,7 @@ public class FunctionCodegen {
         Type thisType = getThisTypeForFunction(functionDescriptor, context, typeMapper);
         generateLocalVariableTable(mv, signature, functionDescriptor, thisType, methodBegin, methodEnd, context);
 
-        if (context.isInlineFunction() && functionFakeIndex != -1) {
+        /*if (context.isInlineFunction() && functionFakeIndex != -1) {
             mv.visitLocalVariable(
                     JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION + functionDescriptor.getName() + "$index$" + functionFakeIndex,
                     Type.INT_TYPE.getDescriptor(), null,
@@ -407,7 +406,7 @@ public class FunctionCodegen {
                         methodBegin, methodEnd,
                         lambdaFakeIndex);
             }
-        }
+        }*/
     }
 
     private static void generateLocalVariableTable(

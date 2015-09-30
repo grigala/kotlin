@@ -2,33 +2,28 @@ import test.*
 
 fun test1(): String {
     try {
-        doCall ext@ {
+        doCall {
             try {
                 doCall {
+                    val a = 1
                     if (1 == 1) {
-                        return@test1 "a"
+                        return "a"
                     }
                     else if (2 == 2) {
-                        return@ext "b"
+                        return "b"
                     }
                 }
 
-                if (3 == 3) {
-                    return "d"
-                }
-
-                "e"
+                return "d"
             }
             finally {
-                val aaa = 1
             }
         }
 
-        return "f"
     }
     finally {
-        val bbb = 2
     }
+    return "f"
 }
 
 fun box(): String {
