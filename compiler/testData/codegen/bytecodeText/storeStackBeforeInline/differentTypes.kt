@@ -6,11 +6,11 @@ fun foo() : String {
     return foobar(1, 2L, bar(3, 4L, 5.toByte(), "6"), 7.toByte())
 }
 
-// 3 ISTORE
+// 5 ISTORE
 // 11 ILOAD
 // 2 ASTORE
 // 8 ALOAD
 // 2 LSTORE
 // 6 LLOAD
-// 1 MAXLOCALS = 9
+// 1 MAXLOCALS = 10
 // 0 InlineMarker

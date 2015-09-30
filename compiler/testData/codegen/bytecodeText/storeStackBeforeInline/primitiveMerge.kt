@@ -8,9 +8,10 @@ fun test() {
     val result = foobar(if (1 == 1) true else bar(), foo(), "OK")
 }
 
-// 1 ISTORE
+// 3 ISTORE
 // 3 ILOAD
 // 2 ASTORE
 // 7 ALOAD
-// 3 MAXLOCALS = 3
+// 2 MAXLOCALS = 3
+// 1 MAXLOCALS = 4
 // 0 InlineMarker
