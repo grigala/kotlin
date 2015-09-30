@@ -113,6 +113,12 @@ public class QuickFixMultiFileTestGenerated extends AbstractQuickFixMultiFileTes
             doTestWithExtraFile(fileName);
         }
 
+        @TestMetadata("getExtensionWithIndexCall.before.Main.kt")
+        public void testGetExtensionWithIndexCall() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/autoImports/getExtensionWithIndexCall.before.Main.kt");
+            doTestWithExtraFile(fileName);
+        }
+
         @TestMetadata("importInFirstPartInQualifiedExpression.before.Main.kt")
         public void testImportInFirstPartInQualifiedExpression() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/autoImports/importInFirstPartInQualifiedExpression.before.Main.kt");

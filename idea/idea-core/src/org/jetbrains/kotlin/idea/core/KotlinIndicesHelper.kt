@@ -96,7 +96,9 @@ public class KotlinIndicesHelper(
                 .flatMap { findTopLevelCallables(it).filter(descriptorFilter) }
     }
 
-    public fun getCallableTopLevelExtensions(nameFilter: (String) -> Boolean, expression: JetSimpleNameExpression, bindingContext: BindingContext): Collection<CallableDescriptor> {
+    public fun getCallableTopLevelExtensions(nameFilter: (String) -> Boolean,
+                                             expression: JetSimpleNameExpression,
+                                             bindingContext: BindingContext): Collection<CallableDescriptor> {
         val receiverValues = receiverValues(expression, bindingContext)
         if (receiverValues.isEmpty()) return emptyList()
 

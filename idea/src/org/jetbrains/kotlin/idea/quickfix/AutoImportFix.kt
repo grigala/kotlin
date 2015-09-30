@@ -40,9 +40,7 @@ import org.jetbrains.kotlin.idea.core.KotlinIndicesHelper
 import org.jetbrains.kotlin.idea.core.getResolutionScope
 import org.jetbrains.kotlin.idea.core.isVisible
 import org.jetbrains.kotlin.idea.project.ProjectStructureUtil
-import org.jetbrains.kotlin.psi.JetFile
-import org.jetbrains.kotlin.psi.JetPsiUtil
-import org.jetbrains.kotlin.psi.JetSimpleNameExpression
+import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.isImportDirectiveExpression
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.utils.CachedValueProperty
@@ -51,7 +49,10 @@ import java.util.*
 /**
  * Check possibility and perform fix for unresolved references.
  */
-public class AutoImportFix(element: JetSimpleNameExpression) : JetHintAction<JetSimpleNameExpression>(element), HighPriorityAction {
+public class AutoImportFix : JetHintAction<JetElement>, HighPriorityAction {
+    constructor(element: JetSimpleNameExpression): super(element)
+    constructor(element: JetArrayAccessExpression): super(element)
+
     private val modificationCountOnCreate = PsiModificationTracker.SERVICE.getInstance(element.getProject()).getModificationCount()
 
     @Volatile private var anySuggestionFound: Boolean? = null
@@ -100,10 +101,14 @@ public class AutoImportFix(element: JetSimpleNameExpression) : JetHintAction<Jet
     private fun createAction(project: Project, editor: Editor) = KotlinAddImportAction(project, editor, element, suggestions)
 
     companion object : JetSingleIntentionActionFactory() {
-        override fun createAction(diagnostic: Diagnostic): JetIntentionAction<JetSimpleNameExpression>? {
+        override fun createAction(diagnostic: Diagnostic): JetIntentionAction<JetElement>? {
             // There could be different psi elements (i.e. JetArrayAccessExpression), but we can fix only JetSimpleNameExpression case
             val psiElement = diagnostic.getPsiElement()
             if (psiElement is JetSimpleNameExpression) {
+                return AutoImportFix(psiElement)
+            }
+
+            if (psiElement is JetArrayAccessExpression) {
                 return AutoImportFix(psiElement)
             }
 
@@ -114,18 +119,34 @@ public class AutoImportFix(element: JetSimpleNameExpression) : JetHintAction<Jet
 
         private val ERRORS = setOf(Errors.UNRESOLVED_REFERENCE, Errors.UNRESOLVED_REFERENCE_WRONG_RECEIVER)
 
-        public fun computeSuggestions(element: JetSimpleNameExpression): Collection<DeclarationDescriptor> {
+        public fun computeSuggestions(element: JetElement): Collection<DeclarationDescriptor> {
             if (!element.isValid()) return listOf()
 
             val file = element.getContainingFile() as? JetFile ?: return listOf()
 
-            var referenceName = element.getReferencedName()
-            if (element.getIdentifier() == null) {
-                val conventionName = JetPsiUtil.getConventionName(element)
-                if (conventionName != null) {
-                    referenceName = conventionName.asString()
+            var referenceName : String = when (element) {
+                is JetSimpleNameExpression -> {
+                    if (element.getIdentifier() == null) {
+                        val conventionName = JetPsiUtil.getConventionName(element)
+                        if (conventionName != null) {
+                            conventionName.asString()
+                        }
+                        else {
+                            ""
+                        }
+                    }
+                    else {
+                        element.getReferencedName()
+                    }
+                }
+                is JetArrayAccessExpression -> {
+                    "get"
+                }
+                else -> {
+                    ""
                 }
             }
+
             if (referenceName.isEmpty()) return listOf()
 
             val searchScope = getResolveScope(file)
@@ -135,12 +156,12 @@ public class AutoImportFix(element: JetSimpleNameExpression) : JetHintAction<Jet
             val diagnostics = bindingContext.getDiagnostics().forElement(element)
             if (!diagnostics.any { it.getFactory() in ERRORS }) return listOf()
 
-        val resolutionScope = element.getResolutionScope(bindingContext, file.getResolutionFacade())
-        val containingDescriptor = resolutionScope.ownerDescriptor
+            val resolutionScope = element.getResolutionScope(bindingContext, file.getResolutionFacade())
+            val containingDescriptor = resolutionScope.ownerDescriptor
 
             fun isVisible(descriptor: DeclarationDescriptor): Boolean {
                 if (descriptor is DeclarationDescriptorWithVisibility) {
-                    return descriptor.isVisible(containingDescriptor, bindingContext, element)
+                    return descriptor.isVisible(containingDescriptor, bindingContext, element as? JetSimpleNameExpression)
                 }
 
                 return true
@@ -150,17 +171,19 @@ public class AutoImportFix(element: JetSimpleNameExpression) : JetHintAction<Jet
 
             val indicesHelper = KotlinIndicesHelper(element.getResolutionFacade(), searchScope, ::isVisible, true)
 
-            if (!element.isImportDirectiveExpression() && !JetPsiUtil.isSelectorInQualified(element)) {
-                if (ProjectStructureUtil.isJsKotlinModule(file)) {
-                    result.addAll(indicesHelper.getKotlinClasses({ it == referenceName }, { true }))
+            if (element is JetSimpleNameExpression) {
+                if (!element.isImportDirectiveExpression() && !JetPsiUtil.isSelectorInQualified(element)) {
+                    if (ProjectStructureUtil.isJsKotlinModule(file)) {
+                        result.addAll(indicesHelper.getKotlinClasses({ it == referenceName }, { true }))
+                    }
+                    else {
+                        result.addAll(indicesHelper.getJvmClassesByName(referenceName))
+                    }
+                    result.addAll(indicesHelper.getTopLevelCallablesByName(referenceName))
                 }
-                else {
-                    result.addAll(indicesHelper.getJvmClassesByName(referenceName))
-                }
-                result.addAll(indicesHelper.getTopLevelCallablesByName(referenceName))
-            }
 
-            result.addAll(indicesHelper.getCallableTopLevelExtensions({ it == referenceName }, element, bindingContext))
+                result.addAll(indicesHelper.getCallableTopLevelExtensions({ it == referenceName }, element, bindingContext))
+            }
 
             return if (result.size() > 1)
                 reduceCandidatesBasedOnDependencyRuleViolation(result, file)
