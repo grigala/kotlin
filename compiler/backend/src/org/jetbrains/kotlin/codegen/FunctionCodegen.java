@@ -351,6 +351,10 @@ public class FunctionCodegen {
         JetTypeMapper typeMapper = parentCodegen.typeMapper;
 
         Label methodEnd;
+
+        int inlineFunctionFakeVariableIndex = 0;
+        int inlineLambdaFakeVariableIndex = 0;
+
         if (context.getParentContext() instanceof DelegatingFacadeContext) {
             generateFacadeDelegateMethodBody(mv, signature.getAsmMethod(), (DelegatingFacadeContext) context.getParentContext());
             methodEnd = new Label();
@@ -358,6 +362,13 @@ public class FunctionCodegen {
         else {
             FrameMap frameMap = createFrameMap(parentCodegen.state, functionDescriptor, signature, isStaticMethod(context.getContextKind(),
                                                                                                                   functionDescriptor));
+            if (context.isInlineFunction()) {
+                inlineFunctionFakeVariableIndex = frameMap.enterTemp(Type.INT_TYPE);
+            }
+
+            if (context.isInliningLambda()) {
+                inlineLambdaFakeVariableIndex = frameMap.enterTemp(Type.INT_TYPE);
+            }
 
             Label methodEntry = new Label();
             mv.visitLabel(methodEntry);
@@ -369,12 +380,35 @@ public class FunctionCodegen {
             methodEnd = new Label();
             context.setMethodEndLabel(methodEnd);
             strategy.generateBody(mv, frameMap, signature, context, parentCodegen);
+
+
         }
 
         mv.visitLabel(methodEnd);
 
         Type thisType = getThisTypeForFunction(functionDescriptor, context, typeMapper);
         generateLocalVariableTable(mv, signature, functionDescriptor, thisType, methodBegin, methodEnd, context);
+
+        if (context.isInlineFunction()) {
+            mv.visitLocalVariable(
+                    JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION + functionDescriptor.getName(),
+                    Type.INT_TYPE.getDescriptor(), null,
+                    methodBegin, methodEnd,
+                    inlineFunctionFakeVariableIndex);
+        }
+
+        if (context.isInliningLambda() && thisType != null) {
+            String name = thisType.getClassName();
+            int indexOfLambdaOrdinal = name.lastIndexOf("$");
+            if (indexOfLambdaOrdinal > 0) {
+                String lambdaOrdinal = name.substring(indexOfLambdaOrdinal + 1);
+                mv.visitLocalVariable(
+                        JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT + lambdaOrdinal,
+                        Type.INT_TYPE.getDescriptor(), null,
+                        methodBegin, methodEnd,
+                        inlineLambdaFakeVariableIndex);
+            }
+        }
     }
 
     private static void generateLocalVariableTable(
@@ -421,23 +455,6 @@ public class FunctionCodegen {
             Type type = param.getAsmType();
             mv.visitLocalVariable(parameterName, type.getDescriptor(), null, methodBegin, methodEnd, shift);
             shift += type.getSize();
-        }
-
-        if (context.isInlineFunction()) {
-            mv.visitLocalVariable(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION + functionDescriptor.getName(),
-                                  Type.INT_TYPE.getDescriptor(), null, methodBegin, methodEnd, shift);
-        }
-
-        if (context.isInliningLambda()) {
-            if (thisType != null) {
-                String name = thisType.getClassName();
-                int indexOfLambdaOrdinal = name.lastIndexOf("$");
-                if (indexOfLambdaOrdinal > 0) {
-                    String lambdaOrdinal = name.substring(indexOfLambdaOrdinal + 1);
-                    mv.visitLocalVariable(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT + lambdaOrdinal,
-                                          Type.INT_TYPE.getDescriptor(), null, methodBegin, methodEnd, shift);
-                }
-            }
         }
     }
 
