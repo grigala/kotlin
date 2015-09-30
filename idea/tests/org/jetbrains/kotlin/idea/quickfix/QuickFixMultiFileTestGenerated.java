@@ -143,6 +143,12 @@ public class QuickFixMultiFileTestGenerated extends AbstractQuickFixMultiFileTes
             doTestWithExtraFile(fileName);
         }
 
+        @TestMetadata("invokeExtension.before.Main.kt")
+        public void testInvokeExtension() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/autoImports/invokeExtension.before.Main.kt");
+            doTestWithExtraFile(fileName);
+        }
+
         @TestMetadata("minusOperator.before.Main.kt")
         public void testMinusOperator() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/autoImports/minusOperator.before.Main.kt");
@@ -224,6 +230,12 @@ public class QuickFixMultiFileTestGenerated extends AbstractQuickFixMultiFileTes
         @TestMetadata("objectImport.before.Main.kt")
         public void testObjectImport() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/autoImports/objectImport.before.Main.kt");
+            doTestWithExtraFile(fileName);
+        }
+
+        @TestMetadata("onPlusAssign.before.Main.kt")
+        public void testOnPlusAssign() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/autoImports/onPlusAssign.before.Main.kt");
             doTestWithExtraFile(fileName);
         }
 
