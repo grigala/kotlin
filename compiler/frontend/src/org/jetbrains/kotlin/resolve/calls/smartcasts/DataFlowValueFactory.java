@@ -27,12 +27,12 @@ import org.jetbrains.kotlin.lexer.JetTokens;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.psi.psiUtil.PsiUtilsKt;
 import org.jetbrains.kotlin.resolve.BindingContext;
-import org.jetbrains.kotlin.resolve.BindingContextUtils;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
 import org.jetbrains.kotlin.resolve.calls.context.ResolutionContext;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
+import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowValue.Kind;
 import org.jetbrains.kotlin.resolve.scopes.receivers.*;
 import org.jetbrains.kotlin.types.JetType;
 import org.jetbrains.kotlin.types.TypeUtils;
@@ -43,6 +43,7 @@ import static org.jetbrains.kotlin.builtins.KotlinBuiltIns.isNullableNothing;
 import static org.jetbrains.kotlin.resolve.BindingContext.DECLARATION_TO_DESCRIPTOR;
 import static org.jetbrains.kotlin.resolve.BindingContext.PRELIMINARY_VISITOR;
 import static org.jetbrains.kotlin.resolve.BindingContext.REFERENCE_TARGET;
+import static org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowValue.Kind.*;
 
 /**
  * This class is intended to create data flow values for different kind of expressions.
@@ -88,7 +89,7 @@ public class DataFlowValueFactory {
             // fun <T : Any?> foo(x: T) = x!!.hashCode() // there no way in type system to denote that `x!!` is not nullable
             return new DataFlowValue(expression,
                                      type,
-                                     DataFlowValue.Kind.OTHER,
+                                     OTHER,
                                      Nullability.NOT_NULL);
         }
 
@@ -102,7 +103,7 @@ public class DataFlowValueFactory {
     @NotNull
     public static DataFlowValue createDataFlowValue(@NotNull ThisReceiver receiver) {
         JetType type = receiver.getType();
-        return new DataFlowValue(receiver, type, DataFlowValue.Kind.STABLE_VALUE, getImmanentNullability(type));
+        return new DataFlowValue(receiver, type, STABLE_VALUE, getImmanentNullability(type));
     }
 
     @NotNull
@@ -123,7 +124,7 @@ public class DataFlowValueFactory {
         if (receiverValue instanceof TransientReceiver || receiverValue instanceof ScriptReceiver) {
             // SCRIPT: smartcasts data flow
             JetType type = receiverValue.getType();
-            return new DataFlowValue(receiverValue, type, DataFlowValue.Kind.STABLE_VALUE, getImmanentNullability(type));
+            return new DataFlowValue(receiverValue, type, STABLE_VALUE, getImmanentNullability(type));
         }
         else if (receiverValue instanceof ClassReceiver || receiverValue instanceof ExtensionReceiver) {
             return createDataFlowValue((ThisReceiver) receiverValue);
@@ -161,17 +162,17 @@ public class DataFlowValueFactory {
 
     private static class IdentifierInfo {
         public final Object id;
-        public final DataFlowValue.Kind kind;
+        public final Kind kind;
         public final boolean isPackage;
 
-        private IdentifierInfo(Object id, DataFlowValue.Kind kind, boolean isPackage) {
+        private IdentifierInfo(Object id, Kind kind, boolean isPackage) {
             this.id = id;
             this.kind = kind;
             this.isPackage = isPackage;
         }
     }
 
-    private static final IdentifierInfo NO_IDENTIFIER_INFO = new IdentifierInfo(null, DataFlowValue.Kind.OTHER, false) {
+    private static final IdentifierInfo NO_IDENTIFIER_INFO = new IdentifierInfo(null, OTHER, false) {
         @Override
         public String toString() {
             return "NO_IDENTIFIER_INFO";
@@ -179,18 +180,18 @@ public class DataFlowValueFactory {
     };
 
     @NotNull
-    private static IdentifierInfo createInfo(Object id, DataFlowValue.Kind kind) {
+    private static IdentifierInfo createInfo(Object id, Kind kind) {
         return new IdentifierInfo(id, kind, false);
     }
 
     @NotNull
     private static IdentifierInfo createStableInfo(Object id) {
-        return createInfo(id, DataFlowValue.Kind.STABLE_VALUE);
+        return createInfo(id, STABLE_VALUE);
     }
 
     @NotNull
     private static IdentifierInfo createPackageOrClassInfo(Object id) {
-        return new IdentifierInfo(id, DataFlowValue.Kind.STABLE_VALUE, true);
+        return new IdentifierInfo(id, STABLE_VALUE, true);
     }
 
     @NotNull
@@ -203,9 +204,9 @@ public class DataFlowValueFactory {
         }
         return createInfo(Pair.create(receiverInfo.id, selectorInfo.id),
                           receiverInfo.kind.isStable() && selectorInfo.kind.isStable()
-                          ? DataFlowValue.Kind.STABLE_VALUE
+                          ? STABLE_VALUE
                           // x.y can never be a local variable
-                          : DataFlowValue.Kind.OTHER);
+                          : OTHER);
     }
 
     @NotNull
@@ -316,15 +317,15 @@ public class DataFlowValueFactory {
         return NO_IDENTIFIER_INFO;
     }
 
-    public static DataFlowValue.Kind variableKind(
+    public static Kind variableKind(
             @NotNull VariableDescriptor variableDescriptor,
             @Nullable ModuleDescriptor usageModule,
             @NotNull BindingContext bindingContext,
             @Nullable JetElement position
     ) {
-        if (isStableVariable(variableDescriptor, usageModule)) return DataFlowValue.Kind.STABLE_VALUE;
+        if (isStableVariable(variableDescriptor, usageModule)) return STABLE_VALUE;
         boolean isLocalVar = variableDescriptor.isVar() && variableDescriptor instanceof LocalVariableDescriptor;
-        if (!isLocalVar) return DataFlowValue.Kind.OTHER;
+        if (!isLocalVar) return OTHER;
         // Search for preliminary visitor of parent descriptor
         DeclarationDescriptor parentDescriptor = variableDescriptor.getContainingDeclaration();
         PreliminaryDeclarationVisitor preliminaryVisitor = bindingContext.get(PRELIMINARY_VISITOR, parentDescriptor);
@@ -333,20 +334,20 @@ public class DataFlowValueFactory {
             preliminaryVisitor = bindingContext.get(PRELIMINARY_VISITOR, parentDescriptor);
         }
         // Strange situation... but we definitely can predict nothing here
-        if (preliminaryVisitor == null) return DataFlowValue.Kind.UNPREDICTABLE_VARIABLE;
+        if (preliminaryVisitor == null) return UNPREDICTABLE_VARIABLE;
         // Very simple algorithm: compare who declares variable and who assigns variable
         // If there is no writer: predictable
         // If they are the same: predictable (not exact really, WE should be at the same place)
         // If not, then declarer is a parent to assigner: predictable iff position is BEFORE assigned declaration
         JetDeclaration writer = preliminaryVisitor.writer(variableDescriptor);
-        if (writer == null) return DataFlowValue.Kind.PREDICTABLE_VARIABLE;
+        if (writer == null) return PREDICTABLE_VARIABLE;
         DeclarationDescriptor writerDescriptor = bindingContext.get(DECLARATION_TO_DESCRIPTOR, writer);
-        if (writerDescriptor == variableDescriptor.getContainingDeclaration()) return DataFlowValue.Kind.PREDICTABLE_VARIABLE;
+        if (writerDescriptor == variableDescriptor.getContainingDeclaration()) return PREDICTABLE_VARIABLE;
         // Current position is not known: unpredictable
-        if (position == null) return DataFlowValue.Kind.UNPREDICTABLE_VARIABLE;
+        if (position == null) return UNPREDICTABLE_VARIABLE;
         // We are before writer: predictable
-        if (PsiUtilsKt.before(position, writer)) return DataFlowValue.Kind.PREDICTABLE_VARIABLE;
-        return DataFlowValue.Kind.UNPREDICTABLE_VARIABLE;
+        if (PsiUtilsKt.before(position, writer)) return PREDICTABLE_VARIABLE;
+        return UNPREDICTABLE_VARIABLE;
     }
 
     /**
