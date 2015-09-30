@@ -36,8 +36,11 @@ import org.jetbrains.kotlin.resolve.scopes.receivers.*;
 import org.jetbrains.kotlin.types.JetType;
 import org.jetbrains.kotlin.types.TypeUtils;
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils;
+import org.jetbrains.kotlin.types.expressions.PreliminaryDeclarationVisitor;
 
 import static org.jetbrains.kotlin.builtins.KotlinBuiltIns.isNullableNothing;
+import static org.jetbrains.kotlin.resolve.BindingContext.DECLARATION_TO_DESCRIPTOR;
+import static org.jetbrains.kotlin.resolve.BindingContext.PRELIMINARY_VISITOR;
 import static org.jetbrains.kotlin.resolve.BindingContext.REFERENCE_TARGET;
 
 /**
@@ -319,10 +322,24 @@ public class DataFlowValueFactory {
         if (isStableVariable(variableDescriptor, usageModule)) return DataFlowValue.Kind.STABLE_VALUE;
         boolean isLocalVar = variableDescriptor.isVar() && variableDescriptor instanceof LocalVariableDescriptor;
         if (!isLocalVar) return DataFlowValue.Kind.OTHER;
-        if (BindingContextUtils.isVarCapturedInClosure(bindingContext, variableDescriptor)) {
-            return DataFlowValue.Kind.UNPREDICTABLE_VARIABLE;
+        // Search for preliminary visitor of parent descriptor
+        DeclarationDescriptor parentDescriptor = variableDescriptor.getContainingDeclaration();
+        PreliminaryDeclarationVisitor preliminaryVisitor = bindingContext.get(PRELIMINARY_VISITOR, parentDescriptor);
+        while (preliminaryVisitor == null && parentDescriptor != null) {
+            parentDescriptor = parentDescriptor.getContainingDeclaration();
+            preliminaryVisitor = bindingContext.get(PRELIMINARY_VISITOR, parentDescriptor);
         }
-        return DataFlowValue.Kind.PREDICTABLE_VARIABLE;
+        // Strange situation... but we definitely can predict nothing here
+        if (preliminaryVisitor == null) return DataFlowValue.Kind.UNPREDICTABLE_VARIABLE;
+        // Very simple algorithm: compare who declares variable and who assigns variable
+        // If there is no writer: predictable
+        // If they are the same: predictable (not exact really, WE should be at the same place)
+        // If not, then declarer is a parent to assigner: unpredictable (not exact really, we can be before the assigner)
+        JetDeclaration writer = preliminaryVisitor.writer(variableDescriptor);
+        if (writer == null) return DataFlowValue.Kind.PREDICTABLE_VARIABLE;
+        DeclarationDescriptor writerDescriptor = bindingContext.get(DECLARATION_TO_DESCRIPTOR, writer);
+        if (writerDescriptor == variableDescriptor.getContainingDeclaration()) return DataFlowValue.Kind.PREDICTABLE_VARIABLE;
+        return DataFlowValue.Kind.UNPREDICTABLE_VARIABLE;
     }
 
     /**
