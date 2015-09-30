@@ -1,5 +1,10 @@
 package test
 
 inline fun foo(f: () -> Unit) {
-    f()
+    try {
+        f()
+    }
+    finally {
+        1
+    }
 }
