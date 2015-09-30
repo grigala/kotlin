@@ -54,10 +54,7 @@ import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterKind;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterSignature;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature;
-import org.jetbrains.org.objectweb.asm.AnnotationVisitor;
-import org.jetbrains.org.objectweb.asm.Label;
-import org.jetbrains.org.objectweb.asm.MethodVisitor;
-import org.jetbrains.org.objectweb.asm.Type;
+import org.jetbrains.org.objectweb.asm.*;
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter;
 import org.jetbrains.org.objectweb.asm.commons.Method;
 import org.jetbrains.org.objectweb.asm.util.TraceMethodVisitor;
@@ -352,8 +349,8 @@ public class FunctionCodegen {
 
         Label methodEnd;
 
-        int inlineFunctionFakeVariableIndex = -1;
-        int inlineLambdaFakeVariableIndex = -1;
+        int functionFakeIndex = -1;
+        int lambdaFakeIndex = -1;
 
         if (context.getParentContext() instanceof DelegatingFacadeContext) {
             generateFacadeDelegateMethodBody(mv, signature.getAsmMethod(), (DelegatingFacadeContext) context.getParentContext());
@@ -363,11 +360,15 @@ public class FunctionCodegen {
             FrameMap frameMap = createFrameMap(parentCodegen.state, functionDescriptor, signature, isStaticMethod(context.getContextKind(),
                                                                                                                   functionDescriptor));
             if (context.isInlineFunction()) {
-                inlineFunctionFakeVariableIndex = frameMap.enterTemp(Type.INT_TYPE);
+                functionFakeIndex = frameMap.enterTemp(Type.INT_TYPE);
+                mv.visitLdcInsn(0);
+                mv.visitVarInsn(Opcodes.ISTORE, functionFakeIndex);
             }
 
             if (context.isInliningLambda()) {
-                inlineLambdaFakeVariableIndex = frameMap.enterTemp(Type.INT_TYPE);
+                lambdaFakeIndex = frameMap.enterTemp(Type.INT_TYPE);
+                mv.visitLdcInsn(0);
+                mv.visitVarInsn(Opcodes.ISTORE, lambdaFakeIndex);
             }
 
             Label methodEntry = new Label();
@@ -380,8 +381,6 @@ public class FunctionCodegen {
             methodEnd = new Label();
             context.setMethodEndLabel(methodEnd);
             strategy.generateBody(mv, frameMap, signature, context, parentCodegen);
-
-
         }
 
         mv.visitLabel(methodEnd);
@@ -389,24 +388,24 @@ public class FunctionCodegen {
         Type thisType = getThisTypeForFunction(functionDescriptor, context, typeMapper);
         generateLocalVariableTable(mv, signature, functionDescriptor, thisType, methodBegin, methodEnd, context);
 
-        if (context.isInlineFunction() && inlineFunctionFakeVariableIndex != -1) {
+        if (context.isInlineFunction() && functionFakeIndex != -1) {
             mv.visitLocalVariable(
-                    JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION + functionDescriptor.getName(),
+                    JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION + functionDescriptor.getName() + "$index$" + functionFakeIndex,
                     Type.INT_TYPE.getDescriptor(), null,
                     methodBegin, methodEnd,
-                    inlineFunctionFakeVariableIndex);
+                    functionFakeIndex);
         }
 
-        if (context.isInliningLambda() && thisType != null && inlineLambdaFakeVariableIndex != -1) {
+        if (context.isInliningLambda() && thisType != null && lambdaFakeIndex != -1) {
             String name = thisType.getClassName();
             int indexOfLambdaOrdinal = name.lastIndexOf("$");
             if (indexOfLambdaOrdinal > 0) {
                 String lambdaOrdinal = name.substring(indexOfLambdaOrdinal + 1);
                 mv.visitLocalVariable(
-                        JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT + lambdaOrdinal,
+                        JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT + "ordinal$" + lambdaOrdinal + "$index$" + lambdaFakeIndex,
                         Type.INT_TYPE.getDescriptor(), null,
                         methodBegin, methodEnd,
-                        inlineLambdaFakeVariableIndex);
+                        lambdaFakeIndex);
             }
         }
     }
