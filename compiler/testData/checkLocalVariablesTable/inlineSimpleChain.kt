@@ -19,6 +19,10 @@ class A {
 
 // METHOD : A.foo()V
 // VARIABLE : NAME=zz2 TYPE=I INDEX=5
+// VARIABLE : NAME=$$inline$argument$1 TYPE=I INDEX=6
+// VARIABLE : NAME=$$inline$function$inlineFun TYPE=I INDEX=5
 // VARIABLE : NAME=z TYPE=I INDEX=3
+// VARIABLE : NAME=$$inline$argument$1 TYPE=I INDEX=7
+// VARIABLE : NAME=$$inline$function$inlineFun TYPE=I INDEX=3
 // VARIABLE : NAME=s TYPE=I INDEX=1
 // VARIABLE : NAME=this TYPE=LA; INDEX=0
