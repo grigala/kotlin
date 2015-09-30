@@ -89,7 +89,7 @@ public fun getExpectedTypePredicate(value: PseudoValue, bindingContext: BindingC
 
         val candidates = callee.getReferenceTargets(bindingContext)
                 .filterIsInstance<FunctionDescriptor>()
-                .sortBy { DescriptorRenderer.DEBUG_TEXT.render(it) }
+                .sortedBy { DescriptorRenderer.DEBUG_TEXT.render(it) }
         if (candidates.isEmpty()) return null
 
         val explicitReceiver = call.getExplicitReceiver()

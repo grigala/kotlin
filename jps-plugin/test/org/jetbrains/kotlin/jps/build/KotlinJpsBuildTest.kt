@@ -639,8 +639,8 @@ public class KotlinJpsBuildTest : AbstractKotlinJpsBuildTestCase() {
                         """Classpath entry points to a non-existent location: TEST_PATH/badroot.jar""",
                         """Classpath entry points to a non-existent location: TEST_PATH/some/test.class"""),
                 warnings.map {
-                    it.messageText.replace(File("").absolutePath, "TEST_PATH").replace("\\", "/")
-                }.sort().toTypedArray()
+                            it.messageText.replace(File("").absolutePath, "TEST_PATH").replace("\\", "/")
+                        }.sorted().toTypedArray()
         )
     }
 
