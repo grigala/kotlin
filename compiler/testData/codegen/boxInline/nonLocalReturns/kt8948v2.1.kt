@@ -1,21 +1,12 @@
 import test.*
 
-var p = "fail"
-
 fun test() {
     foo {
-        try {
-            p = "O"
-            return
-        } catch(e: Exception) {
-            return
-        } finally {
-            p += "K"
-        }
+        val b = "aa"
     }
 }
 
 fun box(): String {
     test()
-    return p
+    return "OK1"
 }
