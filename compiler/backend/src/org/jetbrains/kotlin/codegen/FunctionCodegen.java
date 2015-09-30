@@ -352,8 +352,8 @@ public class FunctionCodegen {
 
         Label methodEnd;
 
-        int inlineFunctionFakeVariableIndex = 0;
-        int inlineLambdaFakeVariableIndex = 0;
+        int inlineFunctionFakeVariableIndex = -1;
+        int inlineLambdaFakeVariableIndex = -1;
 
         if (context.getParentContext() instanceof DelegatingFacadeContext) {
             generateFacadeDelegateMethodBody(mv, signature.getAsmMethod(), (DelegatingFacadeContext) context.getParentContext());
@@ -389,7 +389,7 @@ public class FunctionCodegen {
         Type thisType = getThisTypeForFunction(functionDescriptor, context, typeMapper);
         generateLocalVariableTable(mv, signature, functionDescriptor, thisType, methodBegin, methodEnd, context);
 
-        if (context.isInlineFunction()) {
+        if (context.isInlineFunction() && inlineFunctionFakeVariableIndex != -1) {
             mv.visitLocalVariable(
                     JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION + functionDescriptor.getName(),
                     Type.INT_TYPE.getDescriptor(), null,
@@ -397,7 +397,7 @@ public class FunctionCodegen {
                     inlineFunctionFakeVariableIndex);
         }
 
-        if (context.isInliningLambda() && thisType != null) {
+        if (context.isInliningLambda() && thisType != null && inlineLambdaFakeVariableIndex != -1) {
             String name = thisType.getClassName();
             int indexOfLambdaOrdinal = name.lastIndexOf("$");
             if (indexOfLambdaOrdinal > 0) {
