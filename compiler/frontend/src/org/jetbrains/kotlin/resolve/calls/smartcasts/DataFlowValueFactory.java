@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.resolve.calls.smartcasts;
 
 import com.intellij.openapi.util.Pair;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.tree.IElementType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -335,16 +336,24 @@ public class DataFlowValueFactory {
         }
         // Strange situation... but we definitely can predict nothing here
         if (preliminaryVisitor == null) return UNPREDICTABLE_VARIABLE;
-        // Very simple algorithm: compare who declares variable and who assigns variable
+        // Compare who declares variable and who assigns variable
         // If there is no writer: predictable
-        // If they are the same: predictable (not exact really, WE should be at the same place)
+        // If they are the same: predictable iff we are at the same place
         // If not, then declarer is a parent to assigner: predictable iff position is BEFORE assigned declaration
         JetDeclaration writer = preliminaryVisitor.writer(variableDescriptor);
         if (writer == null) return PREDICTABLE_VARIABLE;
-        DeclarationDescriptor writerDescriptor = bindingContext.get(DECLARATION_TO_DESCRIPTOR, writer);
-        if (writerDescriptor == variableDescriptor.getContainingDeclaration()) return PREDICTABLE_VARIABLE;
         // Current position is not known: unpredictable
         if (position == null) return UNPREDICTABLE_VARIABLE;
+        DeclarationDescriptor writerDescriptor = bindingContext.get(DECLARATION_TO_DESCRIPTOR, writer);
+        if (writerDescriptor == variableDescriptor.getContainingDeclaration()) {
+            PsiElement parent = position.getParent();
+            while (parent != null && parent != writer) {
+                // We are inside some local declaration: unpredictable
+                if (parent instanceof JetDeclarationWithBody || parent instanceof JetClassOrObject) return UNPREDICTABLE_VARIABLE;
+                parent = parent.getParent();
+            }
+            return PREDICTABLE_VARIABLE;
+        }
         // We are before writer: predictable
         if (PsiUtilsKt.before(position, writer)) return PREDICTABLE_VARIABLE;
         return UNPREDICTABLE_VARIABLE;
