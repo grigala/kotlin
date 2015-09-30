@@ -21,10 +21,10 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor;
 import org.jetbrains.kotlin.descriptors.annotations.CompositeAnnotations;
-import org.jetbrains.kotlin.resolve.calls.inference.InferencePackage;
+import org.jetbrains.kotlin.resolve.calls.inference.CapturedTypeConstructorKt;
 import org.jetbrains.kotlin.resolve.scopes.SubstitutingScope;
-import org.jetbrains.kotlin.types.typeUtil.TypeUtilPackage;
-import org.jetbrains.kotlin.types.typesApproximation.TypesApproximationPackage;
+import org.jetbrains.kotlin.types.typeUtil.TypeUtilsKt;
+import org.jetbrains.kotlin.types.typesApproximation.CapturedTypeApproximationKt;
 
 import java.util.*;
 
@@ -102,7 +102,7 @@ public class TypeSubstitutor {
         if (!substitution.approximateCapturedTypes()) {
             return substitutedTypeProjection;
         }
-        return TypesApproximationPackage.approximateCapturedTypesIfNecessary(substitutedTypeProjection);
+        return CapturedTypeApproximationKt.approximateCapturedTypesIfNecessary(substitutedTypeProjection);
     }
 
     @Nullable
@@ -128,8 +128,8 @@ public class TypeSubstitutor {
         JetType type = originalProjection.getType();
         TypeProjection replacement = substitution.get(type);
         Variance originalProjectionKind = originalProjection.getProjectionKind();
-        if (replacement == null && TypesPackage.isFlexible(type) && !TypesPackage.isCustomTypeVariable(type)) {
-            Flexibility flexibility = TypesPackage.flexibility(type);
+        if (replacement == null && FlexibleTypesKt.isFlexible(type) && !TypeCapabilitiesKt.isCustomTypeVariable(type)) {
+            Flexibility flexibility = FlexibleTypesKt.flexibility(type);
             TypeProjection substitutedLower =
                     unsafeSubstitute(new TypeProjectionImpl(originalProjectionKind, flexibility.getLowerBound()), recursionDepth + 1);
             TypeProjection substitutedUpper =
@@ -153,7 +153,7 @@ public class TypeSubstitutor {
             // Captured type might be substituted in an opposite projection:
             // out 'Captured (in Int)' = out Int
             // in 'Captured (out Int)' = in Int
-            boolean allowVarianceConflict = InferencePackage.isCaptured(type);
+            boolean allowVarianceConflict = CapturedTypeConstructorKt.isCaptured(type);
             if (!allowVarianceConflict) {
                 //noinspection EnumSwitchStatementWhichMissesCases
                 switch (varianceConflict) {
@@ -165,7 +165,7 @@ public class TypeSubstitutor {
                 }
             }
             JetType substitutedType;
-            CustomTypeVariable typeVariable = TypesPackage.getCustomTypeVariable(type);
+            CustomTypeVariable typeVariable = TypeCapabilitiesKt.getCustomTypeVariable(type);
             if (replacement.isStarProjection()) {
                 return replacement;
             }
@@ -179,7 +179,7 @@ public class TypeSubstitutor {
 
             // substitutionType.annotations = replacement.annotations ++ type.annotations
             if (!type.getAnnotations().isEmpty()) {
-                substitutedType = TypeUtilPackage.replaceAnnotations(
+                substitutedType = TypeUtilsKt.replaceAnnotations(
                         substitutedType,
                         new CompositeAnnotations(substitutedType.getAnnotations(), type.getAnnotations())
                 );
@@ -213,7 +213,7 @@ public class TypeSubstitutor {
         // e.g. for return type Foo of 'add(..)' in 'class Foo { fun <R> add(bar: Bar<R>): Foo }' R shouldn't be substituted in the scope
         TypeSubstitution substitutionFilteringTypeParameters = new TypeSubstitution() {
             private final Collection<TypeConstructor> containedOrCapturedTypeParameters =
-                    TypeUtilPackage.getContainedAndCapturedTypeParameterConstructors(type);
+                    TypeUtilsKt.getContainedAndCapturedTypeParameterConstructors(type);
 
             @Nullable
             @Override

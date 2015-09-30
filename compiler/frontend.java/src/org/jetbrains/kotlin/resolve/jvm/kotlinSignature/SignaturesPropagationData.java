@@ -21,7 +21,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.intellij.util.Function;
 import com.intellij.util.containers.ContainerUtil;
-import kotlin.KotlinPackage;
+import kotlin.CollectionsKt;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -39,11 +39,12 @@ import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.platform.JavaToKotlinClassMap;
 import org.jetbrains.kotlin.renderer.DescriptorRenderer;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
+import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
+import org.jetbrains.kotlin.resolve.jvm.JavaDescriptorResolverKt;
 import org.jetbrains.kotlin.resolve.jvm.JavaResolverUtils;
-import org.jetbrains.kotlin.resolve.jvm.JvmPackage;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature;
-import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmSignaturePackage;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.KotlinToJvmSignatureMapper;
+import org.jetbrains.kotlin.resolve.jvm.jvmSignature.KotlinToJvmSignatureMapperKt;
 import org.jetbrains.kotlin.resolve.scopes.JetScope;
 import org.jetbrains.kotlin.types.*;
 
@@ -51,7 +52,6 @@ import java.util.*;
 
 import static org.jetbrains.kotlin.load.java.components.TypeUsage.*;
 import static org.jetbrains.kotlin.resolve.DescriptorUtils.getFqName;
-import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage.getBuiltIns;
 import static org.jetbrains.kotlin.types.Variance.INVARIANT;
 
 public class SignaturesPropagationData {
@@ -158,7 +158,7 @@ public class SignaturesPropagationData {
     private JetType modifyReturnTypeAccordingToSuperMethods(
             @NotNull JetType autoType // type built by JavaTypeTransformer
     ) {
-        if (JvmPackage.getPLATFORM_TYPES()) return autoType;
+        if (JavaDescriptorResolverKt.getPLATFORM_TYPES()) return autoType;
 
         List<TypeAndVariance> typesFromSuperMethods = ContainerUtil.map(superFunctions,
                                                                         new Function<FunctionDescriptor, TypeAndVariance>() {
@@ -173,7 +173,7 @@ public class SignaturesPropagationData {
     }
 
     private List<TypeParameterDescriptor> modifyTypeParametersAccordingToSuperMethods(List<TypeParameterDescriptor> autoTypeParameters) {
-        if (JvmPackage.getPLATFORM_TYPES()) return autoTypeParameters;
+        if (JavaDescriptorResolverKt.getPLATFORM_TYPES()) return autoTypeParameters;
 
         List<TypeParameterDescriptor> result = Lists.newArrayList();
 
@@ -268,13 +268,13 @@ public class SignaturesPropagationData {
                         stableName != null ? stableName : originalParam.getName(),
                         altType,
                         originalParam.declaresDefaultValue(),
-                        varargCheckResult.isVararg ? getBuiltIns(originalParam).getArrayElementType(altType) : null,
+                        varargCheckResult.isVararg ? DescriptorUtilsKt.getBuiltIns(originalParam).getArrayElementType(altType) : null,
                         SourceElement.NO_SOURCE
                 ));
             }
         }
 
-        boolean hasStableParameterNames = KotlinPackage.any(superFunctions, new Function1<FunctionDescriptor, Boolean>() {
+        boolean hasStableParameterNames = CollectionsKt.any(superFunctions, new Function1<FunctionDescriptor, Boolean>() {
             @Override
             public Boolean invoke(FunctionDescriptor descriptor) {
                 return descriptor.hasStableParameterNames();
@@ -286,7 +286,7 @@ public class SignaturesPropagationData {
 
     @NotNull
     private static List<TypeAndVariance> convertToTypeVarianceList(@NotNull List<TypeAndName> list) {
-        return KotlinPackage.map(list, new Function1<TypeAndName, TypeAndVariance>() {
+        return CollectionsKt.map(list, new Function1<TypeAndName, TypeAndVariance>() {
             @Override
             public TypeAndVariance invoke(TypeAndName tvn) {
                 return new TypeAndVariance(tvn.type, INVARIANT);
@@ -308,7 +308,7 @@ public class SignaturesPropagationData {
             Collection<FunctionDescriptor> superFunctionCandidates = supertype.getMemberScope().getFunctions(name, NoLookupLocation.WHEN_GET_SUPER_MEMBERS);
             for (FunctionDescriptor candidate : superFunctionCandidates) {
                 JvmMethodSignature candidateSignature = SIGNATURE_MAPPER.mapToJvmMethodSignature(candidate);
-                if (JvmSignaturePackage.erasedSignaturesEqualIgnoringReturnTypes(autoSignature, candidateSignature)) {
+                if (KotlinToJvmSignatureMapperKt.erasedSignaturesEqualIgnoringReturnTypes(autoSignature, candidateSignature)) {
                     superFunctions.add(candidate);
                 }
             }
@@ -396,7 +396,7 @@ public class SignaturesPropagationData {
     ) {
         if (autoType.isError()) return autoType;
 
-        if (JvmPackage.getPLATFORM_TYPES()) return autoType;
+        if (JavaDescriptorResolverKt.getPLATFORM_TYPES()) return autoType;
 
         boolean resultNullable = typeMustBeNullable(autoType, typesFromSuper, howThisTypeIsUsed);
         ClassifierDescriptor resultClassifier = modifyTypeClassifier(autoType, typesFromSuper);

@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.types;
 
+import kotlin.CollectionsKt;
 import kotlin.KotlinPackage;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
@@ -28,7 +29,7 @@ import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 import org.jetbrains.kotlin.resolve.scopes.JetScope;
 import org.jetbrains.kotlin.types.checker.JetTypeChecker;
-import org.jetbrains.kotlin.types.typeUtil.TypeUtilPackage;
+import org.jetbrains.kotlin.types.typeUtil.TypeUtilsKt;
 
 import java.util.*;
 
@@ -88,9 +89,9 @@ public class CommonSupertypes {
         List<JetType> lower = new ArrayList<JetType>(types.size());
         Set<FlexibleTypeCapabilities> capabilities = new LinkedHashSet<FlexibleTypeCapabilities>();
         for (JetType type : types) {
-            if (TypesPackage.isFlexible(type)) {
+            if (FlexibleTypesKt.isFlexible(type)) {
                 hasFlexible = true;
-                Flexibility flexibility = TypesPackage.flexibility(type);
+                Flexibility flexibility = FlexibleTypesKt.flexibility(type);
                 upper.add(flexibility.getUpperBound());
                 lower.add(flexibility.getLowerBound());
                 capabilities.add(flexibility.getExtraCapabilities());
@@ -105,7 +106,7 @@ public class CommonSupertypes {
         return DelegatingFlexibleType.create(
                 commonSuperTypeForInflexible(lower, recursionDepth, maxDepth),
                 commonSuperTypeForInflexible(upper, recursionDepth, maxDepth),
-                KotlinPackage.single(capabilities) // mixing different capabilities is not supported
+                CollectionsKt.single(capabilities) // mixing different capabilities is not supported
         );
     }
 
@@ -114,7 +115,7 @@ public class CommonSupertypes {
         assert !types.isEmpty();
         Collection<JetType> typeSet = new HashSet<JetType>(types);
 
-        JetType bestFit = TypesPackage.singleBestRepresentative(typeSet);
+        JetType bestFit = FlexibleTypesKt.singleBestRepresentative(typeSet);
         if (bestFit != null) return bestFit;
 
         // If any of the types is nullable, the result must be nullable
@@ -123,7 +124,7 @@ public class CommonSupertypes {
         for (Iterator<JetType> iterator = typeSet.iterator(); iterator.hasNext();) {
             JetType type = iterator.next();
             assert type != null;
-            assert !TypesPackage.isFlexible(type) : "Flexible type " + type + " passed to commonSuperTypeForInflexible";
+            assert !FlexibleTypesKt.isFlexible(type) : "Flexible type " + type + " passed to commonSuperTypeForInflexible";
             if (KotlinBuiltIns.isNothingOrNullableNothing(type)) {
                 iterator.remove();
             }
@@ -249,7 +250,7 @@ public class CommonSupertypes {
             @NotNull Set<TypeProjection> typeProjections,
             int recursionDepth, int maxDepth
     ) {
-        TypeProjection singleBestProjection = TypesPackage.singleBestRepresentative(typeProjections);
+        TypeProjection singleBestProjection = FlexibleTypesKt.singleBestRepresentative(typeProjections);
         if (singleBestProjection != null) {
             return singleBestProjection;
         }
@@ -302,7 +303,7 @@ public class CommonSupertypes {
             Variance projectionKind = variance == OUT_VARIANCE ? Variance.INVARIANT : OUT_VARIANCE;
             JetType superType = findCommonSupertype(outs, recursionDepth + 1, maxDepth);
             for (JetType upperBound: parameterDescriptor.getUpperBounds()) {
-                if (!TypeUtilPackage.isSubtypeOf(superType, upperBound)) {
+                if (!TypeUtilsKt.isSubtypeOf(superType, upperBound)) {
                     return new StarProjectionImpl(parameterDescriptor);
                 }
             }
