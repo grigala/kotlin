@@ -25,6 +25,7 @@ import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor;
 import org.jetbrains.kotlin.lexer.JetTokens;
 import org.jetbrains.kotlin.psi.*;
+import org.jetbrains.kotlin.psi.psiUtil.PsiUtilsKt;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.BindingContextUtils;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
@@ -149,7 +150,7 @@ public class DataFlowValueFactory {
     ) {
         JetType type = variableDescriptor.getType();
         return new DataFlowValue(variableDescriptor, type,
-                                 variableKind(variableDescriptor, usageContainingModule, bindingContext),
+                                 variableKind(variableDescriptor, usageContainingModule, bindingContext, null),
                                  getImmanentNullability(type));
     }
 
@@ -278,8 +279,9 @@ public class DataFlowValueFactory {
                     resolvedCall != null ? getIdForImplicitReceiver(resolvedCall.getDispatchReceiver(), simpleNameExpression) : null;
 
             VariableDescriptor variableDescriptor = (VariableDescriptor) declarationDescriptor;
-            return combineInfo(receiverInfo, createInfo(variableDescriptor,
-                                                        variableKind(variableDescriptor, usageModuleDescriptor, bindingContext)));
+            return combineInfo(receiverInfo,
+                               createInfo(variableDescriptor,
+                                          variableKind(variableDescriptor, usageModuleDescriptor, bindingContext, simpleNameExpression)));
         }
         if (declarationDescriptor instanceof PackageViewDescriptor || declarationDescriptor instanceof ClassDescriptor) {
             return createPackageOrClassInfo(declarationDescriptor);
@@ -317,7 +319,8 @@ public class DataFlowValueFactory {
     public static DataFlowValue.Kind variableKind(
             @NotNull VariableDescriptor variableDescriptor,
             @Nullable ModuleDescriptor usageModule,
-            @NotNull BindingContext bindingContext
+            @NotNull BindingContext bindingContext,
+            @Nullable JetElement position
     ) {
         if (isStableVariable(variableDescriptor, usageModule)) return DataFlowValue.Kind.STABLE_VALUE;
         boolean isLocalVar = variableDescriptor.isVar() && variableDescriptor instanceof LocalVariableDescriptor;
@@ -334,11 +337,15 @@ public class DataFlowValueFactory {
         // Very simple algorithm: compare who declares variable and who assigns variable
         // If there is no writer: predictable
         // If they are the same: predictable (not exact really, WE should be at the same place)
-        // If not, then declarer is a parent to assigner: unpredictable (not exact really, we can be before the assigner)
+        // If not, then declarer is a parent to assigner: predictable iff position is BEFORE assigned declaration
         JetDeclaration writer = preliminaryVisitor.writer(variableDescriptor);
         if (writer == null) return DataFlowValue.Kind.PREDICTABLE_VARIABLE;
         DeclarationDescriptor writerDescriptor = bindingContext.get(DECLARATION_TO_DESCRIPTOR, writer);
         if (writerDescriptor == variableDescriptor.getContainingDeclaration()) return DataFlowValue.Kind.PREDICTABLE_VARIABLE;
+        // Current position is not known: unpredictable
+        if (position == null) return DataFlowValue.Kind.UNPREDICTABLE_VARIABLE;
+        // We are before writer: predictable
+        if (PsiUtilsKt.before(position, writer)) return DataFlowValue.Kind.PREDICTABLE_VARIABLE;
         return DataFlowValue.Kind.UNPREDICTABLE_VARIABLE;
     }
 
