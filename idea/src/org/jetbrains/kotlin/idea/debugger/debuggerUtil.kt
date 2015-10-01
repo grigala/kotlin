@@ -73,7 +73,7 @@ private fun Location.visibleVariables(debugProcess: DebugProcessImpl): List<Loca
 
 private fun lambdaOrdinal(name: String): Int {
     return try {
-        name.substringAfter(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT).toInt()
+        name.substringAfter(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT + "\$ordinal").substringBefore("\$").toInt()
     }
     catch(e: NumberFormatException) {
         0
