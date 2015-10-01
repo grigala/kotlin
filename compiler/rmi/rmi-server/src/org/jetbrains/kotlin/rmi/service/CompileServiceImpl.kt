@@ -37,9 +37,13 @@ import kotlin.concurrent.write
 
 fun nowSeconds() = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime())
 
-class CompileServiceImpl<Compiler: CLICompiler<*>>(
+interface CompilerSelector {
+    operator fun get(flavor: CompileService.CompilerImplementation): CLICompiler<*>
+}
+
+class CompileServiceImpl(
         val registry: Registry,
-        val compiler: Compiler,
+        val compiler: CompilerSelector,
         val selfCompilerId: CompilerId,
         val daemonOptions: DaemonOptions,
         port: Int
@@ -60,20 +64,21 @@ class CompileServiceImpl<Compiler: CLICompiler<*>>(
         }
     }
 
-    override fun remoteCompile(args: Array<out String>,
+    override fun remoteCompile(compilerFlavor: CompileService.CompilerImplementation,
+                               args: Array<out String>,
                                servicesFacade: CompilerCallbackServicesFacade,
                                compilerOutputStream: RemoteOutputStream,
-                               outputFormat: CompileService.OutputFormat,
-                               serviceOutputStream: RemoteOutputStream
+                               outputFormat: CompileService.OutputFormat, serviceOutputStream: RemoteOutputStream
     ): Int =
             doCompile(args, compilerOutputStream, serviceOutputStream) { printStream, profiler ->
                 when (outputFormat) {
-                    CompileService.OutputFormat.PLAIN -> compiler.exec(printStream, *args)
-                    CompileService.OutputFormat.XML -> compiler.execAndOutputXml(printStream, createCompileServices(servicesFacade, profiler), *args)
+                    CompileService.OutputFormat.PLAIN -> compiler[compilerFlavor].exec(printStream, *args)
+                    CompileService.OutputFormat.XML -> compiler[compilerFlavor].execAndOutputXml(printStream, createCompileServices(servicesFacade, profiler), *args)
                 }
             }
 
-    override fun remoteIncrementalCompile(args: Array<out String>,
+    override fun remoteIncrementalCompile(compilerFlavor: CompileService.CompilerImplementation,
+                                          args: Array<out String>,
                                           servicesFacade: CompilerCallbackServicesFacade,
                                           compilerOutputStream: RemoteOutputStream,
                                           compilerOutputFormat: CompileService.OutputFormat,
@@ -82,7 +87,7 @@ class CompileServiceImpl<Compiler: CLICompiler<*>>(
             doCompile(args, compilerOutputStream, serviceOutputStream) { printStream, profiler ->
                 when (compilerOutputFormat) {
                     CompileService.OutputFormat.PLAIN -> throw NotImplementedError("Only XML output is supported in remote incremental compilation")
-                    CompileService.OutputFormat.XML -> compiler.execAndOutputXml(printStream, createCompileServices(servicesFacade, profiler), *args)
+                    CompileService.OutputFormat.XML -> compiler[compilerFlavor].execAndOutputXml(printStream, createCompileServices(servicesFacade, profiler), *args)
                 }
             }
 

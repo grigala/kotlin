@@ -110,7 +110,7 @@ public object KotlinCompilerRunner {
 
             val argsArray = argumentsList.toTypedArray()
 
-            if (!tryCompileWithDaemon(messageCollector, collector, environment, argsArray)) {
+            if (!tryCompileWithDaemon(compilerClassName, argsArray, environment, messageCollector, collector)) {
                 // otherwise fallback to in-process
 
                 val stream = ByteArrayOutputStream()
@@ -130,10 +130,10 @@ public object KotlinCompilerRunner {
 
     }
 
-    private fun tryCompileWithDaemon(messageCollector: MessageCollector,
-                                     collector: OutputItemsCollector,
+    private fun tryCompileWithDaemon(compilerClassName: String,
+                                     argsArray: Array<String>,
                                      environment: CompilerEnvironment,
-                                     argsArray: Array<String>): Boolean {
+                                     messageCollector: MessageCollector, collector: OutputItemsCollector): Boolean {
 
         if (isDaemonEnabled()) {
             val libPath = CompilerRunnerUtil.getLibPath(environment.kotlinPaths, messageCollector)
@@ -168,7 +168,12 @@ public object KotlinCompilerRunner {
 
                 val profiler = if (daemonOptions.reportPerf) WallAndThreadTotalProfiler() else DummyProfiler()
 
-                val res = KotlinCompilerClient.incrementalCompile(daemon, argsArray, services, compilerOut, daemonOut, profiler)
+                val compilerFlavor = when (compilerClassName) {
+                    K2JVM_COMPILER -> CompileService.CompilerImplementation.JVM
+                    K2JS_COMPILER -> CompileService.CompilerImplementation.JS
+                    else -> throw IllegalArgumentException("Unknown compiler type $compilerClassName")
+                }
+                val res = KotlinCompilerClient.incrementalCompile(daemon, compilerFlavor, argsArray, services, compilerOut, daemonOut, profiler)
 
                 processCompilerOutput(messageCollector, collector, compilerOut, res.toString())
                 BufferedReader(StringReader(daemonOut.toString())).forEachLine {
