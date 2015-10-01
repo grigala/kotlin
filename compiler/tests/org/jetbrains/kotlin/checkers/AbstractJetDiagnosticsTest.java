@@ -22,7 +22,7 @@ import com.google.common.collect.Sets;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
-import kotlin.KotlinPackage;
+import kotlin.CollectionsKt;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -79,7 +79,7 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
 
     @Override
     protected void analyzeAndCheck(File testDataFile, List<TestFile> testFiles) {
-        Map<TestModule, List<TestFile>> groupedByModule = KotlinPackage.groupByTo(
+        Map<TestModule, List<TestFile>> groupedByModule = CollectionsKt.groupByTo(
                 testFiles,
                 new LinkedHashMap<TestModule, List<TestFile>>(),
                 new Function1<TestFile, TestModule>() {
@@ -90,7 +90,7 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
                 }
         );
 
-        boolean checkLazyResolveLog = KotlinPackage.any(testFiles, new Function1<TestFile, Boolean>() {
+        boolean checkLazyResolveLog = CollectionsKt.any(testFiles, new Function1<TestFile, Boolean>() {
             @Override
             public Boolean invoke(TestFile file) {
                 return file.checkLazyLog;
@@ -257,7 +257,7 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
             List<TestFile> testFiles,
             Map<TestModule, ModuleDescriptorImpl> modules
     ) {
-        if (KotlinPackage.any(testFiles, new Function1<TestFile, Boolean>() {
+        if (CollectionsKt.any(testFiles, new Function1<TestFile, Boolean>() {
             @Override
             public Boolean invoke(TestFile file) {
                 return InTextDirectivesUtils.isDirectiveDefined(file.expectedText, "// SKIP_TXT");
@@ -272,7 +272,7 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
         boolean isMultiModuleTest = modules.size() != 1;
         StringBuilder rootPackageText = new StringBuilder();
 
-        for (TestModule module : KotlinPackage.sort(modules.keySet())) {
+        for (TestModule module : CollectionsKt.sorted(modules.keySet())) {
             ModuleDescriptorImpl moduleDescriptor = modules.get(module);
             PackageViewDescriptor aPackage = moduleDescriptor.getPackage(FqName.ROOT);
             assertFalse(aPackage.isEmpty());

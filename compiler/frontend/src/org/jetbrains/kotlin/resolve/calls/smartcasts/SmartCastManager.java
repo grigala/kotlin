@@ -18,21 +18,18 @@ package org.jetbrains.kotlin.resolve.calls.smartcasts;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import kotlin.KotlinPackage;
+import kotlin.CollectionsKt;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor;
-import org.jetbrains.kotlin.descriptors.ReceiverParameterDescriptor;
 import org.jetbrains.kotlin.psi.JetExpression;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.BindingTrace;
 import org.jetbrains.kotlin.resolve.calls.ArgumentTypeResolver;
 import org.jetbrains.kotlin.resolve.calls.context.ResolutionContext;
-import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
-import org.jetbrains.kotlin.resolve.scopes.receivers.ThisReceiver;
 import org.jetbrains.kotlin.types.JetType;
 import org.jetbrains.kotlin.types.TypeIntersector;
 import org.jetbrains.kotlin.types.TypeUtils;
@@ -80,10 +77,10 @@ public class SmartCastManager {
     ) {
         final List<JetType> variants = getSmartCastVariants(receiverToCast, bindingContext,
                                                             containingDeclarationOrModule, dataFlowInfo);
-        return KotlinPackage.filter(variants, new Function1<JetType, Boolean>() {
+        return CollectionsKt.filter(variants, new Function1<JetType, Boolean>() {
             @Override
             public Boolean invoke(final JetType type) {
-                return !KotlinPackage.any(variants, new Function1<JetType, Boolean>() {
+                return !CollectionsKt.any(variants, new Function1<JetType, Boolean>() {
                     @Override
                     public Boolean invoke(JetType another) {
                         return another != type && JetTypeChecker.DEFAULT.isSubtypeOf(another, type);

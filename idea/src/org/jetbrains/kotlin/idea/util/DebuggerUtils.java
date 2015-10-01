@@ -27,7 +27,7 @@ import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.PsiTreeUtil;
-import kotlin.KotlinPackage;
+import kotlin.CollectionsKt;
 import kotlin.Pair;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
@@ -103,7 +103,7 @@ public class DebuggerUtils {
 
         if (isPackageClassName(className)) {
             for (JetFile file : filesWithExactName) {
-                boolean hasTopLevelMembers = KotlinPackage.any(file.getDeclarations(), new Function1<JetDeclaration, Boolean>() {
+                boolean hasTopLevelMembers = CollectionsKt.any(file.getDeclarations(), new Function1<JetDeclaration, Boolean>() {
                     @Override
                     public Boolean invoke(JetDeclaration declaration) {
                         return !(declaration instanceof JetClassOrObject);
@@ -119,7 +119,7 @@ public class DebuggerUtils {
                 return file;
             }
 
-            boolean isInLibrary = KotlinPackage.all(filesWithExactName, new Function1<JetFile, Boolean>() {
+            boolean isInLibrary = CollectionsKt.all(filesWithExactName, new Function1<JetFile, Boolean>() {
                 @Override
                 public Boolean invoke(JetFile file) {
                     return LibraryUtil.findLibraryEntry(file.getVirtualFile(), file.getProject()) != null;
@@ -127,7 +127,7 @@ public class DebuggerUtils {
             });
 
             if (isInLibrary) {
-                return KotlinPackage.singleOrNull(KotlinPackage.filter(filesWithExactName, new Function1<JetFile, Boolean>() {
+                return CollectionsKt.singleOrNull(CollectionsKt.filter(filesWithExactName, new Function1<JetFile, Boolean>() {
                     @Override
                     public Boolean invoke(JetFile file) {
                         Integer startLineOffset = CodeInsightUtils.getStartLineOffset(file, lineNumber);

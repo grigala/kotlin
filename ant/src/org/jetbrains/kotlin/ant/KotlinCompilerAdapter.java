@@ -16,7 +16,8 @@
 
 package org.jetbrains.kotlin.ant;
 
-import kotlin.KotlinPackage;
+import kotlin.ArraysKt;
+import kotlin.CollectionsKt;
 import kotlin.jvm.functions.Function1;
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.MagicNames;
@@ -66,7 +67,7 @@ public class KotlinCompilerAdapter extends Javac13 {
 
     @Override
     public String[] getSupportedFileExtensions() {
-        List<String> result = KotlinPackage.plus(Arrays.asList(super.getSupportedFileExtensions()), KOTLIN_EXTENSIONS);
+        List<String> result = CollectionsKt.plus(Arrays.asList(super.getSupportedFileExtensions()), KOTLIN_EXTENSIONS);
         //noinspection SSBasedInspection
         return result.toArray(new String[result.size()]);
     }
@@ -150,7 +151,7 @@ public class KotlinCompilerAdapter extends Javac13 {
 
     @NotNull
     private static File[] filterOutKotlinSources(@NotNull File[] files) {
-        List<File> nonKotlinSources = KotlinPackage.filterNot(files, new Function1<File, Boolean>() {
+        List<File> nonKotlinSources = ArraysKt.filterNot(files, new Function1<File, Boolean>() {
             @Override
             public Boolean invoke(File file) {
                 for (String extension : KOTLIN_EXTENSIONS) {

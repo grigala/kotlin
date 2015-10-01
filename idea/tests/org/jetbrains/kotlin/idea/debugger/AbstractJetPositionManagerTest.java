@@ -33,7 +33,7 @@ import com.intellij.psi.PsiDocumentManager;
 import com.intellij.testFramework.PsiTestUtil;
 import com.sun.jdi.Location;
 import com.sun.jdi.ReferenceType;
-import kotlin.KotlinPackage;
+import kotlin.StringsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.backend.common.output.OutputFile;
 import org.jetbrains.kotlin.backend.common.output.OutputFileCollection;
@@ -89,7 +89,7 @@ public abstract class AbstractJetPositionManagerTest extends KotlinMultiFileTest
 
     protected void doTest(@NotNull String fileName) throws Exception {
         if (fileName.endsWith(".kt")) {
-            String path = KotlinPackage.substringAfter(fileName, PluginTestCaseBase.TEST_DATA_PROJECT_RELATIVE.substring(1), fileName);
+            String path = StringsKt.substringAfter(fileName, PluginTestCaseBase.TEST_DATA_PROJECT_RELATIVE.substring(1), fileName);
             configureByFile(path);
         }
         else {

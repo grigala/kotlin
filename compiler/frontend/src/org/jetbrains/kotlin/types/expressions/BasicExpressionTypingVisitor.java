@@ -21,7 +21,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.TokenSet;
 import com.intellij.psi.util.PsiTreeUtil;
-import kotlin.KotlinPackage;
+import kotlin.CollectionsKt;
 import kotlin.jvm.functions.Function0;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
@@ -79,7 +79,6 @@ import static org.jetbrains.kotlin.resolve.calls.context.ContextDependency.DEPEN
 import static org.jetbrains.kotlin.resolve.calls.context.ContextDependency.INDEPENDENT;
 import static org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowValueFactory.createDataFlowValue;
 import static org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue.NO_RECEIVER;
-import static org.jetbrains.kotlin.resolve.scopes.utils.UtilsPackage.asJetScope;
 import static org.jetbrains.kotlin.types.TypeUtils.NO_EXPECTED_TYPE;
 import static org.jetbrains.kotlin.types.TypeUtils.noExpectedType;
 import static org.jetbrains.kotlin.types.expressions.ControlStructureTypingUtils.createCallForSpecialConstruction;
@@ -575,7 +574,7 @@ public class BasicExpressionTypingVisitor extends ExpressionTypingVisitor {
     private static JetType substituteWithStarProjections(@NotNull ClassDescriptor descriptor) {
         TypeConstructor typeConstructor = descriptor.getTypeConstructor();
         List<TypeProjection> arguments =
-                KotlinPackage.map(typeConstructor.getParameters(), new Function1<TypeParameterDescriptor, TypeProjection>() {
+                CollectionsKt.map(typeConstructor.getParameters(), new Function1<TypeParameterDescriptor, TypeProjection>() {
                     @Override
                     public TypeProjection invoke(TypeParameterDescriptor descriptor) {
                         return TypeUtils.makeStarProjection(descriptor);

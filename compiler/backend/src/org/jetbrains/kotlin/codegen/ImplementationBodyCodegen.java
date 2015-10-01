@@ -19,7 +19,7 @@ package org.jetbrains.kotlin.codegen;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.psi.PsiElement;
 import com.intellij.util.ArrayUtil;
-import kotlin.KotlinPackage;
+import kotlin.CollectionsKt;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function0;
 import kotlin.jvm.functions.Function1;
@@ -77,7 +77,6 @@ import org.jetbrains.org.objectweb.asm.commons.Method;
 
 import java.util.*;
 
-import static kotlin.KotlinPackage.firstOrNull;
 import static org.jetbrains.kotlin.codegen.AsmUtil.*;
 import static org.jetbrains.kotlin.codegen.JvmCodegenUtil.*;
 import static org.jetbrains.kotlin.codegen.binding.CodegenBinding.enumEntryNeedSubclass;
@@ -787,7 +786,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         Type type = typeMapper.mapType(getBuiltIns(descriptor).getArrayType(INVARIANT, descriptor.getDefaultType()));
 
         FunctionDescriptor valuesFunction =
-                KotlinPackage.single(descriptor.getStaticScope().getFunctions(ENUM_VALUES, NoLookupLocation.FROM_BACKEND), new Function1<FunctionDescriptor, Boolean>() {
+                CollectionsKt.single(descriptor.getStaticScope().getFunctions(ENUM_VALUES, NoLookupLocation.FROM_BACKEND), new Function1<FunctionDescriptor, Boolean>() {
                     @Override
                     public Boolean invoke(FunctionDescriptor descriptor) {
                         return CodegenUtil.isEnumValuesMethod(descriptor);
@@ -807,7 +806,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
     private void generateEnumValueOfMethod() {
         FunctionDescriptor valueOfFunction =
-                KotlinPackage.single(descriptor.getStaticScope().getFunctions(ENUM_VALUE_OF, NoLookupLocation.FROM_BACKEND), new Function1<FunctionDescriptor, Boolean>() {
+                CollectionsKt.single(descriptor.getStaticScope().getFunctions(ENUM_VALUE_OF, NoLookupLocation.FROM_BACKEND), new Function1<FunctionDescriptor, Boolean>() {
                     @Override
                     public Boolean invoke(FunctionDescriptor descriptor) {
                         return CodegenUtil.isEnumValueOfMethod(descriptor);
@@ -983,7 +982,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
             return;
         }
 
-        JetObjectDeclaration companionObject = firstOrNull(((JetClass) myClass).getCompanionObjects());
+        JetObjectDeclaration companionObject = CollectionsKt.firstOrNull(((JetClass) myClass).getCompanionObjects());
         assert companionObject != null : "Companion object not found: " + myClass.getText();
 
         StackValue.Field field = StackValue.singleton(companionObjectDescriptor, typeMapper);
@@ -1045,7 +1044,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
     private void generateCompanionObjectInitializer(@NotNull ClassDescriptor companionObject) {
         ExpressionCodegen codegen = createOrGetClInitCodegen();
         FunctionDescriptor constructor = (FunctionDescriptor) context.accessibleDescriptor(
-                KotlinPackage.single(companionObject.getConstructors()), /* superCallExpression = */ null
+                CollectionsKt.single(companionObject.getConstructors()), /* superCallExpression = */ null
         );
         generateMethodCallTo(constructor, null, codegen.v);
         codegen.v.dup();
@@ -1646,7 +1645,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
     private void generateEnumEntries() {
         if (descriptor.getKind() != ClassKind.ENUM_CLASS) return;
 
-        List<JetEnumEntry> enumEntries = KotlinPackage.filterIsInstance(element.getDeclarations(), JetEnumEntry.class);
+        List<JetEnumEntry> enumEntries = CollectionsKt.filterIsInstance(element.getDeclarations(), JetEnumEntry.class);
 
         for (JetEnumEntry enumEntry : enumEntries) {
             ClassDescriptor descriptor = getNotNull(bindingContext, BindingContext.CLASS, enumEntry);
