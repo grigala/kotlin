@@ -140,6 +140,8 @@ public class TaskPrioritizer(
         val explicitReceiverTypeIsDynamic = explicitReceiver.value.type.isDynamic()
 
         fun addMembersAndExtensionsWithFilter(filter: (CallableDescriptor) -> Boolean) {
+            // If the explicit receiver is erroneous, an error function is returned by getMembersByName().
+            // An error function should not be sorted out by our custom filters to prevent looking for extension functions.
             if (explicitReceiver.types.any { it.isError }) return
 
             addMembers(explicitReceiver, c, staticMembers = false, isExplicit = isExplicit, filter = filter)
