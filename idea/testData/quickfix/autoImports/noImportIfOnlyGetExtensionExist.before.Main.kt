@@ -1,6 +1,6 @@
-// "Import" "true"
+// "Import" "false"
 // ERROR: Unresolved reference: foo()["str"]
-// ERROR: No get method providing array access
+// ERROR: No set method providing array access
 
 package testing
 
@@ -9,5 +9,5 @@ import some.Some
 fun foo(): Some = Some()
 
 fun testing() {
-    foo()<caret>["str"]
+    foo()<caret>["str"] = 1
 }

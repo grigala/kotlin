@@ -317,9 +317,18 @@ public class ReferenceVariantsHelper(
     }
 
     companion object {
-        public fun getExplicitReceiverData(expression: JetSimpleNameExpression): ExplicitReceiverData? {
-            val receiverExpression = expression.getReceiverExpression() ?: return null
-            val parent = expression.getParent()
+        public fun getExplicitReceiverData(expression: JetExpression): ExplicitReceiverData? {
+            val receiverExpression = when (expression) {
+                is JetSimpleNameExpression -> expression.getReceiverExpression()
+                is JetArrayAccessExpression -> expression.arrayExpression
+                else -> null
+            }
+
+            if (receiverExpression == null) {
+                return null
+            }
+
+            val parent = if (expression is JetArrayAccessExpression) expression else expression.getParent()
             val callType = when (parent) {
                 is JetBinaryExpression -> CallType.INFIX
 
@@ -340,6 +349,8 @@ public class ReferenceVariantsHelper(
                 is JetUnaryExpression -> CallType.UNARY
 
                 is JetUserType -> CallType.NORMAL
+
+                is JetArrayAccessExpression -> CallType.NORMAL
 
                 else -> return null
             }

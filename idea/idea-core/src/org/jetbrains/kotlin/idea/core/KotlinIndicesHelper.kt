@@ -31,10 +31,7 @@ import org.jetbrains.kotlin.idea.util.CallType
 import org.jetbrains.kotlin.idea.util.getImplicitReceiversWithInstance
 import org.jetbrains.kotlin.idea.util.substituteExtensionIfCallable
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.psi.JetCallableDeclaration
-import org.jetbrains.kotlin.psi.JetFile
-import org.jetbrains.kotlin.psi.JetNamedDeclaration
-import org.jetbrains.kotlin.psi.JetSimpleNameExpression
+import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.bindingContextUtil.getDataFlowInfo
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo
@@ -97,7 +94,7 @@ public class KotlinIndicesHelper(
     }
 
     public fun getCallableTopLevelExtensions(nameFilter: (String) -> Boolean,
-                                             expression: JetSimpleNameExpression,
+                                             expression: JetExpression,
                                              bindingContext: BindingContext): Collection<CallableDescriptor> {
         val receiverValues = receiverValues(expression, bindingContext)
         if (receiverValues.isEmpty()) return emptyList()
@@ -136,7 +133,7 @@ public class KotlinIndicesHelper(
         constructor.getSupertypes().forEach { addTypeNames(it) }
     }
 
-    private fun receiverValues(expression: JetSimpleNameExpression, bindingContext: BindingContext): Collection<Pair<ReceiverValue, CallType>> {
+    private fun receiverValues(expression: JetExpression, bindingContext: BindingContext): Collection<Pair<ReceiverValue, CallType>> {
         val receiverData = ReferenceVariantsHelper.getExplicitReceiverData(expression)
         if (receiverData != null) {
             val (receiverExpression, callType) = receiverData

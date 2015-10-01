@@ -49,7 +49,7 @@ import java.util.*
 /**
  * Check possibility and perform fix for unresolved references.
  */
-public class AutoImportFix : JetHintAction<JetElement>, HighPriorityAction {
+public class AutoImportFix : JetHintAction<JetExpression>, HighPriorityAction {
     constructor(element: JetSimpleNameExpression): super(element)
     constructor(element: JetArrayAccessExpression): super(element)
 
@@ -101,7 +101,7 @@ public class AutoImportFix : JetHintAction<JetElement>, HighPriorityAction {
     private fun createAction(project: Project, editor: Editor) = KotlinAddImportAction(project, editor, element, suggestions)
 
     companion object : JetSingleIntentionActionFactory() {
-        override fun createAction(diagnostic: Diagnostic): JetIntentionAction<JetElement>? {
+        override fun createAction(diagnostic: Diagnostic): JetIntentionAction<JetExpression>? {
             // There could be different psi elements (i.e. JetArrayAccessExpression), but we can fix only JetSimpleNameExpression case
             val psiElement = diagnostic.getPsiElement()
             if (psiElement is JetSimpleNameExpression) {
@@ -119,7 +119,7 @@ public class AutoImportFix : JetHintAction<JetElement>, HighPriorityAction {
 
         private val ERRORS = setOf(Errors.UNRESOLVED_REFERENCE, Errors.UNRESOLVED_REFERENCE_WRONG_RECEIVER)
 
-        public fun computeSuggestions(element: JetElement): Collection<DeclarationDescriptor> {
+        public fun computeSuggestions(element: JetExpression): Collection<DeclarationDescriptor> {
             if (!element.isValid()) return listOf()
 
             val file = element.getContainingFile() as? JetFile ?: return listOf()
@@ -181,9 +181,9 @@ public class AutoImportFix : JetHintAction<JetElement>, HighPriorityAction {
                     }
                     result.addAll(indicesHelper.getTopLevelCallablesByName(referenceName))
                 }
-
-                result.addAll(indicesHelper.getCallableTopLevelExtensions({ it == referenceName }, element, bindingContext))
             }
+
+            result.addAll(indicesHelper.getCallableTopLevelExtensions({ it == referenceName }, element, bindingContext))
 
             return if (result.size() > 1)
                 reduceCandidatesBasedOnDependencyRuleViolation(result, file)

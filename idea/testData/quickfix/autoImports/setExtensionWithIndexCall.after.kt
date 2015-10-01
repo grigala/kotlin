@@ -9,5 +9,5 @@ import some.Some
 fun foo(): Some = Some()
 
 fun testing() {
-    foo()<caret>["str"]
+    foo()<caret>["other"] = 1
 }
