@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.resolve.jvm.platform
 
+import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.cfg.WhenChecker
 import org.jetbrains.kotlin.container.StorageComponentContainer
@@ -63,6 +64,7 @@ import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 import org.jetbrains.kotlin.types.*
 import org.jetbrains.kotlin.types.expressions.SenselessComparisonChecker
+import org.jetbrains.kotlin.utils.join
 
 public object JvmPlatformConfigurator : PlatformConfigurator(
         DynamicTypesSettings(),
@@ -74,7 +76,8 @@ public object JvmPlatformConfigurator : PlatformConfigurator(
                 NativeFunChecker(),
                 OverloadsAnnotationChecker(),
                 PublicFieldAnnotationChecker(),
-                TypeParameterBoundIsNotArrayChecker()
+                TypeParameterBoundIsNotArrayChecker(),
+                JvmSimpleNameBacktickChecker
         ),
 
         additionalCallCheckers = listOf(
@@ -514,3 +517,45 @@ public class JavaNullabilityWarningsChecker : AdditionalTypeChecker {
         }
     }
 }
+
+object JvmSimpleNameBacktickChecker : DeclarationChecker {
+
+    private val CHARS = setOf('.', ';', '[', ']', '/', '<', '>', ':', '\\')
+
+    fun checkIdentifier(identifier: PsiElement?, diagnosticHolder: DiagnosticSink) {
+        if (identifier == null || identifier.text.isEmpty()) return
+
+        val text = JetPsiUtil.unquoteIdentifier(identifier.text)
+        if (text.isBlank()) {
+            diagnosticHolder.report(Errors.INVALID_CHARACTERS.on(identifier, "should not be blank"))
+        }
+        else if (text.any { it in CHARS }) {
+            diagnosticHolder.report(Errors.INVALID_CHARACTERS.on(identifier, "contains illegal characters: ${CHARS.intersect(text.toSet()).join("")}"))
+        }
+    }
+
+    fun checkNamed(declaration: JetNamedDeclaration, diagnosticHolder: DiagnosticSink) {
+        checkIdentifier(declaration.nameIdentifier, diagnosticHolder)
+    }
+
+    override fun check(
+            declaration: JetDeclaration,
+            descriptor: DeclarationDescriptor,
+            diagnosticHolder: DiagnosticSink,
+            bindingContext: BindingContext
+    ) {
+        if (declaration is JetCallableDeclaration) {
+            for (parameter in declaration.valueParameters) {
+                checkNamed(parameter, diagnosticHolder)
+            }
+        }
+        if (declaration is JetTypeParameterListOwner) {
+            for (typeParameter in declaration.typeParameters) {
+                checkNamed(typeParameter, diagnosticHolder)
+            }
+        }
+        if (declaration !is JetNamedDeclaration) return
+        checkNamed(declaration, diagnosticHolder)
+    }
+}
+
