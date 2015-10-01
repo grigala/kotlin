@@ -18,14 +18,13 @@ package org.jetbrains.kotlin.codegen.inline
 
 import com.google.common.collect.Iterables
 import org.jetbrains.org.objectweb.asm.Type
-
-import java.util.ArrayList
+import java.util.*
 
 //All parameters with gaps
 class Parameters(val real: List<ParameterInfo>, val captured: List<CapturedParamInfo>) : Iterable<ParameterInfo> {
 
-    private val declIndexesToActual: Array<Int?>
     private val actualDeclShifts: Array<ParameterInfo?>
+    private val paramToDeclByteCodeIndex: HashMap<ParameterInfo, Int> = hashMapOf()
 
     public val realArgsSizeOnStack = real.fold(0, { a, v -> a + v.type.size})
     public val capturedArgsSizeOnStack = captured.fold(0, { a, v -> a + v.type.size})
@@ -33,7 +32,7 @@ class Parameters(val real: List<ParameterInfo>, val captured: List<CapturedParam
     public val argsSizeOnStack = realArgsSizeOnStack + capturedArgsSizeOnStack
 
     init {
-        declIndexesToActual = arrayOfNulls<Int>(argsSizeOnStack)
+        val declIndexesToActual = arrayOfNulls<Int>(argsSizeOnStack)
         withIndex().forEach { it ->
             declIndexesToActual[it.value.declarationIndex] = it.index
         }
@@ -43,25 +42,23 @@ class Parameters(val real: List<ParameterInfo>, val captured: List<CapturedParam
         for (i in declIndexesToActual.indices) {
             val declIndexToActual = declIndexesToActual[i]
             if (declIndexToActual != null) {
-                val byDeclarationIndex = getByDeclarationIndex(i)
+                val byDeclarationIndex = get(declIndexToActual)
                 actualDeclShifts[realSize] = byDeclarationIndex
+                paramToDeclByteCodeIndex.put(byDeclarationIndex, realSize)
                 realSize += byDeclarationIndex.type.size
             }
         }
     }
 
-    fun getByDeclarationIndex(index: Int): ParameterInfo {
-        if (index < realArgsSizeOnStack) {
-            return real.get(declIndexesToActual[index]!!)
-        }
-        return captured.get(declIndexesToActual[index]!! - real.size())
+    fun getDeclarationByteCodeIndex(info : ParameterInfo): Int {
+        return paramToDeclByteCodeIndex[info]!!
     }
 
-    fun getByByteCodeIndex(index: Int): ParameterInfo {
+    fun getByDeclarationByteCodeIndex(index: Int): ParameterInfo {
         return actualDeclShifts[index]!!
     }
 
-    fun get(index: Int): ParameterInfo {
+    private fun get(index: Int): ParameterInfo {
         if (index < real.size()) {
             return real.get(index)
         }

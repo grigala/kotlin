@@ -77,6 +77,18 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
         doTest(fileName);
     }
 
+    @TestMetadata("argumentReorder.kt")
+    public void testArgumentReorder() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/argumentReorder.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("argumentReorderNot.kt")
+    public void testArgumentReorderNot() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/argumentReorderNot.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("bridgeForFakeOverride.kt")
     public void testBridgeForFakeOverride() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/bridgeForFakeOverride.kt");
