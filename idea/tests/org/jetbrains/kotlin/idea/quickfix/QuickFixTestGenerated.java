@@ -4394,6 +4394,12 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
             doTest(fileName);
         }
 
+        @TestMetadata("operatorModifierInherited.kt")
+        public void testOperatorModifierInherited() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/modifiers/operatorModifierInherited.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("packageMemberCannotBeProtected.kt")
         public void testPackageMemberCannotBeProtected() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/modifiers/packageMemberCannotBeProtected.kt");

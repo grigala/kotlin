@@ -123,7 +123,14 @@ private class AddModifierLocalQuickFix() : LocalQuickFix {
 object OperatorModifierFixFactory : JetSingleIntentionActionFactory() {
     override fun createAction(diagnostic: Diagnostic): IntentionAction? {
         val param = (diagnostic as? DiagnosticWithParameters2<*, *, *>)?.a as? FunctionDescriptor ?: return null
-        val target = (param.source as? PsiSourceElement)?.psi as? JetDeclaration ?: return null
+        val target = param.getRealDeclaration() ?: return null
         return object : AddModifierFix(target, JetTokens.OPERATOR_KEYWORD), CleanupFix {}
+    }
+
+    private fun FunctionDescriptor.getRealDeclaration(): JetDeclaration? {
+        if (kind == CallableMemberDescriptor.Kind.FAKE_OVERRIDE) {
+            return overriddenDescriptors.map { (it.source as? PsiSourceElement)?.psi as? JetDeclaration }.filterNotNull().firstOrNull()
+        }
+        return (source as? PsiSourceElement)?.psi as? JetDeclaration
     }
 }
