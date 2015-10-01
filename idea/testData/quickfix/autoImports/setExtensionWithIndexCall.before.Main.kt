@@ -1,6 +1,6 @@
 // "Import" "true"
-// ERROR: Unresolved reference: foo()["str"]
-// ERROR: No get method providing array access
+// ERROR: Unresolved reference: foo()["other"]
+// ERROR: No set method providing array access
 
 package testing
 

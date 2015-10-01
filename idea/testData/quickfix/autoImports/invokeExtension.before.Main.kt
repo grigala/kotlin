@@ -1,5 +1,5 @@
 // "Import" "true"
-// ERROR: 'Some()' of type 'some.Some' cannot be invoked as a function. The function invoke() is not found
+// ERROR: Expression 'Some()' of type 'some.Some' cannot be invoked as a function. The function invoke() is not found
 
 package testing
 
