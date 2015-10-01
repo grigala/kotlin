@@ -191,7 +191,7 @@ public class FunctionCodegen {
                     getThisTypeForFunction(functionDescriptor, methodContext, typeMapper),
                     new Label(),
                     new Label(),
-                    methodContext.getContextKind()
+                    contextKind
             );
 
             mv.visitEnd();
