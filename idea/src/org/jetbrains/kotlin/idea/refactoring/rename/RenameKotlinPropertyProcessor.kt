@@ -186,7 +186,7 @@ public class RenameKotlinPropertyProcessor : RenamePsiElementProcessor() {
             }
 
             if (descriptor != null) {
-                assert(descriptor is PropertyDescriptor, "Property descriptor is expected")
+                assert(descriptor is PropertyDescriptor) { "Property descriptor is expected" }
 
                 val supers = OverrideResolver.getDeepestSuperDeclarations(descriptor as PropertyDescriptor)
 
