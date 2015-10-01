@@ -657,6 +657,12 @@ class Converter private constructor(
         else if (owner is PsiField) {
             modifiers = modifiers.adaptForContainingClassVisibility(owner.containingClass)
         }
+        else if (owner is PsiClass) {
+            if (owner.scope is PsiMethod) {
+                // Local class should not have visibility modifiers
+                modifiers = modifiers.filter { it !in setOf(Modifier.PUBLIC, Modifier.PROTECTED, Modifier.PRIVATE, Modifier.INTERNAL) }
+            }
+        }
 
         return modifiers
     }
