@@ -61,7 +61,7 @@ class CompileServiceImpl<Compiler: CLICompiler<*>>(
     }
 
     override fun remoteCompile(args: Array<out String>,
-                               services: CompileService.RemoteCompilationServices,
+                               services: RemoteCompilationServices,
                                compilerOutputStream: RemoteOutputStream,
                                outputFormat: CompileService.OutputFormat,
                                serviceOutputStream: RemoteOutputStream
@@ -74,7 +74,7 @@ class CompileServiceImpl<Compiler: CLICompiler<*>>(
             }
 
     override fun remoteIncrementalCompile(args: Array<out String>,
-                                          services: CompileService.RemoteCompilationServices,
+                                          services: RemoteCompilationServices,
                                           compilerOutputStream: RemoteOutputStream,
                                           compilerOutputFormat: CompileService.OutputFormat,
                                           serviceOutputStream: RemoteOutputStream
@@ -136,7 +136,7 @@ class CompileServiceImpl<Compiler: CLICompiler<*>>(
                 }
             }
 
-    private fun createCompileServices(services: CompileService.RemoteCompilationServices, rpcProfiler: Profiler): Services {
+    private fun createCompileServices(services: RemoteCompilationServices, rpcProfiler: Profiler): Services {
         val builder = Services.Builder()
         services.incrementalCompilationComponents?.let { builder.register(IncrementalCompilationComponents::class.java, RemoteIncrementalCompilationComponentsClient(it, rpcProfiler)) }
         services.compilationCanceledStatus?.let { builder.register(CompilationCanceledStatus::class.java, RemoteCompilationCanceledStatusClient(it, rpcProfiler)) }
