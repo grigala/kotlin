@@ -412,9 +412,11 @@ public class FunctionCodegen {
         String name = thisType.getClassName();
         int indexOfLambdaOrdinal = name.lastIndexOf("$");
         if (indexOfLambdaOrdinal > 0) {
-            String lambdaOrdinal = name.substring(indexOfLambdaOrdinal + 1);
+            int lambdaOrdinal = Integer.parseInt(name.substring(indexOfLambdaOrdinal + 1));
             mv.visitLocalVariable(
-                    JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT + "ordinal$" + lambdaOrdinal + "$index$" + index,
+                    JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT +
+                    JvmAbi.addOrdinalToInlineArgumentVariableName(lambdaOrdinal) +
+                    JvmAbi.addIndexToFakeVariableName(index),
                     Type.INT_TYPE.getDescriptor(), null,
                     methodBegin, methodEnd,
                     index);
@@ -429,7 +431,7 @@ public class FunctionCodegen {
             Label methodEnd
     ) {
         mv.visitLocalVariable(
-                JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION + inlineFunctionDescriptor.getName() + "$index$" + index,
+                JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION + inlineFunctionDescriptor.getName() + JvmAbi.addIndexToFakeVariableName(index),
                 Type.INT_TYPE.getDescriptor(), null,
                 methodBegin, methodEnd,
                 index);

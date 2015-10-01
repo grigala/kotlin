@@ -60,6 +60,20 @@ public final class JvmAbi {
     public static final String LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT = "$$inline$argument$";
     public static final String LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION = "$$inline$function$";
 
+    public static String addOrdinalToInlineArgumentVariableName(int ordinal) {
+        return "ordinal$" + ordinal;
+    }
+
+    public static String addIndexToFakeVariableName(int ordinal) {
+        return "index$" + ordinal;
+    }
+
+    public static int getOrdinalFromInlineArgumentVariableName(@NotNull String name) {
+        String prefix = LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT + "ordinal$";
+        String postfix = "$index";
+        return Integer.parseInt(name.substring(name.indexOf(prefix) +  prefix.length(), name.indexOf(postfix)));
+    }
+
     @NotNull
     public static String getSyntheticMethodNameForAnnotatedProperty(@NotNull Name propertyName) {
         return propertyName.asString() + ANNOTATED_PROPERTY_METHOD_NAME_SUFFIX;
