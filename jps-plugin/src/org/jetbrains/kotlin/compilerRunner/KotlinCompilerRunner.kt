@@ -34,16 +34,14 @@ import org.jetbrains.kotlin.cli.common.messages.MessageCollectorUtil
 import org.jetbrains.kotlin.config.CompilerSettings
 import org.jetbrains.kotlin.load.kotlin.incremental.components.IncrementalCompilationComponents
 import org.jetbrains.kotlin.progress.CompilationCanceledStatus
-import org.jetbrains.kotlin.rmi.CompilerId
-import org.jetbrains.kotlin.rmi.configureDaemonJVMOptions
-import org.jetbrains.kotlin.rmi.configureDaemonOptions
-import org.jetbrains.kotlin.rmi.isDaemonEnabled
+import org.jetbrains.kotlin.rmi.*
 import org.jetbrains.kotlin.rmi.kotlinr.*
 import org.jetbrains.kotlin.utils.rethrow
 import java.io.*
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 public object KotlinCompilerRunner {
     private val K2JVM_COMPILER = "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler"
@@ -168,11 +166,20 @@ public object KotlinCompilerRunner {
                         incrementalCompilationComponents = environment.services.get(IncrementalCompilationComponents::class.java),
                         compilationCanceledStatus = environment.services.get(CompilationCanceledStatus::class.java))
 
-                val res = KotlinCompilerClient.incrementalCompile(daemon, argsArray, services, compilerOut, daemonOut)
+                val profiler = if (daemonOptions.reportPerf) WallAndThreadTotalProfiler() else DummyProfiler()
+
+                val res = KotlinCompilerClient.incrementalCompile(daemon, argsArray, services, compilerOut, daemonOut, profiler)
 
                 processCompilerOutput(messageCollector, collector, compilerOut, res.toString())
                 BufferedReader(StringReader(daemonOut.toString())).forEachLine {
                     messageCollector.report(CompilerMessageSeverity.INFO, it, CompilerMessageLocation.NO_LOCATION)
+                }
+                if (daemonOptions.reportPerf) {
+                    fun Long.ms() = TimeUnit.NANOSECONDS.toMillis(this)
+                    val counters = profiler.getTotalCounters()
+                    messageCollector.report(CompilerMessageSeverity.INFO,
+                                            "PERF: Daemon call total ${counters.time.ms()} ms, thread ${counters.threadTime.ms()}",
+                                            CompilerMessageLocation.NO_LOCATION)
                 }
                 return true
             }
