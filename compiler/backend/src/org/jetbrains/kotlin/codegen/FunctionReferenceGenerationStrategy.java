@@ -36,9 +36,7 @@ import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
 import org.jetbrains.org.objectweb.asm.Type;
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
 import static org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue.NO_RECEIVER;
@@ -75,6 +73,9 @@ public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrat
         computeAndSaveArguments(fakeArguments, codegen);
 
         ResolvedCall<CallableDescriptor> fakeResolvedCall = new DelegatingResolvedCall<CallableDescriptor>(resolvedCall) {
+
+            private Map<ValueParameterDescriptor, ResolvedValueArgument> argumentMap;
+
             @NotNull
             @Override
             public ReceiverValue getExtensionReceiver() {
@@ -90,11 +91,22 @@ public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrat
             @NotNull
             @Override
             public List<ResolvedValueArgument> getValueArgumentsByIndex() {
-                List<ResolvedValueArgument> result = new ArrayList<ResolvedValueArgument>(fakeArguments.size());
-                for (ValueArgument argument : fakeArguments) {
-                    result.add(new ExpressionValueArgument(argument));
+                return new ArrayList(getValueArguments().values());
+            }
+
+            @NotNull
+            @Override
+            public Map<ValueParameterDescriptor, ResolvedValueArgument> getValueArguments() {
+                if (argumentMap == null) {
+                    argumentMap = new LinkedHashMap<ValueParameterDescriptor, ResolvedValueArgument>(fakeArguments.size());
+                    int index = 0;
+                    List<ValueParameterDescriptor> parameters = callableDescriptor.getValueParameters();
+                    for (ValueArgument argument : fakeArguments) {
+                        argumentMap.put(parameters.get(index), new ExpressionValueArgument(argument));
+                        index++;
+                    }
                 }
-                return result;
+                return argumentMap;
             }
         };
 
