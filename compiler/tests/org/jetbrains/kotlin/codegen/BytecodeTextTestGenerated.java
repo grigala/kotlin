@@ -77,18 +77,6 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
         doTest(fileName);
     }
 
-    @TestMetadata("argumentReorder.kt")
-    public void testArgumentReorder() throws Exception {
-        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/argumentReorder.kt");
-        doTest(fileName);
-    }
-
-    @TestMetadata("argumentReorderNot.kt")
-    public void testArgumentReorderNot() throws Exception {
-        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/argumentReorderNot.kt");
-        doTest(fileName);
-    }
-
     @TestMetadata("bridgeForFakeOverride.kt")
     public void testBridgeForFakeOverride() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/bridgeForFakeOverride.kt");
@@ -255,6 +243,39 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
     public void testTopLevelFunWithDefaultArgs() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/topLevelFunWithDefaultArgs.kt");
         doTest(fileName);
+    }
+
+    @TestMetadata("compiler/testData/codegen/bytecodeText/argumentOrder")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class ArgumentOrder extends AbstractBytecodeTextTest {
+        public void testAllFilesPresentInArgumentOrder() throws Exception {
+            JetTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/bytecodeText/argumentOrder"), Pattern.compile("^(.+)\\.kt$"), true);
+        }
+
+        @TestMetadata("argumentReorder.kt")
+        public void testArgumentReorder() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/argumentOrder/argumentReorder.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("argumentReorderWithDefault.kt")
+        public void testArgumentReorderWithDefault() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/argumentOrder/argumentReorderWithDefault.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("sameOrder.kt")
+        public void testSameOrder() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/argumentOrder/sameOrder.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("sameOrderWithDefault.kt")
+        public void testSameOrderWithDefault() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/argumentOrder/sameOrderWithDefault.kt");
+            doTest(fileName);
+        }
     }
 
     @TestMetadata("compiler/testData/codegen/bytecodeText/boxingOptimization")

@@ -16,18 +16,16 @@
 
 package org.jetbrains.kotlin.codegen.inline
 
-import com.google.common.collect.Iterables
 import org.jetbrains.org.objectweb.asm.Type
 import java.util.*
 
-//All parameters with gaps
 class Parameters(val real: List<ParameterInfo>, val captured: List<CapturedParamInfo>) : Iterable<ParameterInfo> {
 
     private val actualDeclShifts: Array<ParameterInfo?>
     private val paramToDeclByteCodeIndex: HashMap<ParameterInfo, Int> = hashMapOf()
 
-    public val realArgsSizeOnStack = real.fold(0, { a, v -> a + v.type.size})
-    public val capturedArgsSizeOnStack = captured.fold(0, { a, v -> a + v.type.size})
+    public val realArgsSizeOnStack = real.sumBy { it.type.size }
+    public val capturedArgsSizeOnStack = captured.sumBy { it.type.size }
 
     public val argsSizeOnStack = realArgsSizeOnStack + capturedArgsSizeOnStack
 
@@ -40,21 +38,18 @@ class Parameters(val real: List<ParameterInfo>, val captured: List<CapturedParam
         actualDeclShifts = arrayOfNulls<ParameterInfo>(argsSizeOnStack)
         var realSize = 0
         for (i in declIndexesToActual.indices) {
-            val declIndexToActual = declIndexesToActual[i]
-            if (declIndexToActual != null) {
-                val byDeclarationIndex = get(declIndexToActual)
-                actualDeclShifts[realSize] = byDeclarationIndex
-                paramToDeclByteCodeIndex.put(byDeclarationIndex, realSize)
-                realSize += byDeclarationIndex.type.size
-            }
+            val byDeclarationIndex = get(declIndexesToActual[i] ?: continue)
+            actualDeclShifts[realSize] = byDeclarationIndex
+            paramToDeclByteCodeIndex.put(byDeclarationIndex, realSize)
+            realSize += byDeclarationIndex.type.size
         }
     }
 
-    fun getDeclarationByteCodeIndex(info : ParameterInfo): Int {
+    fun getDeclarationSlot(info : ParameterInfo): Int {
         return paramToDeclByteCodeIndex[info]!!
     }
 
-    fun getByDeclarationByteCodeIndex(index: Int): ParameterInfo {
+    fun getParameterByDeclarationSlot(index: Int): ParameterInfo {
         return actualDeclShifts[index]!!
     }
 
@@ -66,26 +61,17 @@ class Parameters(val real: List<ParameterInfo>, val captured: List<CapturedParam
     }
 
     override fun iterator(): Iterator<ParameterInfo> {
-        return Iterables.concat(real, captured).iterator()
+        return (real + captured).iterator()
     }
 
-    val capturedTypes: ArrayList<Type>
-        get() {
-            val result = ArrayList<Type>()
-            for (info in captured) {
-                result.add(info.getType())
-            }
-            return result
+    val capturedTypes: List<Type>
+        get() = captured.map {
+            it.getType()
         }
 
     companion object {
         fun shift(capturedParams: List<CapturedParamInfo>, realSize: Int): List<CapturedParamInfo> {
-            val result = ArrayList<CapturedParamInfo>()
-            for (capturedParamInfo in capturedParams) {
-                val newInfo = capturedParamInfo.newIndex(result.size() + realSize)
-                result.add(newInfo)
-            }
-            return result
+            return capturedParams.withIndex().map { it.value.newIndex(it.index+ realSize) }
         }
     }
 }

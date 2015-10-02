@@ -43,7 +43,7 @@ public class LocalVarRemapper {
 
         int realSize = 0;
         for (ParameterInfo info : params) {
-            Integer shift = params.getDeclarationByteCodeIndex(info);
+            Integer shift = params.getDeclarationSlot(info);
             if (!info.isSkippedOrRemapped()) {
                 remapValues[shift] = StackValue.local(realSize, AsmTypes.OBJECT_TYPE);
                 realSize += info.getType().getSize();
@@ -60,7 +60,7 @@ public class LocalVarRemapper {
         int remappedIndex;
 
         if (index < params.getArgsSizeOnStack()) {
-            ParameterInfo info = params.getByDeclarationByteCodeIndex(index);
+            ParameterInfo info = params.getParameterByDeclarationSlot(index);
             StackValue remapped = remapValues[index];
             if (info.isSkipped || remapped == null) {
                 return new RemapInfo(info);

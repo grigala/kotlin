@@ -26,6 +26,6 @@ fun box(): String {
     return "OK"
 }
 
-fun test(a: Int, b: Long, crossinline c: () -> String): String {
+fun test(a: Int, b: Long, c: () -> String): String {
     return { "${a}_${b}_${c()}"} ()
 }

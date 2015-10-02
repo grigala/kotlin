@@ -21,22 +21,19 @@ import org.jetbrains.kotlin.resolve.calls.model.ExpressionValueArgument
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedValueArgument
 import org.jetbrains.kotlin.resolve.calls.model.VarargValueArgument
 import org.jetbrains.kotlin.utils.mapToIndex
-import java.util.*
 
 class ArgumentAndDeclIndex(val arg: ResolvedValueArgument, val declIndex: Int)
 
 abstract class ArgumentGenerator {
     /**
      * @return a `List` of bit masks of default arguments that should be passed as last arguments to $default method, if there were
-     * * any default arguments, or an empty `List` if there were none
-     * *
+     * any default arguments, or an empty `List` if there were none
+     *
      * @see kotlin.reflect.jvm.internal.KCallableImpl.callBy
-     * @param valueArgumentsByIndex
-     * *
-     * @param actualArgs
      */
     open fun generate(valueArgumentsByIndex: List<ResolvedValueArgument>, actualArgs: List<ResolvedValueArgument>): DefaultCallMask {
         //HACK: see tempVariable in ExpressionCodegen
+        assert (valueArgumentsByIndex.size() == actualArgs.size())
         val actualArguments = if (actualArgs.isNotEmpty()) actualArgs else valueArgumentsByIndex
 
         assert(valueArgumentsByIndex.size() == actualArguments.size()) {
@@ -45,9 +42,9 @@ abstract class ArgumentGenerator {
 
         val arg2Index = valueArgumentsByIndex.mapToIndex()
 
-        val actualArgsWithDeclIndex: ArrayList<ArgumentAndDeclIndex> = ArrayList(actualArguments.filter { it !is DefaultValueArgument }.map {
+        val actualArgsWithDeclIndex = actualArguments.filter { it !is DefaultValueArgument }.map {
             ArgumentAndDeclIndex(it, arg2Index[it]!!)
-        })
+        }.toArrayList()
 
         valueArgumentsByIndex.withIndex().forEach {
             if (it.value is DefaultValueArgument) {
