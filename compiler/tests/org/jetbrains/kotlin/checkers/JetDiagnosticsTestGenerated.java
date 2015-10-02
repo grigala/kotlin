@@ -13599,6 +13599,18 @@ public class JetDiagnosticsTestGenerated extends AbstractJetDiagnosticsTest {
                 doTest(fileName);
             }
 
+            @TestMetadata("lambdaDeclaresAndModifies.kt")
+            public void testLambdaDeclaresAndModifies() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/smartCasts/lambdaDeclaresAndModifies.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("lambdaDeclaresAndModifiesInLoop.kt")
+            public void testLambdaDeclaresAndModifiesInLoop() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/smartCasts/lambdaDeclaresAndModifiesInLoop.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("lambdaUsesOwnerModifies.kt")
             public void testLambdaUsesOwnerModifies() throws Exception {
                 String fileName = JetTestUtils.navigationMetadata("compiler/testData/diagnostics/tests/smartCasts/lambdaUsesOwnerModifies.kt");

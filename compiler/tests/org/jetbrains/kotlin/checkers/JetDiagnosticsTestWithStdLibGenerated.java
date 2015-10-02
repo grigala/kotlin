@@ -862,6 +862,12 @@ public class JetDiagnosticsTestWithStdLibGenerated extends AbstractJetDiagnostic
             doTest(fileName);
         }
 
+        @TestMetadata("lazyDeclaresAndModifies.kt")
+        public void testLazyDeclaresAndModifies() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/diagnostics/testsWithStdLib/smartcasts/lazyDeclaresAndModifies.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("letAlwaysChangesToNotNull.kt")
         public void testLetAlwaysChangesToNotNull() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/diagnostics/testsWithStdLib/smartcasts/letAlwaysChangesToNotNull.kt");
