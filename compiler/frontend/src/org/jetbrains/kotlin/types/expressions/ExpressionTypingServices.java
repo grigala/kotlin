@@ -128,7 +128,6 @@ public class ExpressionTypingServices {
                 expectedReturnType = NO_EXPECTED_TYPE;
             }
         }
-        PreliminaryDeclarationVisitor.Companion.visitDeclaration(function, functionDescriptor, trace);
         checkFunctionReturnType(function, ExpressionTypingContext.newContext(
                 trace,
                 functionInnerScope, dataFlowInfo, expectedReturnType != null ? expectedReturnType : NO_EXPECTED_TYPE

@@ -142,6 +142,7 @@ public class BodyResolver {
         ForceResolveUtil.forceResolveAllContents(descriptor.getAnnotations());
 
         final CallChecker callChecker = new ConstructorHeaderCallChecker(descriptor);
+        PreliminaryDeclarationVisitor.Companion.visitDeclaration(constructor, descriptor, trace);
         resolveFunctionBody(outerDataFlowInfo, trace, constructor, descriptor, declaringScope,
                             new Function1<LexicalScope, DataFlowInfo>() {
                                 @Override
@@ -754,6 +755,7 @@ public class BodyResolver {
             @NotNull FunctionDescriptor functionDescriptor,
             @NotNull LexicalScope declaringScope
     ) {
+        PreliminaryDeclarationVisitor.Companion.visitDeclaration(function, functionDescriptor, trace);
         computeDeferredType(functionDescriptor.getReturnType());
 
         resolveFunctionBody(outerDataFlowInfo, trace, function, functionDescriptor, declaringScope, null, CallChecker.DoNothing.INSTANCE$);
