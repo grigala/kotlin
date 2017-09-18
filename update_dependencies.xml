@@ -207,8 +207,8 @@
         <get-maven-library prefix="junit" lib="junit" version="4.12" bin="false"/>
         <get-maven-library prefix="org/hamcrest" lib="hamcrest-core" version="1.3" bin="false"/>
 
-        <!-- Android SDK platform -->
-        <ant antfile="download_android_sdk.xml" target="download_android_sdk"/>
+        <!-- Android SDK platform
+        <ant antfile="download_android_sdk.xml" target="download_android_sdk"/>-->
 
         <!-- Javaslang -->
         <get-maven-library prefix="io/javaslang" lib="javaslang" version="2.0.6"/>
@@ -225,6 +225,7 @@
                            target.jar.name.base="kotlinx-coroutines-core" server="http://dl.bintray.com/kotlin/kotlinx/"/>
 
 
+        <!-- Android
         <delete file="${dependencies}/android.jar" failonerror="false"/>
         <get src="http://dl-ssl.google.com/android/repository/android-19_r02.zip"
              dest="${dependencies}/download/android-sdk.zip" usetimestamp="true"/>
@@ -233,7 +234,7 @@
                 <include name="**/android.jar"/>
             </patternset>
             <mapper type="flatten"/>
-        </unzip>
+        </unzip> -->
 
         <local name="download.bootstrap.compiler"/>
         <condition property="download.bootstrap.compiler">
@@ -746,6 +747,7 @@
     -->
     <target name="fetch-annotations"/>
 
+    <!-- Android Studio
     <target name="get_android_studio">
         <condition property="android.os.tag" value="windows">
             <os family="windows"/>
@@ -843,7 +845,7 @@
             <arg path="${android.destination.dir}/bin/studio.sh"/>
             <arg path="${android.destination.dir}/bin/update_studio.sh"/>
         </exec>
-    </target>
+    </target> -->
 
     <target name="override-version">
         <condition property="need.version.override">
