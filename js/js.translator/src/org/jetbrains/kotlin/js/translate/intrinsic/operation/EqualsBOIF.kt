@@ -19,9 +19,11 @@ package org.jetbrains.kotlin.js.translate.intrinsic.operation
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.builtins.PrimitiveType
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
-import org.jetbrains.kotlin.js.backend.ast.*
+import org.jetbrains.kotlin.js.backend.ast.JsBinaryOperation
+import org.jetbrains.kotlin.js.backend.ast.JsBinaryOperator
+import org.jetbrains.kotlin.js.backend.ast.JsExpression
+import org.jetbrains.kotlin.js.backend.ast.JsNullLiteral
 import org.jetbrains.kotlin.js.translate.context.TranslationContext
-import org.jetbrains.kotlin.js.translate.general.Translation
 import org.jetbrains.kotlin.js.translate.intrinsic.functions.factories.TopLevelFIF
 import org.jetbrains.kotlin.js.translate.utils.JsAstUtils
 import org.jetbrains.kotlin.js.translate.utils.PsiUtils.getOperationToken
@@ -54,13 +56,15 @@ object EqualsBOIF : BinaryOperationIntrinsicFactory {
 
             val ktLeft = checkNotNull(expression.left) { "No left-hand side: " + expression.text }
             val ktRight = checkNotNull(expression.right) { "No right-hand side: " + expression.text }
-            val leftType = getRefinedType(ktLeft, context)?.let { KotlinBuiltIns.getPrimitiveTypeByKotlinType(it) }
-            val rightType = getRefinedType(ktRight, context)?.let { KotlinBuiltIns.getPrimitiveTypeByKotlinType(it) }
+            val leftKotlinType = getRefinedType(ktLeft, context)
+            val rightKotlinType = getRefinedType(ktRight, context)
+            val leftType = leftKotlinType?.let { KotlinBuiltIns.getPrimitiveType(it) }
+            val rightType = rightKotlinType?.let { KotlinBuiltIns.getPrimitiveType(it) }
 
             if (leftType != null && (leftType in SIMPLE_PRIMITIVES || leftType == rightType && leftType != PrimitiveType.LONG)) {
-                return JsBinaryOperation(if (isNegated) JsBinaryOperator.REF_NEQ else JsBinaryOperator.REF_EQ,
-                                         Translation.unboxIfNeeded(left, leftType == PrimitiveType.CHAR),
-                                         Translation.unboxIfNeeded(right, rightType == PrimitiveType.CHAR))
+                val coercedLeft = TranslationUtils.coerce(context, left, leftKotlinType)
+                val coercedRight = TranslationUtils.coerce(context, right, rightKotlinType!!)
+                return JsBinaryOperation(if (isNegated) JsBinaryOperator.REF_NEQ else JsBinaryOperator.REF_EQ, coercedLeft, coercedRight)
             }
 
             val resolvedCall = expression.getResolvedCall(context.bindingContext())
@@ -74,10 +78,10 @@ object EqualsBOIF : BinaryOperationIntrinsicFactory {
                 return JsBinaryOperation(if (isNegated) JsBinaryOperator.NEQ else JsBinaryOperator.EQ, left, right)
             }
 
-            val maybeBoxedLeft = if (leftType == PrimitiveType.CHAR) JsAstUtils.charToBoxedChar(left) else left
-            val maybeBoxedRight = if (rightType == PrimitiveType.CHAR) JsAstUtils.charToBoxedChar(right) else right
-
-            val result = TopLevelFIF.KOTLIN_EQUALS.apply(maybeBoxedLeft, Arrays.asList<JsExpression>(maybeBoxedRight), context)
+            val anyType = context.currentModule.builtIns.anyType
+            val coercedLeft = TranslationUtils.coerce(context, left, anyType)
+            val coercedRight = TranslationUtils.coerce(context, right, anyType)
+            val result = TopLevelFIF.KOTLIN_EQUALS.apply(coercedLeft, listOf(coercedRight), context)
             return if (isNegated) JsAstUtils.not(result) else result
         }
 
@@ -121,18 +125,15 @@ object EqualsBOIF : BinaryOperationIntrinsicFactory {
 
     override fun getSupportTokens() = OperatorConventions.EQUALS_OPERATIONS!!
 
-    override fun getIntrinsic(descriptor: FunctionDescriptor, leftType: KotlinType?, rightType: KotlinType?): BinaryOperationIntrinsic? {
-        val result = when {
-            isEnumIntrinsicApplicable(descriptor, leftType, rightType) -> EnumEqualsIntrinsic
+    override fun getIntrinsic(descriptor: FunctionDescriptor, leftType: KotlinType?, rightType: KotlinType?): BinaryOperationIntrinsic? =
+            when {
+                isEnumIntrinsicApplicable(descriptor, leftType, rightType) -> EnumEqualsIntrinsic
 
-            KotlinBuiltIns.isBuiltIn(descriptor) ||
-            TopLevelFIF.EQUALS_IN_ANY.test(descriptor) -> EqualsIntrinsic
+                KotlinBuiltIns.isBuiltIn(descriptor) ||
+                TopLevelFIF.EQUALS_IN_ANY.test(descriptor) -> EqualsIntrinsic
 
-            else -> null
-        }
-
-        return result
-    }
+                else -> null
+            }
 
     private fun isEnumIntrinsicApplicable(descriptor: FunctionDescriptor, leftType: KotlinType?, rightType: KotlinType?): Boolean {
         return DescriptorUtils.isEnumClass(descriptor.containingDeclaration) && leftType != null && rightType != null &&

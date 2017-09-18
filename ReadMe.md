@@ -1,4 +1,5 @@
-<a href="https://kotlinslackin.herokuapp.com"><img src="https://kotlinslackin.herokuapp.com/badge.svg" height="20"></a>
+[![official project](http://jb.gg/badges/official.svg)](https://confluence.jetbrains.com/display/ALL/JetBrains+on+GitHub)
+<a href="http://slack.kotlinlang.org/"><img src="http://slack.kotlinlang.org/badge.svg" height="20"></a>
 [![TeamCity (simple build status)](https://img.shields.io/teamcity/http/teamcity.jetbrains.com/s/bt345.svg)](https://teamcity.jetbrains.com/viewType.html?buildTypeId=bt345&branch_Kotlin=%3Cdefault%3E&tab=buildTypeStatusDiv)
 [![Maven Central](https://img.shields.io/maven-central/v/org.jetbrains.kotlin/kotlin-maven-plugin.svg)](http://search.maven.org/#search%7Cga%7C1%7Cg%3A%22org.jetbrains.kotlin%22)
 [![GitHub license](https://img.shields.io/badge/license-Apache%20License%202.0-blue.svg?style=flat)](http://www.apache.org/licenses/LICENSE-2.0)
@@ -36,6 +37,8 @@ In order to build Kotlin distribution you need to have:
         JDK_16="path to JDK 1.6"
         JDK_17="path to JDK 1.7"
         JDK_18="path to JDK 1.8"
+
+> Note: The JDK 6 for MacOS is not available on Oracle's site. You can [download it here](https://support.apple.com/kb/DL1572). 
 
 ## Building
 
@@ -113,7 +116,7 @@ From this root project there are Run/Debug Configurations for running IDEA or th
 
 We love contributions! There's [lots to do on Kotlin](https://youtrack.jetbrains.com/issues/KT) and on the
 [standard library](https://youtrack.jetbrains.com/issues/KT?q=%23Kotlin%20%23Unresolved%20and%20(links:%20KT-2554,%20KT-4089%20or%20%23Libraries)) so why not chat with us
-about what you're interested in doing? Please join the #kontributors channel in [our Slack chat](http://kotlinslackin.herokuapp.com/)
+about what you're interested in doing? Please join the #kontributors channel in [our Slack chat](http://slack.kotlinlang.org/)
 and let us know about your plans.
 
 If you want to find some issues to start off with, try [this query](https://youtrack.jetbrains.com/issues/KT?q=tag:%20%7BUp%20For%20Grabs%7D%20%23Unresolved) which should find all Kotlin issues that marked as "up-for-grabs".
@@ -177,6 +180,6 @@ which will help keep your pull request simple and easy to apply.
 
 ## Commit comments
 
-If you include in your comment this text (where KT-1234 is the Issue ID in the [Issue Tracker](https://youtrack.jetbrains.com/issues/KT), the issue will get automatically marked as fixed.
+If you include in your comment this text (where KT-1234 is the Issue ID in the [Issue Tracker](https://youtrack.jetbrains.com/issues/KT)), the issue will get automatically marked as fixed.
 
     #KT-1234 Fixed

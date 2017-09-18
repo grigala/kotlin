@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,6 +62,8 @@ public class ExpressionTypingComponents {
     /*package*/ LanguageVersionSettings languageVersionSettings;
     /*package*/ Iterable<RttiExpressionChecker> rttiExpressionCheckers;
     /*package*/ WrappedTypeFactory wrappedTypeFactory;
+    /*package*/ CollectionLiteralResolver collectionLiteralResolver;
+    /*package*/ DeprecationResolver deprecationResolver;
 
     @Inject
     public void setGlobalContext(@NotNull GlobalContext globalContext) {
@@ -206,5 +208,15 @@ public class ExpressionTypingComponents {
     @Inject
     public void setWrappedTypeFactory(WrappedTypeFactory wrappedTypeFactory) {
         this.wrappedTypeFactory = wrappedTypeFactory;
+    }
+
+    @Inject
+    public void setCollectionLiteralResolver(CollectionLiteralResolver collectionLiteralResolver) {
+        this.collectionLiteralResolver = collectionLiteralResolver;
+    }
+
+    @Inject
+    public void setDeprecationResolver(DeprecationResolver deprecationResolver) {
+        this.deprecationResolver = deprecationResolver;
     }
 }

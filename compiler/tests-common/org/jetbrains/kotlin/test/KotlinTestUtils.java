@@ -501,10 +501,13 @@ public class KotlinTestUtils {
             JvmContentRootsKt.addJvmClasspathRoots(configuration, PathUtil.getJdkClassesRootsFromJre(getJreHome(jdk6)));
         }
         else if (jdkKind == TestJdkKind.FULL_JDK_9) {
-            File home = getJre9HomeIfPossible();
+            File home = getJdk9HomeIfPossible();
             if (home != null) {
                 configuration.put(JVMConfigurationKeys.JDK_HOME, home);
             }
+        }
+        else if (SystemInfo.IS_AT_LEAST_JAVA9) {
+            configuration.put(JVMConfigurationKeys.JDK_HOME, new File(System.getProperty("java.home")));
         }
         else {
             JvmContentRootsKt.addJvmClasspathRoots(configuration, PathUtil.getJdkClassesRootsFromCurrentJre());
@@ -529,8 +532,11 @@ public class KotlinTestUtils {
     }
 
     @Nullable
-    public static File getJre9HomeIfPossible() {
+    public static File getJdk9HomeIfPossible() {
         String jdk9 = System.getenv("JDK_19");
+        if (jdk9 == null) {
+            jdk9 = System.getenv("JDK_9");
+        }
         if (jdk9 == null) {
             // TODO: replace this with a failure as soon as Java 9 is installed on all TeamCity agents
             System.err.println("Environment variable JDK_19 is not set, the test will be skipped");
@@ -557,7 +563,7 @@ public class KotlinTestUtils {
             else {
                 //noinspection ConstantConditions
                 for (File childFile : file.listFiles()) {
-                    if (childFile.getName().endsWith(".kt")) {
+                    if (childFile.getName().endsWith(".kt") || childFile.getName().endsWith(".kts")) {
                         ktFiles.add(loadJetFile(environment.getProject(), childFile));
                     }
                 }
@@ -577,7 +583,15 @@ public class KotlinTestUtils {
         assertEqualsToFile(expectedFile, actual, s -> s);
     }
 
+    public static void assertEqualsToFile(@NotNull String message, @NotNull File expectedFile, @NotNull String actual) {
+        assertEqualsToFile(message, expectedFile, actual, s -> s);
+    }
+
     public static void assertEqualsToFile(@NotNull File expectedFile, @NotNull String actual, @NotNull Function1<String, String> sanitizer) {
+        assertEqualsToFile("Actual data differs from file content", expectedFile, actual, sanitizer);
+    }
+
+    public static void assertEqualsToFile(@NotNull String message, @NotNull File expectedFile, @NotNull String actual, @NotNull Function1<String, String> sanitizer) {
         try {
             String actualText = JetTestUtilsKt.trimTrailingWhitespacesAndAddNewlineAtEOF(StringUtil.convertLineSeparators(actual.trim()));
 
@@ -590,7 +604,7 @@ public class KotlinTestUtils {
             String expectedText = JetTestUtilsKt.trimTrailingWhitespacesAndAddNewlineAtEOF(StringUtil.convertLineSeparators(expected.trim()));
 
             if (!Comparing.equal(sanitizer.invoke(expectedText), sanitizer.invoke(actualText))) {
-                throw new FileComparisonFailure("Actual data differs from file content: " + expectedFile.getName(),
+                throw new FileComparisonFailure(message + ": " + expectedFile.getName(),
                                                 expected, actual, expectedFile.getAbsolutePath());
             }
         }
@@ -648,7 +662,7 @@ public class KotlinTestUtils {
     }
 
     @NotNull
-    public static <M, F> List<F> createTestFiles(String testFileName, String expectedText, TestFileFactory<M, F> factory) {
+    public static <M, F> List<F> createTestFiles(@Nullable String testFileName, String expectedText, TestFileFactory<M, F> factory) {
         return createTestFiles(testFileName, expectedText, factory, false);
     }
 
@@ -661,6 +675,7 @@ public class KotlinTestUtils {
         Matcher matcher = FILE_OR_MODULE_PATTERN.matcher(expectedText);
         boolean hasModules = false;
         if (!matcher.find()) {
+            assert testFileName != null : "testFileName should not be null if no FILE directive defined";
             // One file
             testFiles.add(factory.createFile(null, testFileName, expectedText, directives));
         }
@@ -906,6 +921,27 @@ public class KotlinTestUtils {
                 assertEqualsToFile(javaErrorFile, errorsToString(diagnosticCollector, false));
             }
             return success;
+        }
+    }
+
+    public static boolean compileJavaFilesExternallyWithJava9(@NotNull Collection<File> files, @NotNull List<String> options) {
+        File jdk9 = getJdk9HomeIfPossible();
+        assert jdk9 != null : "Environment variable JDK_19 is not set";
+
+        List<String> command = new ArrayList<>();
+        command.add(new File(jdk9, "bin/javac").getPath());
+        command.addAll(options);
+        for (File file : files) {
+            command.add(file.getPath());
+        }
+
+        try {
+            Process process = new ProcessBuilder().command(command).inheritIO().start();
+            process.waitFor();
+            return process.exitValue() == 0;
+        }
+        catch (Exception e) {
+            throw ExceptionUtilsKt.rethrow(e);
         }
     }
 

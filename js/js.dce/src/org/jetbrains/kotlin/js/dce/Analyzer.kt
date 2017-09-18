@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.js.dce
 
 import org.jetbrains.kotlin.js.backend.ast.*
 import org.jetbrains.kotlin.js.dce.Context.Node
+import org.jetbrains.kotlin.js.inline.util.collectDefinedNames
 import org.jetbrains.kotlin.js.inline.util.collectLocalVariables
 import org.jetbrains.kotlin.js.translate.context.Namer
 
@@ -30,6 +31,7 @@ class Analyzer(private val context: Context) : JsVisitor() {
     private val invocationsToSkip = mutableSetOf<JsInvocation>()
     val moduleMapping = mutableMapOf<JsStatement, String>()
     private val functionsToEnter = mutableSetOf<JsFunction>()
+    private val functionsToSkip = mutableSetOf<Context.Node>()
 
     val analysisResult = object : AnalysisResult {
         override val nodeMap: Map<JsNode, Node> get() = this@Analyzer.nodeMap
@@ -41,6 +43,8 @@ class Analyzer(private val context: Context) : JsVisitor() {
         override val functionsToEnter: Set<JsFunction> get() = this@Analyzer.functionsToEnter
 
         override val invocationsToSkip: Set<JsInvocation> get() = this@Analyzer.invocationsToSkip
+
+        override val functionsToSkip: Set<Context.Node> get() = this@Analyzer.functionsToSkip
     }
 
     override fun visitVars(x: JsVars) {
@@ -56,54 +60,50 @@ class Analyzer(private val context: Context) : JsVisitor() {
 
     override fun visitExpressionStatement(x: JsExpressionStatement) {
         val expression = x.expression
-        if (expression is JsBinaryOperation) {
-            if (expression.operator == JsBinaryOperator.ASG) {
+        when (expression) {
+            is JsBinaryOperation -> if (expression.operator == JsBinaryOperator.ASG) {
                 processAssignment(x, expression.arg1, expression.arg2)?.let {
                     // Mark this statement with FQN extracted from assignment.
                     // Later, we eliminate such statements if corresponding FQN is reachable
                     nodeMap[x] = it
                 }
             }
-        }
-        else if (expression is JsFunction) {
-            expression.name?.let { context.nodes[it]?.original }?.let {
+            is JsFunction -> expression.name?.let { context.nodes[it]?.original }?.let {
                 nodeMap[x] = it
                 it.functions += expression
             }
-        }
-        else if (expression is JsInvocation) {
-            val function = expression.qualifier
+            is JsInvocation -> {
+                val function = expression.qualifier
 
-            // (function(params) { ... })(arguments), assume that params = arguments and walk its body
-            if (function is JsFunction) {
-                enterFunction(function, expression.arguments)
-                return
-            }
-
-            // f(arguments), where f is a parameter of outer function and it always receives function() { } as an argument.
-            if (function is JsNameRef && function.qualifier == null) {
-                val postponedFunction = function.name?.let { postponedFunctions[it] }
-                if (postponedFunction != null) {
-                    enterFunction(postponedFunction, expression.arguments)
-                    invocationsToSkip += expression
+                // (function(params) { ... })(arguments), assume that params = arguments and walk its body
+                if (function is JsFunction) {
+                    enterFunction(function, expression.arguments)
                     return
                 }
-            }
 
-            // Object.defineProperty()
-            if (context.isObjectDefineProperty(function)) {
-                handleObjectDefineProperty(x, expression.arguments.getOrNull(0), expression.arguments.getOrNull(1),
-                                           expression.arguments.getOrNull(2))
-            }
+                // f(arguments), where f is a parameter of outer function and it always receives function() { } as an argument.
+                if (function is JsNameRef && function.qualifier == null) {
+                    val postponedFunction = function.name?.let { postponedFunctions[it] }
+                    if (postponedFunction != null) {
+                        enterFunction(postponedFunction, expression.arguments)
+                        invocationsToSkip += expression
+                        return
+                    }
+                }
 
-            // Kotlin.defineModule()
-            else if (context.isDefineModule(function)) {
-                // (just remove it)
-                astNodesToEliminate += x
-            }
+                when {
+                    // Object.defineProperty()
+                    context.isObjectDefineProperty(function) ->
+                        handleObjectDefineProperty(x, expression.arguments.getOrNull(0), expression.arguments.getOrNull(1),
+                                                   expression.arguments.getOrNull(2))
 
-            else if (context.isAmdDefine(function)) {
-                handleAmdDefine(expression, expression.arguments)
+                    // Kotlin.defineModule()
+                    context.isDefineModule(function) ->
+                        // (just remove it)
+                        astNodesToEliminate += x
+                    context.isAmdDefine(function) ->
+                        handleAmdDefine(expression, expression.arguments)
+                }
             }
         }
     }
@@ -201,77 +201,87 @@ class Analyzer(private val context: Context) : JsVisitor() {
         }
         else if (leftNode != null) {
             // lhs = foo()
-            if (rhs is JsInvocation) {
-                val function = rhs.qualifier
+            when {
+                rhs is JsInvocation -> {
+                    val function = rhs.qualifier
 
-                // lhs = function(params) { ... }(arguments)
-                // see corresponding case in visitExpressionStatement
-                if (function is JsFunction) {
-                    enterFunction(function, rhs.arguments)
-                    astNodesToSkip += lhs
-                    return null
-                }
-
-                // lhs = foo(arguments), where foo is a parameter of outer function that always take function literal
-                // see corresponding case in visitExpressionStatement
-                if (function is JsNameRef && function.qualifier == null) {
-                    function.name?.let { postponedFunctions[it] }?.let {
-                        enterFunction(it, rhs.arguments)
+                    // lhs = function(params) { ... }(arguments)
+                    // see corresponding case in visitExpressionStatement
+                    if (function is JsFunction) {
+                        enterFunction(function, rhs.arguments)
                         astNodesToSkip += lhs
                         return null
                     }
-                }
 
-                // lhs = Object.create(constructor)
-                if (context.isObjectFunction(function, "create")) {
-                    // Do not alias lhs and constructor, make unidirectional dependency lhs -> constructor instead.
-                    // Motivation: reachability of a base class does not imply reachability of its derived class
-                    handleObjectCreate(leftNode, rhs.arguments.getOrNull(0))
-                    return leftNode
-                }
-
-                // lhs = Kotlin.defineInlineFunction('fqn', function() { ... })
-                if (context.isDefineInlineFunction(function) && rhs.arguments.size == 2) {
-                    leftNode.functions += rhs.arguments[1] as JsFunction
-                    val defineInlineFunctionNode = context.extractNode(function)
-                    if (defineInlineFunctionNode != null) {
-                        leftNode.dependencies += defineInlineFunctionNode
-                    }
-                    return leftNode
-                }
-            }
-            else if (rhs is JsBinaryOperation) {
-                // Detect lhs = parent.child || (parent.child = {}), which is used to declare packages.
-                // Assume lhs = parent.child
-                if (rhs.operator == JsBinaryOperator.OR) {
-                    val secondNode = context.extractNode(rhs.arg1)
-                    val reassignment = rhs.arg2
-                    if (reassignment is JsBinaryOperation && reassignment.operator == JsBinaryOperator.ASG) {
-                        val reassignNode = context.extractNode(reassignment.arg1)
-                        val reassignValue = reassignment.arg2
-                        if (reassignNode == secondNode && reassignNode != null && reassignValue is JsObjectLiteral &&
-                            reassignValue.propertyInitializers.isEmpty()
-                        ) {
-                            return processAssignment(node, lhs, rhs.arg1)
+                    // lhs = foo(arguments), where foo is a parameter of outer function that always take function literal
+                    // see corresponding case in visitExpressionStatement
+                    if (function is JsNameRef && function.qualifier == null) {
+                        function.name?.let { postponedFunctions[it] }?.let {
+                            enterFunction(it, rhs.arguments)
+                            astNodesToSkip += lhs
+                            return null
                         }
                     }
+
+                    // lhs = Object.create(constructor)
+                    if (context.isObjectFunction(function, "create")) {
+                        // Do not alias lhs and constructor, make unidirectional dependency lhs -> constructor instead.
+                        // Motivation: reachability of a base class does not imply reachability of its derived class
+                        handleObjectCreate(leftNode, rhs.arguments.getOrNull(0))
+                        return leftNode
+                    }
+
+                    // lhs = Kotlin.defineInlineFunction('fqn', <function declaration>)
+                    // where <function declaration> is one of
+                    //   - function() { ... }
+                    //   - wrapFunction(function() { ... })
+                    if (context.isDefineInlineFunction(function) && rhs.arguments.size == 2) {
+                        tryExtractFunction(rhs.arguments[1])?.let { (inlineableFunction, additionalDeps) ->
+                            leftNode.functions += inlineableFunction
+                            val defineInlineFunctionNode = context.extractNode(function)
+                            if (defineInlineFunctionNode != null) {
+                                leftNode.dependencies += defineInlineFunctionNode
+                            }
+                            leftNode.dependencies += additionalDeps
+                            return leftNode
+                        }
+                    }
+
+                    tryExtractFunction(rhs)?.let { (functionBody, additionalDeps) ->
+                        leftNode.functions += functionBody
+                        leftNode.dependencies += additionalDeps
+                        return leftNode
+                    }
                 }
-            }
-            else if (rhs is JsFunction) {
-                // lhs = function() { ... }
-                // During reachability tracking phase: eliminate it if lhs is unreachable, traverse function otherwise
-                leftNode.functions += rhs
-                return leftNode
-            }
-            else if (leftNode.qualifier?.memberName == Namer.METADATA) {
-                // lhs.$metadata$ = expression
-                // During reachability tracking phase: eliminate it if lhs is unreachable, traverse expression
-                // It's commonly used to supply class's metadata
-                leftNode.expressions += rhs
-                return leftNode
-            }
-            else if (rhs is JsObjectLiteral && rhs.propertyInitializers.isEmpty()) {
-                return leftNode
+                rhs is JsBinaryOperation -> // Detect lhs = parent.child || (parent.child = {}), which is used to declare packages.
+                    // Assume lhs = parent.child
+                    if (rhs.operator == JsBinaryOperator.OR) {
+                        val secondNode = context.extractNode(rhs.arg1)
+                        val reassignment = rhs.arg2
+                        if (reassignment is JsBinaryOperation && reassignment.operator == JsBinaryOperator.ASG) {
+                            val reassignNode = context.extractNode(reassignment.arg1)
+                            val reassignValue = reassignment.arg2
+                            if (reassignNode == secondNode && reassignNode != null && reassignValue is JsObjectLiteral &&
+                                reassignValue.propertyInitializers.isEmpty()
+                            ) {
+                                return processAssignment(node, lhs, rhs.arg1)
+                            }
+                        }
+                    }
+                rhs is JsFunction -> {
+                    // lhs = function() { ... }
+                    // During reachability tracking phase: eliminate it if lhs is unreachable, traverse function otherwise
+                    leftNode.functions += rhs
+                    return leftNode
+                }
+                leftNode.qualifier?.memberName == Namer.METADATA -> {
+                    // lhs.$metadata$ = expression
+                    // During reachability tracking phase: eliminate it if lhs is unreachable, traverse expression
+                    // It's commonly used to supply class's metadata
+                    leftNode.expressions += rhs
+                    return leftNode
+                }
+                rhs is JsObjectLiteral && rhs.propertyInitializers.isEmpty() -> return leftNode
             }
 
             val nodeInitializedByEmptyObject = extractVariableInitializedByEmptyObject(rhs)
@@ -281,6 +291,31 @@ class Analyzer(private val context: Context) : JsVisitor() {
                 return leftNode
             }
         }
+        return null
+    }
+
+    private fun tryExtractFunction(expression: JsExpression): Pair<JsFunction, List<Context.Node>>? {
+        when (expression) {
+            is JsFunction -> return Pair(expression, emptyList())
+            is JsInvocation -> {
+                if (context.isWrapFunction(expression.qualifier)) {
+                    (expression.arguments.getOrNull(0) as? JsFunction)?.let { wrapper ->
+                        val statementsWithoutBody = wrapper.body.statements.filter { it !is JsReturn }
+                        JsBlock(statementsWithoutBody).let {
+                            context.addNodesForLocalVars(collectDefinedNames(it))
+                            accept(it)
+                        }
+
+                        val wrapperNode = context.extractNode(expression.qualifier)?.also {
+                            functionsToSkip += it
+                        }
+                        val body = wrapper.body.statements.filterIsInstance<JsReturn>().first().expression as JsFunction
+                        return Pair(body, listOfNotNull(wrapperNode))
+                    }
+                }
+            }
+        }
+
         return null
     }
 
@@ -324,6 +359,7 @@ class Analyzer(private val context: Context) : JsVisitor() {
     private fun enterFunction(function: JsFunction, arguments: List<JsExpression>) {
         functionsToEnter += function
         context.addNodesForLocalVars(function.collectLocalVariables())
+        context.markSpecialFunctions(function.body)
 
         for ((param, arg) in function.parameters.zip(arguments)) {
             if (arg is JsFunction && arg.name == null && isProperFunctionalParameter(arg.body, param)) {
@@ -342,6 +378,7 @@ class Analyzer(private val context: Context) : JsVisitor() {
     private fun enterFunctionWithGivenNodes(function: JsFunction, arguments: List<Node>) {
         functionsToEnter += function
         context.addNodesForLocalVars(function.collectLocalVariables())
+        context.markSpecialFunctions(function.body)
 
         for ((param, arg) in function.parameters.zip(arguments)) {
             val paramNode = context.nodes[param.name]!!

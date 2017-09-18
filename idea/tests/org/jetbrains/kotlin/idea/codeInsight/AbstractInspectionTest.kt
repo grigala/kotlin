@@ -20,8 +20,6 @@ import com.intellij.codeInspection.ex.EntryPointsManagerBase
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.psi.PsiFile
-import com.intellij.testFramework.IdeaTestUtil
-import com.intellij.testFramework.LightProjectDescriptor
 import org.jetbrains.kotlin.idea.inspections.runInspection
 import org.jetbrains.kotlin.idea.test.*
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
@@ -34,8 +32,6 @@ abstract class AbstractInspectionTest : KotlinLightCodeInsightFixtureTestCase() 
     companion object {
         val ENTRY_POINT_ANNOTATION = "test.anno.EntryPoint"
     }
-
-    override fun getProjectDescriptor(): LightProjectDescriptor = KotlinLightProjectDescriptor.INSTANCE
 
     override fun setUp() {
         super.setUp()
@@ -50,6 +46,8 @@ abstract class AbstractInspectionTest : KotlinLightCodeInsightFixtureTestCase() 
     protected open fun configExtra(psiFiles: List<PsiFile>, options: String) {
 
     }
+
+    protected open val forceUsePackageFolder: Boolean = false //workaround for IDEA-176033
 
     protected fun doTest(path: String) {
         val optionsFile = File(path)
@@ -76,7 +74,17 @@ abstract class AbstractInspectionTest : KotlinLightCodeInsightFixtureTestCase() 
                                     text
                                 else
                                     "package ${file.nameWithoutExtension};$text"
-                        configureByText(file.name, fileText)!!
+                        if (forceUsePackageFolder) {
+                            val packageName = fileText.substring(
+                                    "package".length,
+                                    fileText.indexOfAny(charArrayOf(';', '\n'))
+                            ).trim()
+                            val projectFileName = packageName.replace('.', '/') + "/" + file.name
+                            addFileToProject(projectFileName, fileText)
+                        }
+                        else {
+                            configureByText(file.name, fileText)!!
+                        }
                     }
                     file.extension == "gradle" -> {
                         val text = FileUtil.loadFile(file, true)
@@ -90,27 +98,7 @@ abstract class AbstractInspectionTest : KotlinLightCodeInsightFixtureTestCase() 
                 }
             }.toList()
 
-            val isJs = srcDir.endsWith("js")
-
-            val isWithRuntime = psiFiles.any { InTextDirectivesUtils.findStringWithPrefixes(it.text, "// WITH_RUNTIME") != null }
-            val fullJdk = psiFiles.any { InTextDirectivesUtils.findStringWithPrefixes(it.text, "// FULL_JDK") != null }
-
-            if (isJs) {
-                assertFalse(isWithRuntime)
-                assertFalse(fullJdk)
-            }
-
             try {
-                if (isJs) {
-                    ConfigLibraryUtil.configureKotlinJsRuntime(myFixture.module)
-                }
-                if (isWithRuntime) {
-                    ConfigLibraryUtil.configureKotlinRuntimeAndSdk(
-                            myFixture.module,
-                            if (fullJdk) PluginTestCaseBase.fullJdk() else PluginTestCaseBase.mockJdk()
-                    )
-                }
-
                 fixtureClasses.forEach { TestFixtureExtension.loadFixture(it, myFixture.module) }
 
                 configExtra(psiFiles, options)
@@ -137,13 +125,6 @@ abstract class AbstractInspectionTest : KotlinLightCodeInsightFixtureTestCase() 
             }
             finally {
                 fixtureClasses.forEach { TestFixtureExtension.unloadFixture(it) }
-
-                if (isWithRuntime) {
-                    ConfigLibraryUtil.unConfigureKotlinRuntimeAndSdk(myFixture.module, IdeaTestUtil.getMockJdk17())
-                }
-                if (isJs) {
-                    ConfigLibraryUtil.unConfigureKotlinJsRuntimeAndSdk(myFixture.module, IdeaTestUtil.getMockJdk17())
-                }
             }
         }
     }

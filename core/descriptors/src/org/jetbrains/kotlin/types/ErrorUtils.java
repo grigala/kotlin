@@ -122,6 +122,16 @@ public class ErrorUtils {
             public KotlinBuiltIns getBuiltIns() {
                 return DefaultBuiltIns.getInstance();
             }
+
+            @Override
+            public boolean isValid() {
+                return false;
+            }
+
+            @Override
+            public void assertValid() {
+                throw new IllegalStateException("ERROR_MODULE is not a valid module");
+            }
         };
     }
 
@@ -230,14 +240,14 @@ public class ErrorUtils {
         @Nullable
         @Override
         public ClassifierDescriptor getContributedClassifier(@NotNull Name name, @NotNull LookupLocation location) {
-            throw new IllegalStateException();
+            throw new IllegalStateException(debugMessage+", required name: " + name);
         }
 
         @NotNull
         @Override
         @SuppressWarnings({"unchecked"}) // KT-9898 Impossible implement kotlin interface from java
         public Collection getContributedVariables(@NotNull Name name, @NotNull LookupLocation location) {
-            throw new IllegalStateException();
+            throw new IllegalStateException(debugMessage+", required name: " + name);
         }
 
         @NotNull
@@ -246,7 +256,7 @@ public class ErrorUtils {
         // method is covariantly overridden in Kotlin, but collections in Java are invariant
         @SuppressWarnings({"unchecked"})
         public Collection getContributedFunctions(@NotNull Name name, @NotNull LookupLocation location) {
-            throw new IllegalStateException();
+            throw new IllegalStateException(debugMessage+", required name: " + name);
         }
 
         @NotNull
@@ -254,7 +264,7 @@ public class ErrorUtils {
         public Collection<DeclarationDescriptor> getContributedDescriptors(
                 @NotNull DescriptorKindFilter kindFilter, @NotNull Function1<? super Name, Boolean> nameFilter
         ) {
-            throw new IllegalStateException();
+            throw new IllegalStateException(debugMessage);
         }
 
         @NotNull
@@ -280,11 +290,11 @@ public class ErrorUtils {
         }
     }
 
-    private static final ErrorClassDescriptor ERROR_CLASS = new ErrorClassDescriptor(null);
+    private static final ErrorClassDescriptor ERROR_CLASS = new ErrorClassDescriptor(Name.special("<ERROR CLASS>"));
 
     private static class ErrorClassDescriptor extends ClassDescriptorImpl {
-        public ErrorClassDescriptor(@Nullable String name) {
-            super(getErrorModule(), Name.special(name == null ? "<ERROR CLASS>" : "<ERROR CLASS: " + name + ">"),
+        public ErrorClassDescriptor(@NotNull Name name) {
+            super(getErrorModule(), name,
                   Modality.OPEN, ClassKind.CLASS, Collections.<KotlinType>emptyList(), SourceElement.NO_SOURCE,
                   /* isExternal = */ false
             );
@@ -330,7 +340,12 @@ public class ErrorUtils {
 
     @NotNull
     public static ClassDescriptor createErrorClass(@NotNull String debugMessage) {
-        return new ErrorClassDescriptor(debugMessage);
+        return new ErrorClassDescriptor(Name.special("<ERROR CLASS: " + debugMessage + ">"));
+    }
+
+    @NotNull
+    public static ClassDescriptor createErrorClassWithExactName(@NotNull Name name) {
+        return new ErrorClassDescriptor(name);
     }
 
     @NotNull

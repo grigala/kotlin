@@ -22,7 +22,6 @@ import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor
 import org.jetbrains.kotlin.js.backend.ast.*
 import org.jetbrains.kotlin.js.translate.callTranslator.CallTranslator
 import org.jetbrains.kotlin.js.translate.context.Namer
-import org.jetbrains.kotlin.js.translate.context.Namer.getDelegateNameRef
 import org.jetbrains.kotlin.js.translate.context.Namer.getReceiverParameterName
 import org.jetbrains.kotlin.js.translate.context.TranslationContext
 import org.jetbrains.kotlin.js.translate.expression.translateAndAliasParameters
@@ -32,7 +31,9 @@ import org.jetbrains.kotlin.js.translate.general.Translation
 import org.jetbrains.kotlin.js.translate.utils.BindingUtils
 import org.jetbrains.kotlin.js.translate.utils.JsAstUtils.pureFqn
 import org.jetbrains.kotlin.js.translate.utils.JsDescriptorUtils
+import org.jetbrains.kotlin.js.translate.utils.TranslationUtils
 import org.jetbrains.kotlin.js.translate.utils.TranslationUtils.*
+import org.jetbrains.kotlin.js.translate.utils.finalElement
 import org.jetbrains.kotlin.js.translate.utils.jsAstUtils.addParameter
 import org.jetbrains.kotlin.js.translate.utils.jsAstUtils.addStatement
 import org.jetbrains.kotlin.psi.KtProperty
@@ -93,6 +94,11 @@ class DefaultPropertyTranslator(
         assert(!descriptor.isExtension) { "Unexpected extension property $descriptor}" }
         assert(descriptor is PropertyDescriptor) { "Property descriptor expected: $descriptor" }
         val result = backingFieldReference(context(), descriptor as PropertyDescriptor)
+        if (getterDescriptor is PropertyAccessorDescriptor && getterDescriptor.correspondingProperty.isLateInit) {
+            function.body.statements += JsIf(JsBinaryOperation(JsBinaryOperator.EQ, result, JsNullLiteral()),
+                                             JsReturn(JsInvocation(Namer.throwUninitializedPropertyAccessExceptionFunRef(),
+                                                                   JsStringLiteral(getterDescriptor.correspondingProperty.name.asString()))))
+        }
         function.body.statements += JsReturn(result).apply { source = descriptor.source.getPsi() }
     }
 
@@ -172,7 +178,7 @@ fun TranslationContext.translateDelegateOrInitializerExpression(expression: KtPr
         CallTranslator.translate(innerContext, provideDelegateCall, initializer)
     }
     else {
-        initializer
+        TranslationUtils.coerce(this, initializer, propertyDescriptor.type)
     }
 }
 
@@ -224,7 +230,7 @@ private class PropertyTranslator(
     private fun generateDefaultGetter(): JsPropertyInitializer {
         val getterDescriptor = descriptor.getter ?: throw IllegalStateException("Getter descriptor should not be null")
         val defaultFunction = createFunction(getterDescriptor).apply {
-            val delegateRef = getDelegateNameRef(descriptor.name.asString())
+            val delegateRef = JsNameRef(context().getNameForBackingField(descriptor), JsThisRef())
             DefaultPropertyTranslator(descriptor, context(), delegateRef).generateDefaultGetterFunction(getterDescriptor, this)
         }
         return generateDefaultAccessor(getterDescriptor, defaultFunction)
@@ -233,7 +239,7 @@ private class PropertyTranslator(
     private fun generateDefaultSetter(): JsPropertyInitializer {
         val setterDescriptor = descriptor.setter ?: throw IllegalStateException("Setter descriptor should not be null")
         val defaultFunction = createFunction(setterDescriptor).apply {
-            val delegateRef = getDelegateNameRef(descriptor.name.asString())
+            val delegateRef = JsNameRef(context().getNameForBackingField(descriptor), JsThisRef())
             DefaultPropertyTranslator(descriptor, context(), delegateRef).generateDefaultSetterFunction(setterDescriptor, this)
         }
         return generateDefaultAccessor(setterDescriptor, defaultFunction)
@@ -245,12 +251,16 @@ private class PropertyTranslator(
     private fun translateCustomAccessor(expression: KtPropertyAccessor): JsPropertyInitializer {
         val descriptor = BindingUtils.getFunctionDescriptor(bindingContext(), expression)
         val function = JsFunction(context().getScopeForDescriptor(descriptor), JsBlock(), descriptor.toString())
+        function.source = expression.finalElement
         context().translateAndAliasParameters(descriptor, function.parameters).translateFunction(expression, function)
         return translateFunctionAsEcma5PropertyDescriptor(function, descriptor, context())
     }
 
-    private fun createFunction(descriptor: VariableAccessorDescriptor) =
-            JsFunction(context().getScopeForDescriptor(descriptor), JsBlock(), accessorDescription(descriptor))
+    private fun createFunction(descriptor: VariableAccessorDescriptor): JsFunction {
+        val function = JsFunction(context().getScopeForDescriptor(descriptor), JsBlock(), accessorDescription(descriptor))
+        function.source = descriptor.source.getPsi()?.finalElement
+        return function
+    }
 
     private fun accessorDescription(accessorDescriptor: VariableAccessorDescriptor): String {
         val accessorType =

@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.codegen.optimization
 
 import org.jetbrains.kotlin.codegen.TransformationMethodVisitor
+import org.jetbrains.kotlin.codegen.optimization.boxing.StackPeepholeOptimizationsTransformer
 import org.jetbrains.kotlin.codegen.optimization.boxing.RedundantBoxingMethodTransformer
 import org.jetbrains.kotlin.codegen.optimization.boxing.PopBackwardPropagationTransformer
 import org.jetbrains.kotlin.codegen.optimization.common.prepareForEmitting
@@ -46,7 +47,10 @@ class OptimizationMethodVisitor(
     companion object {
         private val MEMORY_LIMIT_BY_METHOD_MB = 50
 
-        private val MANDATORY_METHOD_TRANSFORMER = FixStackWithLabelNormalizationMethodTransformer()
+        private val MANDATORY_METHOD_TRANSFORMER = CompositeMethodTransformer(
+                FixStackWithLabelNormalizationMethodTransformer(),
+                MethodVerifier("AFTER mandatory stack transformations")
+        )
 
         private val OPTIMIZATION_TRANSFORMER = CompositeMethodTransformer(
                 CapturedVarsOptimizationMethodTransformer(),
@@ -54,14 +58,23 @@ class OptimizationMethodVisitor(
                 RedundantCheckCastEliminationMethodTransformer(),
                 ConstantConditionEliminationMethodTransformer(),
                 RedundantBoxingMethodTransformer(),
+                StackPeepholeOptimizationsTransformer(),
                 PopBackwardPropagationTransformer(),
                 DeadCodeEliminationMethodTransformer(),
                 RedundantGotoMethodTransformer(),
-                RedundantNopsCleanupMethodTransformer()
+                RedundantNopsCleanupMethodTransformer(),
+                MethodVerifier("AFTER optimizations")
         )
 
-        private fun canBeOptimized(node: MethodNode): Boolean {
+        fun canBeOptimized(node: MethodNode): Boolean {
             val totalFramesSizeMb = node.instructions.size() * (node.maxLocals + node.maxStack) / (1024 * 1024)
+            return totalFramesSizeMb < MEMORY_LIMIT_BY_METHOD_MB
+        }
+
+        fun canBeOptimizedUsingSourceInterpreter(node: MethodNode): Boolean {
+            val frameSize = node.maxLocals + node.maxStack
+            val methodSize = node.instructions.size().toLong()
+            val totalFramesSizeMb = methodSize * methodSize * frameSize / (1024 * 1024)
             return totalFramesSizeMb < MEMORY_LIMIT_BY_METHOD_MB
         }
     }

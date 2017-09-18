@@ -205,8 +205,7 @@ class ResolveElementCache(
             }
             else {
                 contextElements
-                        .map { it.getNonStrictParentOfType<KtDeclaration>() }
-                        .filterNotNull()
+                        .mapNotNull { it.getNonStrictParentOfType<KtDeclaration>() }
                         .filterTo(declarationsToResolve) {
                             it !is KtAnonymousInitializer && it !is KtDestructuringDeclaration && it !is KtDestructuringDeclarationEntry
                         }
@@ -345,7 +344,7 @@ class ResolveElementCache(
             }
         }
 
-        val controlFlowTrace = DelegatingBindingTrace(trace.bindingContext, "Element control flow resolve", resolveElement)
+        val controlFlowTrace = DelegatingBindingTrace(trace.bindingContext, "Element control flow resolve", resolveElement, allowSliceRewrite = true)
         ControlFlowInformationProvider(resolveElement, controlFlowTrace, resolveElement.languageVersionSettings).checkDeclaration()
         controlFlowTrace.addOwnDataTo(trace, null, false)
 
@@ -596,7 +595,7 @@ class ResolveElementCache(
     // All additional resolve should be done to separate trace
     private fun createDelegatingTrace(resolveElement: KtElement, filter: BindingTraceFilter): BindingTrace {
         return resolveSession.storageManager.createSafeTrace(
-                DelegatingBindingTrace(resolveSession.bindingContext, "trace to resolve element", resolveElement, filter))
+                DelegatingBindingTrace(resolveSession.bindingContext, "trace to resolve element", resolveElement, filter, allowSliceRewrite = true))
     }
 
     private class BodyResolveContextForLazy(

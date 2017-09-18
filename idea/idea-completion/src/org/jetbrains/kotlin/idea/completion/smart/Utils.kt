@@ -45,7 +45,10 @@ import org.jetbrains.kotlin.util.descriptorsEqualWithSubstitution
 import java.util.*
 
 class ArtificialElementInsertHandler(
-        val textBeforeCaret: String, val textAfterCaret: String, val shortenRefs: Boolean) : InsertHandler<LookupElement>{
+        private val textBeforeCaret: String,
+        private val textAfterCaret: String,
+        private val shortenRefs: Boolean
+) : InsertHandler<LookupElement>{
     override fun handleInsert(context: InsertionContext, item: LookupElement) {
         val offset = context.editor.caretModel.offset
         val startOffset = offset - item.lookupString.length
@@ -315,11 +318,11 @@ fun DeclarationDescriptor.fuzzyTypesForSmartCompletion(
             return emptyList()
         }
 
-        if (this is VariableDescriptor) { //TODO: generic properties!
-            return smartCastCalculator.types(this).map { it.toFuzzyType(emptyList()) }
+        return if (this is VariableDescriptor) { //TODO: generic properties!
+            smartCastCalculator.types(this).map { it.toFuzzyType(emptyList()) }
         }
         else {
-            return listOf(returnType)
+            listOf(returnType)
         }
     }
     else if (this is ClassDescriptor && kind.isSingleton) {

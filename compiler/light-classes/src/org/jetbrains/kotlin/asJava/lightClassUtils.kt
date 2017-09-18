@@ -18,9 +18,9 @@ package org.jetbrains.kotlin.asJava
 
 import com.intellij.psi.*
 import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.util.IncorrectOperationException
 import org.jetbrains.kotlin.asJava.classes.KtLightClass
 import org.jetbrains.kotlin.asJava.classes.KtLightClassForFacade
+import org.jetbrains.kotlin.asJava.classes.KtLightClassForScript
 import org.jetbrains.kotlin.asJava.elements.KtLightAnnotationForSourceEntry
 import org.jetbrains.kotlin.asJava.elements.KtLightElement
 import org.jetbrains.kotlin.asJava.elements.KtLightIdentifier
@@ -30,6 +30,7 @@ import org.jetbrains.kotlin.load.java.propertyNameByGetMethodName
 import org.jetbrains.kotlin.load.java.propertyNameBySetMethodName
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
@@ -37,11 +38,22 @@ import org.jetbrains.kotlin.psi.psiUtil.isExtensionDeclaration
 
 fun KtClassOrObject.toLightClass(): KtLightClass? = LightClassGenerationSupport.getInstance(project).getLightClass(this)
 
+fun KtClassOrObject.toLightClassWithBuiltinMapping(): PsiClass? {
+    toLightClass()?.let { return it }
+
+    val fqName = fqName ?: return null
+    val javaClassFqName = JavaToKotlinClassMap.mapKotlinToJava(fqName.toUnsafe())?.asSingleFqName() ?: return null
+    val searchScope = useScope as? GlobalSearchScope ?: return null
+    return JavaPsiFacade.getInstance(project).findClass(javaClassFqName.asString(), searchScope)
+}
+
 fun KtFile.findFacadeClass(): KtLightClass? {
     return LightClassGenerationSupport.getInstance(project)
             .getFacadeClassesInPackage(packageFqName, this.useScope as? GlobalSearchScope ?: GlobalSearchScope.projectScope(project))
             .firstOrNull { it is KtLightClassForFacade && this in it.files } as? KtLightClass
 }
+
+fun KtScript.toLightClass(): KtLightClassForScript? = LightClassGenerationSupport.getInstance(project).getLightClassForScript(this)
 
 fun KtElement.toLightElements(): List<PsiNamedElement> =
         when (this) {
@@ -85,6 +97,7 @@ fun KtParameter.toPsiParameters(): Collection<PsiParameter> {
     val paramList = getNonStrictParentOfType<KtParameterList>() ?: return emptyList()
 
     val paramIndex = paramList.parameters.indexOf(this)
+    if (paramIndex < 0) return emptyList()
     val owner = paramList.parent
     val lightParamIndex = if (owner is KtDeclaration && owner.isExtensionDeclaration()) paramIndex + 1 else paramIndex
 
@@ -95,9 +108,7 @@ fun KtParameter.toPsiParameters(): Collection<PsiParameter> {
                 else -> null
             } ?: return emptyList()
 
-    return methods.mapNotNull {
-        if (it.parameterList.parametersCount > lightParamIndex) it.parameterList.parameters[lightParamIndex] else null
-    }
+    return methods.mapNotNull { it.parameterList.parameters.getOrNull(lightParamIndex) }
 }
 
 private fun KtParameter.toAnnotationLightMethod(): PsiMethod? {

@@ -16,15 +16,24 @@
 
 package org.jetbrains.kotlin.idea.maven
 
+import com.intellij.openapi.application.Result
+import com.intellij.openapi.application.WriteAction
+import com.intellij.openapi.projectRoots.JavaSdk
+import com.intellij.openapi.projectRoots.ProjectJdkTable
+import com.intellij.openapi.roots.LibraryOrderEntry
+import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.roots.impl.libraries.LibraryEx
 import org.jetbrains.kotlin.cli.common.arguments.K2JSCompilerArguments
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.config.*
 import org.jetbrains.kotlin.idea.facet.KotlinFacet
+import org.jetbrains.kotlin.idea.framework.CommonLibraryKind
+import org.jetbrains.kotlin.idea.framework.JSLibraryKind
 import org.junit.Assert
 import java.io.File
 
 class KotlinMavenImporterTest : MavenImportingTestCase() {
-    private val kotlinVersion = "1.0.0-beta-2423"
+    private val kotlinVersion = "1.1.3"
 
     override fun setUp() {
         super.setUp()
@@ -431,7 +440,6 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                             <arg>-Xcoroutines=enable</arg>
                         </args>
                         <jvmTarget>1.8</jvmTarget>
-                        <jdkHome>JDK_HOME</jdkHome>
                         <classpath>foobar.jar</classpath>
                     </configuration>
                 </plugin>
@@ -452,7 +460,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
             Assert.assertEquals("JVM 1.8", targetPlatformKind!!.description)
             Assert.assertEquals("1.8", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
             Assert.assertEquals("foobar.jar", (compilerArguments as K2JVMCompilerArguments).classpath)
-            Assert.assertEquals("-jdk-home JDK_HOME -Xmulti-platform",
+            Assert.assertEquals("-Xmulti-platform",
                                 compilerSettings!!.additionalArguments)
         }
     }
@@ -525,7 +533,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
         <dependencies>
             <dependency>
                 <groupId>org.jetbrains.kotlin</groupId>
-                <artifactId>kotlin-stdlib</artifactId>
+                <artifactId>kotlin-stdlib-js</artifactId>
                 <version>$kotlinVersion</version>
             </dependency>
         </dependencies>
@@ -580,9 +588,13 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                 Assert.assertEquals(true, sourceMap)
                 Assert.assertEquals("commonjs", moduleKind)
             }
-            Assert.assertEquals("-output test.js -meta-info -Xmulti-platform",
+            Assert.assertEquals("-meta-info -output test.js -Xmulti-platform",
                                 compilerSettings!!.additionalArguments)
         }
+
+        val rootManager = ModuleRootManager.getInstance(getModule("project"))
+        val stdlib = rootManager.orderEntries.filterIsInstance<LibraryOrderEntry>().single().library
+        assertEquals(JSLibraryKind, (stdlib as LibraryEx).kind)
     }
 
     fun testFacetSplitConfiguration() {
@@ -622,7 +634,6 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                                 <args>
                                     <arg>-Xcoroutines=enable</arg>
                                 </args>
-                                <jdkHome>JDK_HOME</jdkHome>
                                 <classpath>foobar.jar</classpath>
                             </configuration>
                         </execution>
@@ -650,8 +661,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
             Assert.assertEquals("JVM 1.8", targetPlatformKind!!.description)
             Assert.assertEquals("1.8", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
             Assert.assertEquals("foobar.jar", (compilerArguments as K2JVMCompilerArguments).classpath)
-            Assert.assertEquals("-jdk-home JDK_HOME -Xmulti-platform",
-                                compilerSettings!!.additionalArguments)
+            Assert.assertEquals("-Xmulti-platform", compilerSettings!!.additionalArguments)
         }
     }
 
@@ -693,7 +703,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                             <arg>-jvm-target</arg>
                             <arg>1.8</arg>
                             <arg>-Xcoroutines=enable</arg>
-                            <arg>-jdk-home</arg>
+                            <arg>-classpath</arg>
                             <arg>c:\program files\jdk1.8</arg>
                         </args>
                     </configuration>
@@ -709,10 +719,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
             Assert.assertEquals("JVM 1.8", targetPlatformKind!!.description)
             Assert.assertEquals("1.8", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
             Assert.assertEquals(LanguageFeature.State.ENABLED, coroutineSupport)
-            Assert.assertEquals(
-                    listOf("-jdk-home", "c:/program files/jdk1.8"),
-                    compilerSettings!!.additionalArgumentsAsList
-            )
+            Assert.assertEquals("c:/program files/jdk1.8", (compilerArguments as K2JVMCompilerArguments).classpath)
         }
     }
 
@@ -1004,6 +1011,64 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
         Assert.assertEquals(TargetPlatformKind.JavaScript, facetSettings.targetPlatformKind)
     }
 
+    fun testJsAndCommonStdlibKinds() {
+        createProjectSubDirs("src/main/kotlin", "src/main/kotlin.jvm", "src/test/kotlin", "src/test/kotlin.jvm")
+
+        importProject("""
+        <groupId>test</groupId>
+        <artifactId>project</artifactId>
+        <version>1.0.0</version>
+
+        <dependencies>
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-stdlib-common</artifactId>
+                <version>1.1.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-stdlib-js</artifactId>
+                <version>1.1.0</version>
+            </dependency>
+        </dependencies>
+
+        <build>
+            <sourceDirectory>src/main/kotlin</sourceDirectory>
+
+            <plugins>
+                <plugin>
+                    <groupId>org.jetbrains.kotlin</groupId>
+                    <artifactId>kotlin-maven-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>compile</id>
+                            <goals>
+                                <goal>js</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>test-compile</id>
+                            <goals>
+                                <goal>test-js</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </build>
+        """)
+
+        assertModules("project")
+        assertImporterStatePresent()
+
+        Assert.assertEquals(TargetPlatformKind.JavaScript, facetSettings.targetPlatformKind)
+
+        val rootManager = ModuleRootManager.getInstance(getModule("project"))
+        val libraries = rootManager.orderEntries.filterIsInstance<LibraryOrderEntry>().mapNotNull { it.library as LibraryEx }
+        assertEquals(JSLibraryKind, libraries.single { it.name?.contains("kotlin-stdlib-js") == true }.kind)
+        assertEquals(CommonLibraryKind, libraries.single { it.name?.contains("kotlin-stdlib-common") == true }.kind)
+    }
+
     fun testCommonDetectionByGoalWithJvmStdlib() {
         createProjectSubDirs("src/main/kotlin", "src/main/kotlin.jvm", "src/test/kotlin", "src/test/kotlin.jvm")
 
@@ -1092,7 +1157,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
         createProjectSubDirs("src/main/kotlin", "src/main/kotlin.jvm", "src/test/kotlin", "src/test/kotlin.jvm")
 
         importProject("""
-        <groupId>test</groupId>
+        <groupId>test</groupId>0
         <artifactId>project</artifactId>
         <version>1.0.0</version>
 
@@ -1128,6 +1193,10 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
         assertImporterStatePresent()
 
         Assert.assertEquals(TargetPlatformKind.Common, facetSettings.targetPlatformKind)
+
+        val rootManager = ModuleRootManager.getInstance(getModule("project"))
+        val stdlib = rootManager.orderEntries.filterIsInstance<LibraryOrderEntry>().single().library
+        assertEquals(CommonLibraryKind, (stdlib as LibraryEx).kind)
     }
 
     fun testJvmDetectionByConflictingGoalsAndJvmStdlib() {
@@ -1337,7 +1406,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                            "plugin:org.jetbrains.kotlin.allopen:annotation=org.springframework.transaction.annotation.Transactional",
                            "plugin:org.jetbrains.kotlin.allopen:annotation=org.springframework.scheduling.annotation.Async",
                            "plugin:org.jetbrains.kotlin.allopen:annotation=org.springframework.cache.annotation.Cacheable"),
-                    compilerArguments!!.pluginOptions.toList()
+                    compilerArguments!!.pluginOptions!!.toList()
             )
         }
     }
@@ -1377,7 +1446,6 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                     </executions>
                     <configuration>
                         <jvmTarget>1.6</jvmTarget>
-                        <jdkHome>temp</jdkHome>
                         <languageVersion>1.0</languageVersion>
                         <apiVersion>1.0</apiVersion>
                         <args>
@@ -1387,8 +1455,6 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                             <arg>1.1</arg>
                             <arg>-api-version</arg>
                             <arg>1.1</arg>
-                            <arg>-jdk-home</arg>
-                            <arg>c:\program files\jdk1.8</arg>
                         </args>
                     </configuration>
                 </plugin>
@@ -1404,10 +1470,6 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
             Assert.assertEquals("1.1", languageLevel!!.description)
             Assert.assertEquals("1.1", apiLevel!!.description)
             Assert.assertEquals("1.8", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
-            Assert.assertEquals(
-                    listOf("-jdk-home", "c:\\program files\\jdk1.8"),
-                    compilerSettings!!.additionalArgumentsAsList
-            )
         }
     }
 
@@ -1447,12 +1509,13 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                     </executions>
                     <configuration>
                         <jvmTarget>1.7</jvmTarget>
-                        <jdkHome>temp</jdkHome>
                         <languageVersion>1.1</languageVersion>
                         <apiVersion>1.0</apiVersion>
                         <args>
                             <arg>-java-parameters</arg>
                             <arg>-Xdump-declarations-to=dumpDir</arg>
+                            <arg>-kotlin-home</arg>
+                            <arg>temp</arg>
                         </args>
                     </configuration>
                 </plugin>
@@ -1555,7 +1618,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                             <configuration>
                                 <jvmTarget>1.8</jvmTarget>
                                 <args combine.children="append">
-                                    <arg>-jdk-home</arg>
+                                    <arg>-kotlin-home</arg>
                                     <arg>temp2</arg>
                                 </args>
                             </configuration>
@@ -1608,7 +1671,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
                             <configuration combine.self="override">
                                 <jvmTarget>1.8</jvmTarget>
                                 <args>
-                                    <arg>-jdk-home</arg>
+                                    <arg>-kotlin-home</arg>
                                     <arg>temp2</arg>
                                 </args>
                             </configuration>
@@ -1629,7 +1692,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
             Assert.assertEquals("1.0", apiLevel!!.description)
             Assert.assertEquals("1.8", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
             Assert.assertEquals(
-                    listOf("-jdk-home", "temp", "-Xdump-declarations-to=dumpDir2"),
+                    listOf("-Xdump-declarations-to=dumpDir2"),
                     compilerSettings!!.additionalArgumentsAsList
             )
         }
@@ -1640,7 +1703,7 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
             Assert.assertEquals("1.0", apiLevel!!.description)
             Assert.assertEquals("1.8", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
             Assert.assertEquals(
-                    listOf("-jdk-home", "temp2", "-java-parameters", "-Xdump-declarations-to=dumpDir"),
+                    listOf("-Xdump-declarations-to=dumpDir", "-java-parameters", "-kotlin-home", "temp2"),
                     compilerSettings!!.additionalArgumentsAsList
             )
         }
@@ -1651,9 +1714,76 @@ class KotlinMavenImporterTest : MavenImportingTestCase() {
             Assert.assertEquals("1.1", apiLevel!!.description)
             Assert.assertEquals("1.8", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
             Assert.assertEquals(
-                    listOf("-jdk-home", "temp2"),
+                    listOf("-kotlin-home", "temp2"),
                     compilerSettings!!.additionalArgumentsAsList
             )
+        }
+    }
+
+    fun testJDKImport() {
+        object : WriteAction<Unit>() {
+            override fun run(result: Result<Unit>) {
+                val jdk = JavaSdk.getInstance().createJdk("myJDK", "my/path/to/jdk")
+                ProjectJdkTable.getInstance().addJdk(jdk)
+            }
+        }.execute()
+
+        try {
+            createProjectSubDirs("src/main/kotlin", "src/main/kotlin.jvm", "src/test/kotlin", "src/test/kotlin.jvm")
+
+            importProject("""
+            <groupId>test</groupId>
+            <artifactId>project</artifactId>
+            <version>1.0.0</version>
+
+            <dependencies>
+                <dependency>
+                    <groupId>org.jetbrains.kotlin</groupId>
+                    <artifactId>kotlin-stdlib</artifactId>
+                    <version>$kotlinVersion</version>
+                </dependency>
+            </dependencies>
+
+            <build>
+                <sourceDirectory>src/main/kotlin</sourceDirectory>
+
+                <plugins>
+                    <plugin>
+                        <groupId>org.jetbrains.kotlin</groupId>
+                        <artifactId>kotlin-maven-plugin</artifactId>
+
+                        <executions>
+                            <execution>
+                                <id>compile</id>
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>compile</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <jdkHome>my/path/to/jdk</jdkHome>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+            """)
+
+            assertModules("project")
+            assertImporterStatePresent()
+
+            val moduleSDK = ModuleRootManager.getInstance(getModule("project")).sdk!!
+            Assert.assertTrue(moduleSDK.sdkType is JavaSdk)
+            Assert.assertEquals("myJDK", moduleSDK.name)
+            Assert.assertEquals("my/path/to/jdk", moduleSDK.homePath)
+        }
+        finally {
+            object : WriteAction<Unit>() {
+                override fun run(result: Result<Unit>) {
+                    val jdkTable = ProjectJdkTable.getInstance()
+                    jdkTable.removeJdk(jdkTable.findJdk("myJDK")!!)
+                }
+            }.execute()
         }
     }
 

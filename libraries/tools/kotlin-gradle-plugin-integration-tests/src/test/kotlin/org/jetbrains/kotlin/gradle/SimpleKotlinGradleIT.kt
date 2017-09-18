@@ -1,6 +1,7 @@
 package org.jetbrains.kotlin.gradle
 
 import org.jetbrains.kotlin.gradle.util.checkBytecodeContains
+import org.jetbrains.kotlin.gradle.util.modify
 import org.junit.Test
 import java.io.File
 import kotlin.test.assertTrue
@@ -161,6 +162,39 @@ class SimpleKotlinGradleIT : BaseGradleIT() {
 
             checkClass("Test")
             checkClass("Test2")
+        }
+    }
+
+    @Test
+    fun testNoArgKt18668() {
+        Project("noArgKt18668", GRADLE_VERSION).build("build") {
+            assertSuccessful()
+        }
+    }
+
+    @Test
+    fun testSamWithReceiverSimple() {
+        Project("samWithReceiverSimple", GRADLE_VERSION).build("build") {
+            assertSuccessful()
+        }
+    }
+
+    @Test
+    fun testBuildDirLazyEvaluation() {
+        val project = Project("kotlinProject", GRADLE_VERSION)
+        project.setupWorkingDir()
+
+        File(project.projectDir, "build").writeText("This file prevents Gradle from using 'build' as a directory")
+
+        // Change the build directory in the end of the build script:
+        val customBuildDirName = "customBuild"
+        File(project.projectDir, "build.gradle").modify {
+            it + "\nbuildDir = '$customBuildDirName'\n"
+        }
+
+        project.build("build") {
+            assertSuccessful()
+            assertFileExists("$customBuildDirName/classes")
         }
     }
 }

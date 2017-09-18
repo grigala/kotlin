@@ -31,10 +31,7 @@ import gnu.trove.THashSet
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
-import org.jetbrains.kotlin.idea.caches.resolve.BinaryModuleInfo
-import org.jetbrains.kotlin.idea.caches.resolve.SourceForBinaryModuleInfo
-import org.jetbrains.kotlin.idea.caches.resolve.getModuleInfoByVirtualFile
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.*
 import org.jetbrains.kotlin.idea.decompiler.navigation.MemberMatching.*
 import org.jetbrains.kotlin.idea.stubindex.KotlinFullClassNameIndex
 import org.jetbrains.kotlin.idea.stubindex.KotlinTopLevelFunctionFqnNameIndex
@@ -65,13 +62,17 @@ object SourceNavigationHelper {
     private fun targetScope(declaration: KtNamedDeclaration, navigationKind: NavigationKind): GlobalSearchScope? {
         val containingFile = declaration.containingKtFile
         val vFile = containingFile.virtualFile ?: return null
-        val fromModuleInfo = getModuleInfoByVirtualFile(declaration.project, vFile)
 
         return when (navigationKind) {
-            NavigationKind.CLASS_FILES_TO_SOURCES -> (fromModuleInfo as? BinaryModuleInfo)?.sourcesModuleInfo?.sourceScope()
-            NavigationKind.SOURCES_TO_CLASS_FILES -> (fromModuleInfo as? SourceForBinaryModuleInfo)?.binariesModuleInfo?.binariesScope()
+            NavigationKind.CLASS_FILES_TO_SOURCES -> getBinaryLibrariesModuleInfos(declaration.project, vFile)
+                    .mapNotNull { it.sourcesModuleInfo?.sourceScope() }.union()
+
+            NavigationKind.SOURCES_TO_CLASS_FILES -> getLibrarySourcesModuleInfos(declaration.project, vFile)
+                    .map { it.binariesModuleInfo.binariesScope() }.union()
         }
     }
+
+    private fun Collection<GlobalSearchScope>.union() = if (this.isNotEmpty()) GlobalSearchScope.union(this.toTypedArray()) else null
 
     private fun haveRenamesInImports(files: Collection<KtFile>) = files.any { it.importDirectives.any { it.aliasName != null } }
 
@@ -158,7 +159,7 @@ object SourceNavigationHelper {
         }
 
         for (candidate in candidates) {
-            val candidateDescriptor = candidate.resolveToDescriptor() as CallableDescriptor
+            val candidateDescriptor = candidate.resolveToDescriptorIfAny() as? CallableDescriptor ?: continue
             if (receiversMatch(declaration, candidateDescriptor)
                 && valueParametersTypesMatch(declaration, candidateDescriptor)
                 && typeParametersMatch(declaration as KtTypeParameterListOwner, candidateDescriptor.typeParameters)) {
@@ -195,12 +196,10 @@ object SourceNavigationHelper {
 
     private fun getIndexForTopLevelPropertyOrFunction(
             decompiledDeclaration: KtNamedDeclaration
-    ): StringStubIndexExtension<out KtNamedDeclaration> {
-        when (decompiledDeclaration) {
-            is KtNamedFunction -> return KotlinTopLevelFunctionFqnNameIndex.getInstance()
-            is KtProperty -> return KotlinTopLevelPropertyFqnNameIndex.getInstance()
-            else -> throw IllegalArgumentException("Neither function nor declaration: " + decompiledDeclaration::class.java.name)
-        }
+    ): StringStubIndexExtension<out KtNamedDeclaration> = when (decompiledDeclaration) {
+        is KtNamedFunction -> KotlinTopLevelFunctionFqnNameIndex.getInstance()
+        is KtProperty -> KotlinTopLevelPropertyFqnNameIndex.getInstance()
+        else -> throw IllegalArgumentException("Neither function nor declaration: " + decompiledDeclaration::class.java.name)
     }
 
     private fun getInitialMemberCandidates(

@@ -40,22 +40,23 @@ class JvmPropertyDescriptorImpl private constructor(
         source: SourceElement,
         isLateInit: Boolean,
         isConst: Boolean,
-        isHeader: Boolean,
-        isImpl: Boolean
+        isExpect: Boolean,
+        isActual: Boolean
 ) : JvmDescriptorWithExtraFlags, PropertyDescriptorImpl(
         containingDeclaration, original, annotations, modality, visibility, isVar,
-        name, kind, source, isLateInit, isConst, isHeader, isImpl, /* isExternal = */ false, false
+        name, kind, source, isLateInit, isConst, isExpect, isActual, /* isExternal = */ false, false
 ) {
     override fun createSubstitutedCopy(
             newOwner: DeclarationDescriptor,
             newModality: Modality,
             newVisibility: Visibility,
             original: PropertyDescriptor?,
-            kind: CallableMemberDescriptor.Kind
+            kind: CallableMemberDescriptor.Kind,
+            newName: Name
     ): PropertyDescriptorImpl =
             JvmPropertyDescriptorImpl(
-                    newOwner, original, annotations, newModality, newVisibility, extraFlags, isVar, name, kind,
-                    SourceElement.NO_SOURCE, isLateInit, isConst, isHeader, isImpl
+                    newOwner, original, annotations, newModality, newVisibility, extraFlags, isVar, newName, kind,
+                    SourceElement.NO_SOURCE, isLateInit, isConst, isExpect, isActual
             )
 
     companion object {

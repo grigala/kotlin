@@ -18,15 +18,19 @@ package org.jetbrains.kotlin.serialization.js.ast
 
 import org.jetbrains.kotlin.js.backend.ast.*
 import org.jetbrains.kotlin.js.backend.ast.metadata.*
+import org.jetbrains.kotlin.js.backend.ast.metadata.SpecialFunction
 import org.jetbrains.kotlin.protobuf.CodedInputStream
 import org.jetbrains.kotlin.serialization.js.ast.JsAstProtoBuf.*
 import org.jetbrains.kotlin.serialization.js.ast.JsAstProtoBuf.Expression.ExpressionCase
 import org.jetbrains.kotlin.serialization.js.ast.JsAstProtoBuf.Statement.StatementCase
+import java.io.File
+import java.io.FileInputStream
 import java.io.InputStream
+import java.io.InputStreamReader
 import java.util.*
 import org.jetbrains.kotlin.resolve.inline.InlineStrategy as KotlinInlineStrategy
 
-class JsAstDeserializer(program: JsProgram) {
+class JsAstDeserializer(program: JsProgram, private val sourceRoots: Iterable<File>) {
     private val scope = JsRootScope(program)
     private val stringTable = mutableListOf<String>()
     private val nameTable = mutableListOf<Name>()
@@ -88,7 +92,9 @@ class JsAstDeserializer(program: JsProgram) {
         }
 
         for (nameBinding in fragment.nameBindings) {
-            nameBinding.name.imported = nameBinding.key in fragment.imports
+            if (nameBinding.key in fragment.imports) {
+                nameBinding.name.imported = true
+            }
         }
 
         return fragment
@@ -259,6 +265,9 @@ class JsAstDeserializer(program: JsProgram) {
         )
         expression.synthetic = proto.synthetic
         expression.sideEffects = map(proto.sideEffects)
+        if (proto.hasLocalAlias()) {
+            expression.localAlias = deserializeName(proto.localAlias)
+        }
         return expression
     }
 
@@ -429,6 +438,15 @@ class JsAstDeserializer(program: JsProgram) {
             else {
                 JsDynamicScope.declareName(identifier)
             }
+            if (nameProto.hasLocalNameId()) {
+                name.localAlias = deserializeName(nameProto.localNameId)
+            }
+            if (nameProto.hasImported()) {
+                name.imported = nameProto.imported
+            }
+            if (nameProto.hasSpecialFunction()) {
+                name.specialFunction = map(nameProto.specialFunction)
+            }
             nameCache[id] = name
             name
         }
@@ -499,6 +517,13 @@ class JsAstDeserializer(program: JsProgram) {
         InlineStrategy.NOT_INLINE -> KotlinInlineStrategy.NOT_INLINE
     }
 
+    private fun map(specialFunction: JsAstProtoBuf.SpecialFunction) = when(specialFunction) {
+        JsAstProtoBuf.SpecialFunction.DEFINE_INLINE_FUNCTION -> SpecialFunction.DEFINE_INLINE_FUNCTION
+        JsAstProtoBuf.SpecialFunction.WRAP_FUNCTION -> SpecialFunction.WRAP_FUNCTION
+        JsAstProtoBuf.SpecialFunction.TO_BOXED_CHAR -> SpecialFunction.TO_BOXED_CHAR
+        JsAstProtoBuf.SpecialFunction.UNBOX_CHAR -> SpecialFunction.UNBOX_CHAR
+    }
+
     private fun <T : JsNode> withLocation(fileId: Int?, location: Location?, action: () -> T): T {
         val deserializedFile = fileId?.let { deserializeString(it) }
         val file = deserializedFile ?: fileStack.peek()
@@ -515,7 +540,15 @@ class JsAstDeserializer(program: JsProgram) {
         }
         val node = action()
         if (deserializedLocation != null) {
-            node.source = deserializedLocation
+            val contentFile = sourceRoots
+                    .map { File(it, file) }
+                    .firstOrNull { it.exists() }
+            node.source = if (contentFile != null) {
+                JsLocationWithEmbeddedSource(deserializedLocation, null) { InputStreamReader(FileInputStream(contentFile), "UTF-8") }
+            }
+            else {
+                deserializedLocation
+            }
         }
         if (shouldUpdateFile) {
             fileStack.pop()

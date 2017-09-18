@@ -20,11 +20,11 @@ import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiModifier
 import com.intellij.psi.search.PsiShortNamesCache
 import org.jetbrains.annotations.TestOnly
-import org.jetbrains.kotlin.analyzer.LanguageSettingsProvider
 import org.jetbrains.kotlin.asJava.ImpreciseResolveResult
 import org.jetbrains.kotlin.asJava.ImpreciseResolveResult.*
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.idea.caches.resolve.getNullableModuleInfo
+import org.jetbrains.kotlin.idea.compiler.IDELanguageSettingsProvider
 import org.jetbrains.kotlin.idea.project.TargetPlatformDetector
 import org.jetbrains.kotlin.idea.stubindex.KotlinTypeAliasShortNameIndex
 import org.jetbrains.kotlin.idea.util.application.runReadAction
@@ -151,14 +151,10 @@ class PsiBasedClassResolver @TestOnly constructor(private val targetClassFqName:
         val file = ref.containingKtFile
         var result: Result = Result.NothingFound
         val filePackage = file.packageFqName.asString()
-        if (filePackage == targetPackage) {
-            result = result.changeTo(Result.Found)
-        }
-        else if (filePackage in conflictingPackages) {
-            result = result.changeTo(Result.FoundOther)
-        }
-        else if (filePackage in packagesWithTypeAliases) {
-            return UNSURE
+        when (filePackage) {
+            targetPackage -> result = result.changeTo(Result.Found)
+            in conflictingPackages -> result = result.changeTo(Result.FoundOther)
+            in packagesWithTypeAliases -> return UNSURE
         }
 
         for (importPath in file.getDefaultImports()) {
@@ -181,19 +177,18 @@ class PsiBasedClassResolver @TestOnly constructor(private val targetClassFqName:
     }
 
     private fun analyzeSingleImport(result: Result, importedFqName: FqName?, isAllUnder: Boolean, aliasName: String?): Result {
-        val qName = importedFqName
         if (!isAllUnder) {
-            if (qName?.asString() == targetClassFqName &&
+            if (importedFqName?.asString() == targetClassFqName &&
                 (aliasName == null || aliasName == targetShortName)) {
                 return result.changeTo(Result.Found)
             }
-            else if (qName?.shortName()?.asString() == targetShortName &&
-                     qName.parent().asString() in conflictingPackages &&
+            else if (importedFqName?.shortName()?.asString() == targetShortName &&
+                     importedFqName.parent().asString() in conflictingPackages &&
                      aliasName == null) {
                 return result.changeTo(Result.FoundOther)
             }
-            else if (qName?.shortName()?.asString() == targetShortName &&
-                     qName.parent().asString() in packagesWithTypeAliases &&
+            else if (importedFqName?.shortName()?.asString() == targetShortName &&
+                     importedFqName.parent().asString() in packagesWithTypeAliases &&
                      aliasName == null) {
                 return Result.Ambiguity
             }
@@ -202,14 +197,10 @@ class PsiBasedClassResolver @TestOnly constructor(private val targetClassFqName:
             }
         }
         else {
-            if (qName?.asString() == targetPackage) {
-                return result.changeTo(Result.Found)
-            }
-            else if (qName?.asString() in conflictingPackages) {
-                return result.changeTo(Result.FoundOther)
-            }
-            else if (qName?.asString() in packagesWithTypeAliases) {
-                return Result.Ambiguity
+            when {
+                importedFqName?.asString() == targetPackage -> return result.changeTo(Result.Found)
+                importedFqName?.asString() in conflictingPackages -> return result.changeTo(Result.FoundOther)
+                importedFqName?.asString() in packagesWithTypeAliases -> return Result.Ambiguity
             }
         }
         return result
@@ -234,7 +225,7 @@ class PsiBasedClassResolver @TestOnly constructor(private val targetClassFqName:
         Ambiguity(UNSURE)
     }
 
-    fun Result.changeTo(newResult: Result): Result {
+    private fun Result.changeTo(newResult: Result): Result {
         if (this == Result.NothingFound || this.returnValue == newResult.returnValue) {
             return newResult
         }
@@ -244,7 +235,7 @@ class PsiBasedClassResolver @TestOnly constructor(private val targetClassFqName:
 
 private fun KtFile.getDefaultImports(): List<ImportPath> {
     val moduleInfo = getNullableModuleInfo() ?: return emptyList()
-    val versionSettings = LanguageSettingsProvider.getInstance(project).getLanguageVersionSettings(moduleInfo, project)
+    val versionSettings = IDELanguageSettingsProvider.getLanguageVersionSettings(moduleInfo, project)
     return TargetPlatformDetector.getPlatform(this).getDefaultImports(
             versionSettings.supportsFeature(LanguageFeature.DefaultImportOfPackageKotlinComparisons)
     )

@@ -45,8 +45,6 @@ import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.idea.KotlinPluginUtil
 import org.jetbrains.kotlin.idea.configuration.*
 import org.jetbrains.kotlin.idea.framework.JavaRuntimeDetectionUtil
-import org.jetbrains.kotlin.idea.framework.JavaRuntimePresentationProvider
-import org.jetbrains.kotlin.idea.framework.isDetected
 import org.jetbrains.kotlin.idea.framework.isExternalLibrary
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
@@ -98,7 +96,7 @@ fun updateLibraries(project: Project, libraries: Collection<Library>) {
     // TODO use module SDK
 
     for (library in libraries) {
-        val libraryJarDescriptors = if (isDetected(JavaRuntimePresentationProvider.getInstance(), library))
+        val libraryJarDescriptors = if (JavaRuntimeDetectionUtil.getJavaRuntimeVersion(library) != null)
             kJvmConfigurator.getLibraryJarDescriptors(sdk)
         else
             kJsConfigurator.getLibraryJarDescriptors(sdk)
@@ -200,7 +198,7 @@ enum class LibraryJarDescriptor(val jarName: String,
         return LibraryUtils.getJarFile(Arrays.asList(*library.getFiles(orderRootType)), jarName)
     }
 
-    fun getPathInPlugin() = getPath(PathUtil.getKotlinPathsForIdeaPlugin())
+    fun getPathInPlugin() = getPath(PathUtil.kotlinPathsForIdeaPlugin)
 }
 
 fun bundledRuntimeVersion(): String {
@@ -208,7 +206,7 @@ fun bundledRuntimeVersion(): String {
 }
 
 private val bundledRuntimeBuildNumber: String? by lazy {
-    val file = PathUtil.getKotlinPathsForIdeaPlugin().buildNumberFile
+    val file = PathUtil.kotlinPathsForIdeaPlugin.buildNumberFile
     if (file.exists()) file.readText().trim() else null
 }
 
@@ -337,12 +335,11 @@ fun getStdlibArtifactId(sdk: Sdk?, version: String): String {
     }
 
     val sdkVersion = sdk?.let { JavaSdk.getInstance().getVersion(it) }
-    val artifactId = when (sdkVersion) {
+    return when (sdkVersion) {
         JavaSdkVersion.JDK_1_8, JavaSdkVersion.JDK_1_9 -> MAVEN_STDLIB_ID_JRE8
         JavaSdkVersion.JDK_1_7 -> MAVEN_STDLIB_ID_JRE7
         else -> MAVEN_STDLIB_ID
     }
-    return artifactId
 }
 
 fun getDefaultJvmTarget(sdk: Sdk?, version: String): JvmTarget? {
@@ -367,4 +364,7 @@ val MAVEN_STDLIB_ID_JRE8 = "kotlin-stdlib-jre8"
 val MAVEN_JS_STDLIB_ID = "kotlin-stdlib-js"
 val MAVEN_OLD_JS_STDLIB_ID = "kotlin-js-library"
 val MAVEN_COMMON_STDLIB_ID = "kotlin-stdlib-common" // TODO: KotlinCommonMavenConfigurator
+val MAVEN_TEST_ID = "kotlin-test"
+val MAVEN_TEST_JUNIT_ID = "kotlin-test-junit"
+val MAVEN_COMMON_TEST_ID = "kotlin-test-common"
 val LOG = Logger.getInstance("org.jetbrains.kotlin.idea.versions.KotlinRuntimeLibraryUtilKt")

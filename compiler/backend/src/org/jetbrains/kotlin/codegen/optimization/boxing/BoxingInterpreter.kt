@@ -18,8 +18,8 @@ package org.jetbrains.kotlin.codegen.optimization.boxing
 
 import com.google.common.collect.ImmutableSet
 import org.jetbrains.kotlin.codegen.AsmUtil
-import org.jetbrains.kotlin.codegen.RangeCodegenUtil
 import org.jetbrains.kotlin.codegen.intrinsics.IntrinsicMethods
+import org.jetbrains.kotlin.codegen.isRangeOrProgression
 import org.jetbrains.kotlin.codegen.optimization.common.OptimizationBasicInterpreter
 import org.jetbrains.kotlin.codegen.optimization.common.StrictBasicValue
 import org.jetbrains.kotlin.name.FqName
@@ -213,7 +213,7 @@ fun AbstractInsnNode.isIteratorMethodCallOfProgression(values: List<BasicValue>)
         }
 
 fun isProgressionClass(type: Type) =
-        RangeCodegenUtil.isRangeOrProgression(buildFqNameByInternal(type.internalName))
+        isRangeOrProgression(buildFqNameByInternal(type.internalName))
 
 fun AbstractInsnNode.isAreEqualIntrinsicForSameTypedBoxedValues(values: List<BasicValue>) =
         isAreEqualIntrinsic() && areSameTypedBoxedValues(values)
@@ -233,11 +233,10 @@ fun AbstractInsnNode.isAreEqualIntrinsic() =
             desc == "(Ljava/lang/Object;Ljava/lang/Object;)Z"
         }
 
+private val shouldUseEqualsForWrappers = setOf(Type.DOUBLE_TYPE, Type.FLOAT_TYPE, AsmTypes.JAVA_CLASS_TYPE)
+
 fun canValuesBeUnboxedForAreEqual(values: List<BasicValue>): Boolean =
-        !values.any {
-            val unboxedType = getUnboxedType(it.type)
-            unboxedType == Type.DOUBLE_TYPE || unboxedType == Type.FLOAT_TYPE
-        }
+        values.none { getUnboxedType(it.type) in shouldUseEqualsForWrappers }
 
 fun AbstractInsnNode.isJavaLangComparableCompareToForSameTypedBoxedValues(values: List<BasicValue>) =
         isJavaLangComparableCompareTo() && areSameTypedBoxedValues(values)

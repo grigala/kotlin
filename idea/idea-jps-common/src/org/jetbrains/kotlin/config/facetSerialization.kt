@@ -17,11 +17,17 @@
 package org.jetbrains.kotlin.config
 
 import com.intellij.util.PathUtil
+import com.intellij.util.xmlb.SerializationFilter
 import com.intellij.util.xmlb.SkipDefaultsSerializationFilter
 import com.intellij.util.xmlb.XmlSerializer
 import org.jdom.DataConversionException
 import org.jdom.Element
+import org.jdom.Text
 import org.jetbrains.kotlin.cli.common.arguments.*
+import org.jetbrains.kotlin.load.java.JvmAbi
+import java.lang.reflect.Modifier
+import kotlin.reflect.KClass
+import kotlin.reflect.full.superclasses
 
 fun Element.getOption(name: String) = getChildren("option").firstOrNull { it.getAttribute("name").value == name }
 
@@ -90,6 +96,9 @@ private fun readV2AndLaterConfig(element: Element): KotlinFacetSettings {
         element.getAttributeValue("useProjectSettings")?.let { useProjectSettings = it.toBoolean() }
         val platformName = element.getAttributeValue("platform")
         val platformKind = TargetPlatformKind.ALL_PLATFORMS.firstOrNull { it.description == platformName } ?: TargetPlatformKind.DEFAULT_PLATFORM
+        element.getChild("implements")?.let {
+            implementedModuleName = (element.content.firstOrNull() as? Text)?.textTrim
+        }
         element.getChild("compilerSettings")?.let {
             compilerSettings = CompilerSettings()
             XmlSerializer.deserializeInto(compilerSettings!!, it)
@@ -137,7 +146,7 @@ fun deserializeFacetSettings(element: Element): KotlinFacetSettings {
 }
 
 fun CommonCompilerArguments.convertPathsToSystemIndependent() {
-    pluginClasspaths?.forEachIndexed { index, s -> pluginClasspaths[index] = PathUtil.toSystemIndependentName(s) }
+    pluginClasspaths?.forEachIndexed { index, s -> pluginClasspaths!![index] = PathUtil.toSystemIndependentName(s) }
 
     when (this) {
         is K2JVMCompilerArguments -> {
@@ -145,7 +154,7 @@ fun CommonCompilerArguments.convertPathsToSystemIndependent() {
             classpath = PathUtil.toSystemIndependentName(classpath)
             jdkHome = PathUtil.toSystemIndependentName(jdkHome)
             kotlinHome = PathUtil.toSystemIndependentName(kotlinHome)
-            friendPaths?.forEachIndexed { index, s -> friendPaths[index] = PathUtil.toSystemIndependentName(s) }
+            friendPaths?.forEachIndexed { index, s -> friendPaths!![index] = PathUtil.toSystemIndependentName(s) }
             declarationsOutputPath = PathUtil.toSystemIndependentName(declarationsOutputPath)
         }
 
@@ -166,6 +175,50 @@ fun CompilerSettings.convertPathsToSystemIndependent() {
     outputDirectoryForJsLibraryFiles = PathUtil.toSystemIndependentName(outputDirectoryForJsLibraryFiles)
 }
 
+private fun KClass<*>.superClass() = superclasses.firstOrNull { !it.java.isInterface }
+
+private fun Class<*>.computeNormalPropertyOrdering(): Map<String, Int> {
+    val result = LinkedHashMap<String, Int>()
+    var count = 0
+    generateSequence(this) { it.superclass }.forEach { clazz ->
+        for (field in clazz.declaredFields) {
+            if (field.modifiers and Modifier.STATIC != 0) continue
+
+            var propertyName = field.name
+            if (propertyName.endsWith(JvmAbi.DELEGATED_PROPERTY_NAME_SUFFIX)) {
+                propertyName = propertyName.dropLast(JvmAbi.DELEGATED_PROPERTY_NAME_SUFFIX.length)
+            }
+
+            result[propertyName] = count++
+        }
+    }
+    return result
+}
+
+private val allNormalOrderings = HashMap<Class<*>, Map<String, Int>>()
+
+private val Class<*>.normalOrdering
+    get() = synchronized(allNormalOrderings) { allNormalOrderings.getOrPut(this) { computeNormalPropertyOrdering() } }
+
+// Replacing fields with delegated properties leads to unexpected reordering of entries in facet configuration XML
+// It happens due to XmlSerializer using different orderings for field- and method-based accessors
+// This code restores the original ordering
+private fun Element.restoreNormalOrdering(bean: Any) {
+    val normalOrdering = bean.javaClass.normalOrdering
+    val elementsToReorder = this.getContent<Element> { it is Element && it.getAttribute("name")?.value in normalOrdering }
+    elementsToReorder
+            .sortedBy { normalOrdering[it.getAttribute("name")?.value!!] }
+            .forEachIndexed { index, element -> elementsToReorder[index] = element.clone() }
+}
+
+private fun buildChildElement(element: Element, tag: String, bean: Any, filter: SerializationFilter) {
+    Element(tag).apply {
+        XmlSerializer.serializeInto(bean, this, filter)
+        restoreNormalOrdering(bean)
+        element.addContent(this)
+    }
+}
+
 private fun KotlinFacetSettings.writeLatestConfig(element: Element) {
     val filter = SkipDefaultsSerializationFilter()
 
@@ -175,19 +228,16 @@ private fun KotlinFacetSettings.writeLatestConfig(element: Element) {
     if (!useProjectSettings) {
         element.setAttribute("useProjectSettings", useProjectSettings.toString())
     }
+    implementedModuleName?.let {
+        element.addContent(Element("implements").apply { addContent(it) })
+    }
     compilerSettings?.let { copyBean(it) }?.let {
         it.convertPathsToSystemIndependent()
-        Element("compilerSettings").apply {
-            XmlSerializer.serializeInto(it, this, filter)
-            element.addContent(this)
-        }
+        buildChildElement(element, "compilerSettings", it, filter)
     }
     compilerArguments?.let { copyBean(it) }?.let {
         it.convertPathsToSystemIndependent()
-        Element("compilerArguments").apply {
-            XmlSerializer.serializeInto(it, this, filter)
-            element.addContent(this)
-        }
+        buildChildElement(element, "compilerArguments", it, filter)
     }
 }
 

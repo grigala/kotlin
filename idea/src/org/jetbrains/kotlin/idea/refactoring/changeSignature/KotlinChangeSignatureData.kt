@@ -26,13 +26,12 @@ import org.jetbrains.kotlin.asJava.namedUnwrappedElement
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.impl.AnonymousFunctionDescriptor
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
-import org.jetbrains.kotlin.idea.highlighter.markers.headerImplementations
-import org.jetbrains.kotlin.idea.highlighter.markers.liftToHeader
+import org.jetbrains.kotlin.idea.highlighter.markers.actualsForExpected
+import org.jetbrains.kotlin.idea.highlighter.markers.isExpectedOrExpectedClassMember
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.usages.KotlinCallableDefinitionUsage
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
-import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import java.util.*
@@ -85,9 +84,7 @@ class KotlinChangeSignatureData(
 
     override val primaryCallables: Collection<KotlinCallableDefinitionUsage<PsiElement>> by lazy {
         descriptorsForSignatureChange.map {
-            val declaration = DescriptorToSourceUtilsIde.getAnyDeclaration(baseDeclaration.project, it)?.let {
-                (it as? KtDeclaration)?.liftToHeader() ?: it
-            }
+            val declaration = DescriptorToSourceUtilsIde.getAnyDeclaration(baseDeclaration.project, it)
             assert(declaration != null) { "No declaration found for " + baseDescriptor }
             KotlinCallableDefinitionUsage(declaration!!, it, null, null)
         }
@@ -99,13 +96,21 @@ class KotlinChangeSignatureData(
 
     override val affectedCallables: Collection<UsageInfo> by lazy {
         primaryCallables + primaryCallables.flatMapTo(HashSet<UsageInfo>()) { primaryFunction ->
-            val primaryDeclaration = primaryFunction.declaration as? KtCallableDeclaration ?: return@flatMapTo emptyList()
+            val primaryDeclaration = primaryFunction.declaration as? KtDeclaration ?: return@flatMapTo emptyList()
 
-            if (primaryDeclaration.hasModifier(KtTokens.HEADER_KEYWORD)) {
-                return@flatMapTo primaryDeclaration.headerImplementations().map {
-                    KotlinCallableDefinitionUsage<PsiElement>(it, it.resolveToDescriptor() as CallableDescriptor, primaryFunction, null)
+            if (primaryDeclaration.isExpectedOrExpectedClassMember()) {
+                return@flatMapTo primaryDeclaration.actualsForExpected().mapNotNull {
+                    val descriptor = it.unsafeResolveToDescriptor()
+                    val callableDescriptor = when (descriptor) {
+                        is CallableDescriptor -> descriptor
+                        is ClassDescriptor -> descriptor.unsubstitutedPrimaryConstructor ?: return@mapNotNull null
+                        else -> return@mapNotNull null
+                    }
+                    KotlinCallableDefinitionUsage<PsiElement>(it, callableDescriptor, primaryFunction, null)
                 }
             }
+
+            if (primaryDeclaration !is KtCallableDeclaration) return@flatMapTo emptyList()
 
             primaryDeclaration.toLightMethods().flatMap { baseMethod ->
                 OverridingMethodsSearch
@@ -113,7 +118,7 @@ class KotlinChangeSignatureData(
                         .mapNotNullTo(HashSet<UsageInfo>()) { overridingMethod ->
                             if (overridingMethod is KtLightMethod) {
                                 val overridingDeclaration = overridingMethod.namedUnwrappedElement as KtNamedDeclaration
-                                val overridingDescriptor = overridingDeclaration.resolveToDescriptor() as CallableDescriptor
+                                val overridingDescriptor = overridingDeclaration.unsafeResolveToDescriptor() as CallableDescriptor
                                 KotlinCallableDefinitionUsage<PsiElement>(overridingDeclaration, overridingDescriptor, primaryFunction, null)
                             }
                             else OverriderUsageInfo(overridingMethod, baseMethod, true, true, true)
@@ -122,33 +127,19 @@ class KotlinChangeSignatureData(
         }
     }
 
-    override fun getParameters(): List<KotlinParameterInfo> {
-        return parameters
+    override fun getParameters(): List<KotlinParameterInfo> = parameters
+
+    override fun getName() = when (baseDescriptor) {
+        is ConstructorDescriptor -> baseDescriptor.containingDeclaration.name.asString()
+        is AnonymousFunctionDescriptor -> ""
+        else -> baseDescriptor.name.asString()
     }
 
-    override fun getName(): String {
-        if (baseDescriptor is ConstructorDescriptor) {
-            return baseDescriptor.containingDeclaration.name.asString()
-        }
-        else if (baseDescriptor is AnonymousFunctionDescriptor) {
-            return ""
-        }
-        else {
-            return baseDescriptor.name.asString()
-        }
-    }
+    override fun getParametersCount(): Int = baseDescriptor.valueParameters.size
 
-    override fun getParametersCount(): Int {
-        return baseDescriptor.valueParameters.size
-    }
+    override fun getVisibility(): Visibility = baseDescriptor.visibility
 
-    override fun getVisibility(): Visibility {
-        return baseDescriptor.visibility
-    }
-
-    override fun getMethod(): PsiElement {
-        return baseDeclaration
-    }
+    override fun getMethod(): PsiElement = baseDeclaration
 
     override fun canChangeVisibility(): Boolean {
         if (DescriptorUtils.isLocal(baseDescriptor)) return false
@@ -156,15 +147,10 @@ class KotlinChangeSignatureData(
         return !(baseDescriptor is AnonymousFunctionDescriptor || parent is ClassDescriptor && parent.kind == ClassKind.INTERFACE)
     }
 
-    override fun canChangeParameters(): Boolean {
-        return true
-    }
+    override fun canChangeParameters() = true
 
-    override fun canChangeName(): Boolean {
-        return !(baseDescriptor is ConstructorDescriptor || baseDescriptor is AnonymousFunctionDescriptor)
-    }
+    override fun canChangeName() = !(baseDescriptor is ConstructorDescriptor || baseDescriptor is AnonymousFunctionDescriptor)
 
-    override fun canChangeReturnType(): MethodDescriptor.ReadWriteOption {
-        return if (baseDescriptor is ConstructorDescriptor) MethodDescriptor.ReadWriteOption.None else MethodDescriptor.ReadWriteOption.ReadWrite
-    }
+    override fun canChangeReturnType(): MethodDescriptor.ReadWriteOption =
+            if (baseDescriptor is ConstructorDescriptor) MethodDescriptor.ReadWriteOption.None else MethodDescriptor.ReadWriteOption.ReadWrite
 }

@@ -145,14 +145,10 @@ abstract class KotlinSuppressCache {
         var suppressor: Suppressor? = suppressors[annotated]
         if (suppressor == null) {
             val strings = getSuppressingStrings(annotated)
-            if (strings.isEmpty()) {
-                suppressor = EmptySuppressor(annotated)
-            }
-            else if (strings.size == 1) {
-                suppressor = SingularSuppressor(annotated, strings.iterator().next())
-            }
-            else {
-                suppressor = MultiSuppressor(annotated, strings)
+            suppressor = when {
+                strings.isEmpty() -> EmptySuppressor(annotated)
+                strings.size == 1 -> SingularSuppressor(annotated, strings.iterator().next())
+                else -> MultiSuppressor(annotated, strings)
             }
             suppressors.put(annotated, suppressor)
         }
@@ -175,7 +171,7 @@ abstract class KotlinSuppressCache {
             builder.addAll(suppressStringProvider[annotationDescriptor])
         }
 
-        if (!KotlinBuiltIns.isSuppressAnnotation(annotationDescriptor)) return
+        if (annotationDescriptor.fqName != KotlinBuiltIns.FQ_NAMES.suppress) return
 
         // We only add strings and skip other values to facilitate recovery in presence of erroneous code
         for (arrayValue in annotationDescriptor.allValueArguments.values) {
@@ -266,11 +262,11 @@ class BindingContextSuppressCache(val context: BindingContext) : KotlinSuppressC
     override fun getSuppressionAnnotations(annotated: KtAnnotated): List<AnnotationDescriptor> {
         val descriptor = context.get(BindingContext.DECLARATION_TO_DESCRIPTOR, annotated)
 
-        if (descriptor != null) {
-            return descriptor.annotations.toList()
+        return if (descriptor != null) {
+            descriptor.annotations.toList()
         }
         else {
-            return annotated.annotationEntries.mapNotNull { context.get(BindingContext.ANNOTATION, it) }
+            annotated.annotationEntries.mapNotNull { context.get(BindingContext.ANNOTATION, it) }
         }
     }
 }

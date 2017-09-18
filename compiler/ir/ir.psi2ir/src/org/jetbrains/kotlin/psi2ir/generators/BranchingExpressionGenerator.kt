@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.psi2ir.generators
 
+import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.builders.whenComma
 import org.jetbrains.kotlin.ir.declarations.IrVariable
@@ -85,12 +86,17 @@ class BranchingExpressionGenerator(statementGenerator: StatementGenerator) : Sta
             scope.createTemporaryVariable(statementGenerator.generateExpression(it), "subject")
         }
 
+
+        val inferredType = getInferredTypeWithImplicitCastsOrFail(expression)
+
         // TODO relies on ControlFlowInformationProvider, get rid of it
-        val resultType =
-                if (context.bindingContext[BindingContext.USED_AS_EXPRESSION, expression] ?: false)
-                    getInferredTypeWithImplicitCastsOrFail(expression)
-                else
-                    context.builtIns.unitType
+        val isUsedAsExpression = context.bindingContext[BindingContext.USED_AS_EXPRESSION, expression] ?: false
+
+        val resultType = when {
+            isUsedAsExpression -> inferredType
+            KotlinBuiltIns.isNothing(inferredType) -> inferredType
+            else -> context.builtIns.unitType
+        }
 
         val irWhen = IrWhenImpl(expression.startOffset, expression.endOffset, resultType, IrStatementOrigin.WHEN)
 
@@ -135,23 +141,23 @@ class BranchingExpressionGenerator(statementGenerator: StatementGenerator) : Sta
     }
 
     private fun generateWhenBody(expression: KtWhenExpression, irSubject: IrVariable?, irWhen: IrWhen): IrExpression {
-        if (irSubject == null) {
+        return if (irSubject == null) {
             if (irWhen.branches.isEmpty())
-                return IrBlockImpl(expression.startOffset, expression.endOffset, context.builtIns.unitType, IrStatementOrigin.WHEN)
+                IrBlockImpl(expression.startOffset, expression.endOffset, context.builtIns.unitType, IrStatementOrigin.WHEN)
             else
-                return irWhen
+                irWhen
         }
         else {
             if (irWhen.branches.isEmpty()) {
                 val irBlock = IrBlockImpl(expression.startOffset, expression.endOffset, context.builtIns.unitType, IrStatementOrigin.WHEN)
                 irBlock.statements.add(irSubject)
-                return irBlock
+                irBlock
             }
             else {
                 val irBlock = IrBlockImpl(expression.startOffset, expression.endOffset, irWhen.type, IrStatementOrigin.WHEN)
                 irBlock.statements.add(irSubject)
                 irBlock.statements.add(irWhen)
-                return irBlock
+                irBlock
             }
         }
     }

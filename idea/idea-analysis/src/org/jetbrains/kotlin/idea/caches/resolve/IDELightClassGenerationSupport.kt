@@ -39,7 +39,6 @@ import org.jetbrains.kotlin.idea.stubindex.*
 import org.jetbrains.kotlin.idea.stubindex.KotlinSourceFilterScope.Companion.sourceAndClassFiles
 import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
 import org.jetbrains.kotlin.idea.util.application.runReadAction
-import org.jetbrains.kotlin.load.kotlin.PackagePartClassUtils
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
@@ -79,6 +78,14 @@ class IDELightClassGenerationSupport(private val project: Project) : LightClassG
                 builder,
                 exactContextProvider = { IDELightClassContexts.contextForFacade(sortedFiles) },
                 dummyContextProvider = { IDELightClassContexts.lightContextForFacade(sortedFiles) }
+        )
+    }
+
+    override fun createDataHolderForScript(script: KtScript, builder: LightClassBuilder): LightClassDataHolder.ForScript {
+        return LazyLightClassDataHolder.ForScript(
+                builder,
+                exactContextProvider = { IDELightClassContexts.contextForScript(script) },
+                dummyContextProvider = { IDELightClassContexts.lightContextForScript(script) }
         )
     }
 
@@ -129,6 +136,8 @@ class IDELightClassGenerationSupport(private val project: Project) : LightClassG
         return null
     }
 
+    override fun getLightClassForScript(script: KtScript): KtLightClassForScript? = KtLightClassForScript.create(script)
+
     private fun withFakeLightClasses(
             lightClassForFacade: KtLightClassForFacade?,
             facadeFiles: List<KtFile>
@@ -150,6 +159,12 @@ class IDELightClassGenerationSupport(private val project: Project) : LightClassG
 
         return filesByModule.flatMap {
             createLightClassForFileFacade(facadeFqName, it.value, it.key)
+        }
+    }
+
+    override fun getScriptClasses(scriptFqName: FqName, scope: GlobalSearchScope): Collection<PsiClass> {
+        return KotlinScriptFqnIndex.instance.get(scriptFqName.asString(), project, scope).mapNotNull {
+            getLightClassForScript(it)
         }
     }
 
@@ -186,13 +201,13 @@ class IDELightClassGenerationSupport(private val project: Project) : LightClassG
             facadeFiles: List<KtFile>,
             moduleInfo: IdeaModuleInfo
     ): List<PsiClass> {
-        if (moduleInfo is ModuleSourceInfo) {
+        return if (moduleInfo is ModuleSourceInfo) {
             val lightClassForFacade = KtLightClassForFacade.createForFacade(
                     psiManager, facadeFqName, moduleInfo.contentScope(), facadeFiles)
-            return withFakeLightClasses(lightClassForFacade, facadeFiles)
+            withFakeLightClasses(lightClassForFacade, facadeFiles)
         }
         else {
-            return facadeFiles.filterIsInstance<KtClsFile>().mapNotNull { createLightClassForDecompiledKotlinFile(it) }
+            facadeFiles.filterIsInstance<KtClsFile>().mapNotNull { createLightClassForDecompiledKotlinFile(it) }
         }
     }
 
@@ -204,7 +219,7 @@ class IDELightClassGenerationSupport(private val project: Project) : LightClassG
 
     override fun resolveToDescriptor(declaration: KtDeclaration): DeclarationDescriptor? {
         try {
-            return declaration.resolveToDescriptor()
+            return declaration.unsafeResolveToDescriptor()
         }
         catch (e: NoDescriptorForDeclarationException) {
             return null
@@ -276,7 +291,7 @@ class IDELightClassGenerationSupport(private val project: Project) : LightClassG
         return getClassRelativeName(parent).child(name)
     }
 
-    fun createLightClassForDecompiledKotlinFile(file: KtClsFile): KtLightClassForDecompiledDeclaration? {
+    private fun createLightClassForDecompiledKotlinFile(file: KtClsFile): KtLightClassForDecompiledDeclaration? {
         val virtualFile = file.virtualFile ?: return null
 
         val classOrObject = file.declarations.filterIsInstance<KtClassOrObject>().singleOrNull()
@@ -330,13 +345,13 @@ class KtFileClassProviderImpl(val lightClassGenerationSupport: LightClassGenerat
         val fileClassFqName = file.javaFileFacadeFqName
 
         val facadeClasses = when {
-            file.analysisContext != null && PackagePartClassUtils.fileHasTopLevelCallables(file) ->
+            file.analysisContext != null && file.hasTopLevelCallables() ->
                 listOf(KtLightClassForFacade.createForSyntheticFile(PsiManager.getInstance(file.project), fileClassFqName, file))
 
             jvmClassInfo.withJvmMultifileClass ->
                 lightClassGenerationSupport.getFacadeClasses(fileClassFqName, moduleInfo.contentScope())
 
-            PackagePartClassUtils.fileHasTopLevelCallables(file) ->
+            file.hasTopLevelCallables() ->
                 (lightClassGenerationSupport as IDELightClassGenerationSupport).createLightClassForFileFacade(
                         fileClassFqName, listOf(file), moduleInfo)
 

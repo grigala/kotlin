@@ -118,16 +118,11 @@ public class CompileEnvironmentUtil {
     }
 
     private static void writeRuntimeToJar(JarOutputStream stream) throws IOException {
-        File runtimePath = PathUtil.getKotlinPathsForCompiler().getRuntimePath();
-        if (!runtimePath.exists()) {
-            throw new CompileEnvironmentException("Couldn't find runtime library");
+        File stdlibPath = PathUtil.getKotlinPathsForCompiler().getStdlibPath();
+        if (!stdlibPath.exists()) {
+            throw new CompileEnvironmentException("Couldn't find kotlin-stdlib at " + stdlibPath);
         }
-        File scriptRuntimePath = PathUtil.getKotlinPathsForCompiler().getScriptRuntimePath();
-        if (!scriptRuntimePath.exists()) {
-            throw new CompileEnvironmentException("Couldn't find script runtime library");
-        }
-
-        copyJarImpl(stream, runtimePath);
+        copyJarImpl(stream, stdlibPath);
     }
 
     private static void copyJarImpl(JarOutputStream stream, File jarPath) throws IOException {
@@ -168,12 +163,11 @@ public class CompileEnvironmentUtil {
             if (vFile == null) {
                 String message = "Source file or directory not found: " + sourceRootPath;
 
-                File moduleFilePath = configuration.get(JVMConfigurationKeys.MODULE_XML_FILE);
-                if (moduleFilePath != null && Logger.isInitialized()) {
-                    String moduleFileContent = FileUtil.loadFile(moduleFilePath);
+                File buildFilePath = configuration.get(JVMConfigurationKeys.MODULE_XML_FILE);
+                if (buildFilePath != null && Logger.isInitialized()) {
                     LOG.warn(message +
-                              "\n\nmodule file path: " + moduleFilePath +
-                              "\ncontent:\n" + moduleFileContent);
+                             "\n\nbuild file path: " + buildFilePath +
+                             "\ncontent:\n" + FileUtil.loadFile(buildFilePath));
                 }
 
                 reportError.invoke(message);

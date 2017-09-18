@@ -977,4 +977,55 @@ public class PsiCheckerTestGenerated extends AbstractPsiCheckerTest {
             doTestWithInfos(fileName);
         }
     }
+
+    @TestMetadata("idea/testData/checker/diagnosticsMessage")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class DiagnosticsMessage extends AbstractPsiCheckerTest {
+        public void testAllFilesPresentInDiagnosticsMessage() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/testData/checker/diagnosticsMessage"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("fullPackageFQNameOnVisiblityError.kt")
+        public void testFullPackageFQNameOnVisiblityError() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/checker/diagnosticsMessage/fullPackageFQNameOnVisiblityError.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("incompleteTypeArgumentList.kt")
+        public void testIncompleteTypeArgumentList() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/checker/diagnosticsMessage/incompleteTypeArgumentList.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("instantiationOfInnerClassInQualifiedForm.kt")
+        public void testInstantiationOfInnerClassInQualifiedForm() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/checker/diagnosticsMessage/instantiationOfInnerClassInQualifiedForm.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("lateinitOfATypeWithNullableUpperBound.kt")
+        public void testLateinitOfATypeWithNullableUpperBound() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/checker/diagnosticsMessage/lateinitOfATypeWithNullableUpperBound.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nArgumentsExpectedMessage.kt")
+        public void testNArgumentsExpectedMessage() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/checker/diagnosticsMessage/nArgumentsExpectedMessage.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("noSubstitutedTypeParameter.kt")
+        public void testNoSubstitutedTypeParameter() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/checker/diagnosticsMessage/noSubstitutedTypeParameter.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("operatorCallDiagnosticsOnInOperator.kt")
+        public void testOperatorCallDiagnosticsOnInOperator() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/checker/diagnosticsMessage/operatorCallDiagnosticsOnInOperator.kt");
+            doTest(fileName);
+        }
+    }
 }

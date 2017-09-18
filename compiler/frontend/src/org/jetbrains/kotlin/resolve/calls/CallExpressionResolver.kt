@@ -281,11 +281,11 @@ class CallExpressionResolver(
                 }
                 else when (resolutionResult.resultCode) {
                     NAME_NOT_FOUND, CANDIDATES_WITH_WRONG_RECEIVER -> false
-                    else -> true
+                    else -> !USE_NEW_INFERENCE || resolutionResult.isSuccess
                 }
             }
 
-    fun resolveSimpleName(
+    private fun resolveSimpleName(
             context: ExpressionTypingContext, expression: KtSimpleNameExpression
     ): OverloadResolutionResults<VariableDescriptor> {
         val temporaryForVariable = TemporaryTraceAndCache.create(context, "trace to resolve as local variable or property", expression)

@@ -29,7 +29,6 @@ import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptorImpl
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.name.isSubpackageOf
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.resolve.*
@@ -39,7 +38,6 @@ import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedValueArgument
 import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind
 import org.jetbrains.kotlin.resolve.constants.*
-import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameOrNull
 import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.TypeUtils
 import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
@@ -80,12 +78,12 @@ class ConstantExpressionEvaluator(
     internal fun resolveAnnotationArguments(
             resolvedCall: ResolvedCall<*>,
             trace: BindingTrace
-    ): Map<ValueParameterDescriptor, ConstantValue<*>> {
-        val arguments = HashMap<ValueParameterDescriptor, ConstantValue<*>>()
+    ): Map<Name, ConstantValue<*>> {
+        val arguments = HashMap<Name, ConstantValue<*>>()
         for ((parameterDescriptor, resolvedArgument) in resolvedCall.valueArguments.entries) {
             val value = getAnnotationArgumentValue(trace, parameterDescriptor, resolvedArgument)
             if (value != null) {
-                arguments.put(parameterDescriptor, value)
+                arguments.put(parameterDescriptor.name, value)
             }
         }
         return arguments
@@ -103,6 +101,8 @@ class ConstantExpressionEvaluator(
         val constants = compileTimeConstants.map { it.toConstantValue(constantType) }
 
         if (argumentsAsVararg) {
+            if (isArrayPassedInNamedForm(constants, resolvedArgument)) return constants.single()
+
             if (parameterDescriptor.declaresDefaultValue() && compileTimeConstants.isEmpty()) return null
 
             return constantValueFactory.createArrayValue(constants, parameterDescriptor.type)
@@ -111,6 +111,12 @@ class ConstantExpressionEvaluator(
             // we should actually get only one element, but just in case of getting many, we take the last one
             return constants.lastOrNull()
         }
+    }
+
+    private fun isArrayPassedInNamedForm(constants: List<ConstantValue<Any?>>, resolvedArgument: ResolvedValueArgument): Boolean {
+        val constant = constants.singleOrNull() ?: return false
+        val argument = resolvedArgument.arguments.singleOrNull() ?: return false
+        return KotlinBuiltIns.isArrayOrPrimitiveArray(constant.type) && argument.isNamed()
     }
 
     private fun checkCompileTimeConstant(
@@ -179,7 +185,7 @@ class ConstantExpressionEvaluator(
         return getArgumentExpressionsForArrayLikeCall(resolvedCall)
     }
 
-    fun getArgumentExpressionsForCollectionLiteralCall(
+    private fun getArgumentExpressionsForCollectionLiteralCall(
             expression: KtCollectionLiteralExpression,
             trace: BindingTrace): Pair<List<KtExpression>, KotlinType?>? {
         val resolvedCall = trace[COLLECTION_LITERAL_CALL, expression] ?: return null
@@ -473,9 +479,7 @@ private class ConstantExpressionEvaluatorVisitor(
 
     private fun evaluateCall(callExpression: KtExpression, receiverExpression: KtExpression, expectedType: KotlinType?): CompileTimeConstant<*>? {
         val resolvedCall = callExpression.getResolvedCall(trace.bindingContext) ?: return null
-
-        val descriptorFqName = resolvedCall.resultingDescriptor.fqNameOrNull() ?: return null
-        if (!descriptorFqName.isSubpackageOf(KotlinBuiltIns.BUILT_INS_PACKAGE_FQ_NAME)) return null
+        if (!KotlinBuiltIns.isUnderKotlinPackage(resolvedCall.resultingDescriptor)) return null
 
         val resultingDescriptorName = resolvedCall.resultingDescriptor.name
 

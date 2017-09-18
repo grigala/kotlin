@@ -77,7 +77,7 @@ fun PsiMember.getJavaOrKotlinMemberDescriptor(resolutionFacade: ResolutionFacade
     return when (callable) {
         is PsiMember -> getJavaMemberDescriptor(resolutionFacade)
         is KtDeclaration -> {
-            val descriptor = resolutionFacade?.resolveToDescriptor(callable) ?: callable.resolveToDescriptor()
+            val descriptor = resolutionFacade?.resolveToDescriptor(callable) ?: callable.unsafeResolveToDescriptor()
             if (descriptor is ClassDescriptor && this is PsiMethod) descriptor.unsubstitutedPrimaryConstructor else descriptor
         }
         else -> null
@@ -106,7 +106,7 @@ fun PsiClass.resolveToDescriptor(
 
 private fun PsiElement.getJavaDescriptorResolver(resolutionFacade: ResolutionFacade?): JavaDescriptorResolver? {
     if (resolutionFacade != null) {
-        return resolutionFacade.getFrontendService(this, JavaDescriptorResolver::class.java)
+        return resolutionFacade.tryGetFrontendService(this, JavaDescriptorResolver::class.java)
     }
     else {
         //TODO_R: should this work in scripts?
@@ -128,7 +128,7 @@ private fun JavaDescriptorResolver.resolveConstructor(constructor: JavaConstruct
 }
 
 private fun JavaDescriptorResolver.resolveField(field: JavaField): PropertyDescriptor? {
-    return getContainingScope(field)?.getContributedVariables(field.name, NoLookupLocation.FROM_IDE)?.findByJavaElement(field) as? PropertyDescriptor
+    return getContainingScope(field)?.getContributedVariables(field.name, NoLookupLocation.FROM_IDE)?.findByJavaElement(field)
 }
 
 private fun JavaDescriptorResolver.getContainingScope(member: JavaMember): MemberScope? {

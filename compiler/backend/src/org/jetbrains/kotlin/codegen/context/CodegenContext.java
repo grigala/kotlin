@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.load.java.JavaVisibilities;
-import org.jetbrains.kotlin.load.java.descriptors.SamConstructorDescriptor;
+import org.jetbrains.kotlin.load.java.sam.SamConstructorDescriptor;
 import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.storage.LockBasedStorageManager;
@@ -248,10 +248,9 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
             @NotNull PackageFragmentDescriptor descriptor,
             @NotNull Type multifileClassType,
             @NotNull Type filePartType,
-            @NotNull Type filePartInitializerType,
             @NotNull KtFile sourceFile
     ) {
-        return new MultifileClassPartContext(descriptor, this, multifileClassType, filePartType, filePartInitializerType, sourceFile);
+        return new MultifileClassPartContext(descriptor, this, multifileClassType, filePartType, sourceFile);
     }
 
     @NotNull
@@ -435,49 +434,44 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
         AccessorKey key = new AccessorKey(descriptor, superCallTarget);
 
         // NB should check for property accessor factory first (or change property accessor tracking under propertyAccessorFactory creation)
-        AccessorForPropertyDescriptorFactory propertyAccessorFactory = propertyAccessorFactories.get(key);
-        if (propertyAccessorFactory != null) {
-            return (D) propertyAccessorFactory.getOrCreateAccessorIfNeeded(getterAccessorRequired, setterAccessorRequired);
+        if (propertyAccessorFactories.containsKey(key)) {
+            return (D) propertyAccessorFactories.get(key).getOrCreateAccessorIfNeeded(getterAccessorRequired, setterAccessorRequired);
         }
-        AccessorForCallableDescriptor<?> accessor = accessors.get(key);
-        if (accessor != null) {
+
+        if (accessors.containsKey(key)) {
+            AccessorForCallableDescriptor<?> accessor = accessors.get(key);
             assert accessorKind == FieldAccessorKind.NORMAL ||
                    accessor instanceof AccessorForPropertyBackingField : "There is already exists accessor with isForBackingField = false in this context";
             return (D) accessor;
         }
+
         String nameSuffix = SyntheticAccessorUtilKt.getAccessorNameSuffix(descriptor, key.superCallLabelTarget, accessorKind);
+        AccessorForCallableDescriptor<?> accessor;
         if (descriptor instanceof SimpleFunctionDescriptor) {
-            accessor = new AccessorForFunctionDescriptor(
-                    (FunctionDescriptor) descriptor, contextDescriptor, superCallTarget, nameSuffix
-            );
+            accessor = new AccessorForFunctionDescriptor((FunctionDescriptor) descriptor, contextDescriptor, superCallTarget, nameSuffix);
         }
         else if (descriptor instanceof ClassConstructorDescriptor) {
             accessor = new AccessorForConstructorDescriptor((ClassConstructorDescriptor) descriptor, contextDescriptor, superCallTarget);
         }
         else if (descriptor instanceof PropertyDescriptor) {
             PropertyDescriptor propertyDescriptor = (PropertyDescriptor) descriptor;
-            switch (accessorKind) {
-                case NORMAL:
-                    propertyAccessorFactory = new AccessorForPropertyDescriptorFactory((PropertyDescriptor) descriptor, contextDescriptor,
-                                                                                       superCallTarget, nameSuffix);
-                    propertyAccessorFactories.put(key, propertyAccessorFactory);
+            if (accessorKind == FieldAccessorKind.NORMAL) {
+                AccessorForPropertyDescriptorFactory factory =
+                        new AccessorForPropertyDescriptorFactory(propertyDescriptor, contextDescriptor, superCallTarget, nameSuffix);
+                propertyAccessorFactories.put(key, factory);
 
-                    // Record worst case accessor for accessor methods generation.
-                    AccessorForPropertyDescriptor accessorWithGetterAndSetter =
-                            propertyAccessorFactory.getOrCreateAccessorWithSyntheticGetterAndSetter();
-                    accessors.put(key, accessorWithGetterAndSetter);
+                // Record worst case accessor for accessor methods generation.
+                accessors.put(key, factory.getOrCreateAccessorWithSyntheticGetterAndSetter());
 
-                    PropertyDescriptor accessorDescriptor =
-                            propertyAccessorFactory.getOrCreateAccessorIfNeeded(getterAccessorRequired, setterAccessorRequired);
-                    return (D) accessorDescriptor;
-                case IN_CLASS_COMPANION:
-                    accessor = new AccessorForPropertyBackingFieldInClassCompanion(propertyDescriptor, contextDescriptor,
-                                                                                   delegateType, nameSuffix);
-                    break;
-                case FIELD_FROM_LOCAL:
-                    accessor = new AccessorForPropertyBackingFieldFromLocal(propertyDescriptor, contextDescriptor, nameSuffix);
-                    break;
+                return (D) factory.getOrCreateAccessorIfNeeded(getterAccessorRequired, setterAccessorRequired);
             }
+
+            accessor = new AccessorForPropertyBackingField(
+                    propertyDescriptor, contextDescriptor, delegateType,
+                    accessorKind == FieldAccessorKind.IN_CLASS_COMPANION ? null : propertyDescriptor.getExtensionReceiverParameter(),
+                    accessorKind == FieldAccessorKind.IN_CLASS_COMPANION ? null : propertyDescriptor.getDispatchReceiverParameter(),
+                    nameSuffix, accessorKind
+            );
         }
         else {
             throw new UnsupportedOperationException("Do not know how to create accessor for descriptor " + descriptor);
@@ -575,7 +569,7 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
 
         if (descriptorContext == null &&
             JavaVisibilities.PROTECTED_STATIC_VISIBILITY == descriptor.getVisibility() &&
-            !(descriptor instanceof SamConstructorDescriptor)) {
+            (!(descriptor.getOriginal() instanceof SamConstructorDescriptor))) {
             //seems we need static receiver in resolved call
             descriptorContext = ExpressionCodegen.getParentContextSubclassOf((ClassDescriptor) enclosed, this);
             superCallTarget = (ClassDescriptor) enclosed;

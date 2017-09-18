@@ -63,15 +63,13 @@ abstract class ChangeFunctionSignatureFix(
         val argumentName = argument.getArgumentName()
         val expression = argument.getArgumentExpression()
 
-        if (argumentName != null) {
-            return KotlinNameSuggester.suggestNameByName(argumentName.asName.asString(), validator)
-        }
-        else if (expression != null) {
-            val bindingContext = expression.analyze(BodyResolveMode.PARTIAL)
-            return KotlinNameSuggester.suggestNamesByExpressionAndType(expression, null, bindingContext, validator, "param").first()
-        }
-        else {
-            return KotlinNameSuggester.suggestNameByName("param", validator)
+        return when {
+            argumentName != null -> KotlinNameSuggester.suggestNameByName(argumentName.asName.asString(), validator)
+            expression != null -> {
+                val bindingContext = expression.analyze(BodyResolveMode.PARTIAL)
+                KotlinNameSuggester.suggestNamesByExpressionAndType(expression, null, bindingContext, validator, "param").first()
+            }
+            else -> KotlinNameSuggester.suggestNameByName("param", validator)
         }
     }
 

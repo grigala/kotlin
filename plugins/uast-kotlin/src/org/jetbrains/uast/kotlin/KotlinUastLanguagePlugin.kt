@@ -59,19 +59,24 @@ class KotlinUastLanguagePlugin : UastLanguagePlugin {
     }
 
     override fun convertElement(element: PsiElement, parent: UElement?, requiredType: Class<out UElement>?): UElement? {
-        if (element !is PsiElement) return null
         return convertDeclaration(element, parent.toCallback(), requiredType)
                ?: KotlinConverter.convertPsiElement(element, parent.toCallback(), requiredType)
     }
     
     override fun convertElementWithParent(element: PsiElement, requiredType: Class<out UElement>?): UElement? {
-        if (element !is PsiElement) return null
         if (element is PsiFile) return convertDeclaration(element, null, requiredType)
         if (element is KtLightClassForFacade) return convertDeclaration(element, null, requiredType)
 
         val parentCallback = fun(): UElement? {
-            val parent = KotlinConverter.unwrapElements(element.parent) ?: return null
-            return convertElementWithParent(parent, null)
+            val parent = element.parent
+            val parentUnwrapped = KotlinConverter.unwrapElements(parent) ?: return null
+            if (parent is KtValueArgument && parentUnwrapped is KtAnnotationEntry) {
+                val argumentName = parent.getArgumentName()?.asName?.asString() ?: ""
+                return (convertElementWithParent(parentUnwrapped, null) as? UAnnotation)
+                        ?.attributeValues?.find { it.name == argumentName }
+            }
+            else
+                return convertElementWithParent(parentUnwrapped, null)
         }
         return convertDeclaration(element, parentCallback, requiredType)
                ?: KotlinConverter.convertPsiElement(element, parentCallback, requiredType)
@@ -168,7 +173,7 @@ class KotlinUastLanguagePlugin : UastLanguagePlugin {
 
                 is KtFile -> el<UFile> { KotlinUFile(original, this@KotlinUastLanguagePlugin) }
                 is FakeFileForLightClass -> el<UFile> { KotlinUFile(original.navigationElement, this@KotlinUastLanguagePlugin) }
-
+                is KtAnnotationEntry -> el<UAnnotation>(build(::KotlinUAnnotation))
                 else -> null
             }
         }
@@ -200,6 +205,7 @@ internal object KotlinConverter {
     internal tailrec fun unwrapElements(element: PsiElement?): PsiElement? = when (element) {
         is KtValueArgumentList -> unwrapElements(element.parent)
         is KtValueArgument -> unwrapElements(element.parent)
+        is KtDeclarationModifierList -> unwrapElements(element.parent)
         else -> element
     }
 
@@ -218,7 +224,7 @@ internal object KotlinConverter {
                 val parent = if (parentCallback == null) null else (parentCallback() ?: return null)
                 KotlinUDeclarationsExpression(parent).apply {
                     declarations = element.parameters.mapIndexed { i, p ->
-                        KotlinUVariable.create(UastKotlinPsiParameter.create(p, element, parent!!, i), this)
+                        KotlinUParameter(UastKotlinPsiParameter.create(p, element, parent!!, i), this)
                     }
                 }
             }
@@ -286,27 +292,27 @@ internal object KotlinConverter {
             is KtVariableDeclaration -> expr<UDeclarationsExpression>(build(::convertVariablesDeclaration))
 
             is KtStringTemplateExpression -> {
-                if (expression.entries.isEmpty()) {
-                    val parent = if (parentCallback == null) null else (parentCallback() ?: return null)
-                    expr<ULiteralExpression> { KotlinStringULiteralExpression(expression, parent, "") }
-                }
-                else if (expression.entries.size == 1)
-                    convertEntry(expression.entries[0], parentCallback, requiredType)
-                else {
-                    val parent = if (parentCallback == null) null else (parentCallback() ?: return null)
-                    expr<UExpression> { KotlinStringTemplateUPolyadicExpression(expression, parent) }
+                when {
+                    expression.entries.isEmpty() -> {
+                        val parent = if (parentCallback == null) null else (parentCallback() ?: return null)
+                        expr<ULiteralExpression> { KotlinStringULiteralExpression(expression, parent, "") }
+                    }
+                    expression.entries.size == 1 -> convertEntry(expression.entries[0], parentCallback, requiredType)
+                    else -> {
+                        val parent = if (parentCallback == null) null else (parentCallback() ?: return null)
+                        expr<UExpression> { KotlinStringTemplateUPolyadicExpression(expression, parent) }
+                    }
                 }
             }
             is KtDestructuringDeclaration -> expr<UDeclarationsExpression> {
                 val parent = if (parentCallback == null) null else (parentCallback() ?: return null)
                 KotlinUDeclarationsExpression(parent).apply {
-                    val tempAssignment = KotlinUVariable.create(UastKotlinPsiVariable.create(expression, parent!!), parent)
+                    val tempAssignment = KotlinULocalVariable(UastKotlinPsiVariable.create(expression, parent!!), parent)
                     val destructuringAssignments = expression.entries.mapIndexed { i, entry ->
                         val psiFactory = KtPsiFactory(expression.project)
                         val initializer = psiFactory.createAnalyzableExpression("${tempAssignment.name}.component${i + 1}()",
                                                                                 expression.containingFile)
-                        KotlinUVariable.create(UastKotlinPsiVariable.create(
-                                entry, tempAssignment.psi, parent, initializer), parent)
+                        KotlinULocalVariable(UastKotlinPsiVariable.create(entry, tempAssignment.psi, parent, initializer), parent)
                     }
                     declarations = listOf(tempAssignment) + destructuringAssignments
                 }
@@ -361,7 +367,6 @@ internal object KotlinConverter {
                 expr<UDeclarationsExpression>(build(::createLocalFunctionDeclaration))
             }
 
-
             else -> expr<UExpression>(build(::UnknownKotlinExpression))
         }}
     }
@@ -384,9 +389,7 @@ internal object KotlinConverter {
         val file = createAnalyzableFile("dummy.kt", text, context)
         val declarations = file.declarations
         assert(declarations.size == 1) { "${declarations.size} declarations in $text" }
-        @Suppress("UNCHECKED_CAST")
-        val result = declarations.first() as TDeclaration
-        return result
+        return declarations.first() as TDeclaration
     }
 
     internal fun KtContainerNode.getExpression(): KtExpression? =
@@ -398,6 +401,9 @@ private fun convertVariablesDeclaration(
         parent: UElement?
 ): UDeclarationsExpression {
     val parentPsiElement = parent?.psi
-    val variable = KotlinUVariable.create(UastKotlinPsiVariable.create(psi, parentPsiElement, parent!!), parent)
+    val variable = KotlinUAnnotatedLocalVariable(
+            UastKotlinPsiVariable.create(psi, parentPsiElement, parent!!), parent) { annotationParent ->
+        psi.annotationEntries.map { KotlinUAnnotation(it, annotationParent) }
+    }
     return KotlinUDeclarationsExpression(parent).apply { declarations = listOf(variable) }
 }

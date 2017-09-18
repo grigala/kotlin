@@ -17,7 +17,9 @@
 package org.jetbrains.kotlin.codegen.optimization.fixStack
 
 import com.intellij.util.containers.Stack
-import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil
+import org.jetbrains.kotlin.codegen.inline.isAfterInlineMarker
+import org.jetbrains.kotlin.codegen.inline.isBeforeInlineMarker
+import org.jetbrains.kotlin.codegen.inline.isMarkedReturn
 import org.jetbrains.kotlin.codegen.optimization.common.MethodAnalyzer
 import org.jetbrains.kotlin.codegen.optimization.common.OptimizationBasicInterpreter
 import org.jetbrains.kotlin.codegen.pseudoInsns.PseudoInsn
@@ -30,7 +32,8 @@ import org.jetbrains.org.objectweb.asm.tree.analysis.Interpreter
 internal class FixStackAnalyzer(
         owner: String,
         val method: MethodNode,
-        val context: FixStackContext
+        val context: FixStackContext,
+        private val skipBreakContinueGotoEdges: Boolean = true
 ) {
     companion object {
         // Stack size is always non-negative
@@ -63,17 +66,14 @@ internal class FixStackAnalyzer(
         }
     }
 
-    private val analyzer = InternalAnalyzer(owner, method, context)
+    private val analyzer = InternalAnalyzer(owner)
 
-    private class InternalAnalyzer(
-            owner: String,
-            method: MethodNode,
-            val context: FixStackContext
-    ) : MethodAnalyzer<BasicValue>(owner, method, OptimizationBasicInterpreter()) {
+    private inner class InternalAnalyzer(owner: String) : MethodAnalyzer<BasicValue>(owner, method, OptimizationBasicInterpreter()) {
         val spilledStacks = hashMapOf<AbstractInsnNode, List<BasicValue>>()
         var maxExtraStackSize = 0; private set
 
         override fun visitControlFlowEdge(insn: Int, successor: Int): Boolean {
+            if (!skipBreakContinueGotoEdges) return true
             val insnNode = instructions[insn]
             return !(insnNode is JumpInsnNode && context.breakContinueGotoNodes.contains(insnNode))
         }
@@ -103,11 +103,11 @@ internal class FixStackAnalyzer(
                         executeSaveStackBeforeTry(insn)
                     PseudoInsn.RESTORE_STACK_IN_TRY_CATCH.isa(insn) ->
                         executeRestoreStackInTryCatch(insn)
-                    InlineCodegenUtil.isBeforeInlineMarker(insn) ->
+                    isBeforeInlineMarker(insn) ->
                         executeBeforeInlineCallMarker(insn)
-                    InlineCodegenUtil.isAfterInlineMarker(insn) ->
+                    isAfterInlineMarker(insn) ->
                         executeAfterInlineCallMarker(insn)
-                    InlineCodegenUtil.isMarkedReturn(insn) -> {
+                    isMarkedReturn(insn) -> {
                         // KT-9644: might throw "Incompatible return type" on non-local return, in fact we don't care.
                         if (insn.opcode == Opcodes.RETURN) return
                     }
@@ -140,20 +140,20 @@ internal class FixStackAnalyzer(
             }
 
             override fun pop(): BasicValue {
-                if (extraStack.isNotEmpty()) {
-                    return extraStack.pop()
+                return if (extraStack.isNotEmpty()) {
+                    extraStack.pop()
                 }
                 else {
-                    return super.pop()
+                    super.pop()
                 }
             }
 
             override fun getStack(i: Int): BasicValue {
-                if (i < super.getMaxStackSize()) {
-                    return super.getStack(i)
+                return if (i < super.getMaxStackSize()) {
+                    super.getStack(i)
                 }
                 else {
-                    return extraStack[i - maxStackSize]
+                    extraStack[i - maxStackSize]
                 }
             }
         }

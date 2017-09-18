@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import com.google.common.collect.Lists
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.config.LanguageVersionSettings
+import org.jetbrains.kotlin.descriptors.ClassifierDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.descriptors.VariableDescriptorWithAccessors
@@ -27,11 +28,17 @@ import org.jetbrains.kotlin.diagnostics.Errors.*
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.resolve.BindingContext.*
+import org.jetbrains.kotlin.resolve.calls.USE_NEW_INFERENCE
+import org.jetbrains.kotlin.resolve.calls.callUtil.getCall
 import org.jetbrains.kotlin.resolve.calls.callUtil.getCalleeExpressionIfAny
+import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.calls.checkers.OperatorCallChecker
+import org.jetbrains.kotlin.resolve.calls.context.ContextDependency
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystem
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemCompleter
+import org.jetbrains.kotlin.resolve.calls.inference.components.NewTypeSubstitutor
 import org.jetbrains.kotlin.resolve.calls.inference.constraintPosition.ConstraintPositionKind.FROM_COMPLETER
+import org.jetbrains.kotlin.resolve.calls.inference.model.TypeVariableTypeConstructor
 import org.jetbrains.kotlin.resolve.calls.inference.toHandle
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.calls.results.OverloadResolutionResults
@@ -47,6 +54,8 @@ import org.jetbrains.kotlin.types.expressions.ExpressionTypingContext
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingServices
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils.createFakeExpressionOfType
 import org.jetbrains.kotlin.types.expressions.FakeCallResolver
+import org.jetbrains.kotlin.types.expressions.KotlinTypeInfo
+import org.jetbrains.kotlin.types.typeUtil.contains
 import org.jetbrains.kotlin.util.OperatorNameConventions
 
 //TODO: check for 'operator' modifier!
@@ -208,19 +217,30 @@ class DelegatedPropertyResolver(
             delegateExpression: KtExpression,
             delegateType: KotlinType,
             operatorRequired: Boolean = true
-    ) {
+    ): Boolean {
         val expectedFunction = renderCall(delegateOperatorCall, trace.bindingContext)
 
-        when {
+        val resolutionErrorFactory = when {
             delegateOperatorResults.isSingleResult ||
             delegateOperatorResults.isIncomplete ||
-            delegateOperatorResults.resultCode == OverloadResolutionResults.Code.MANY_FAILED_CANDIDATES ->
-                trace.report(DELEGATE_SPECIAL_FUNCTION_NONE_APPLICABLE.on(delegateExpression, expectedFunction, delegateOperatorResults.resultingCalls))
-            delegateOperatorResults.isAmbiguity ->
-                trace.report(DELEGATE_SPECIAL_FUNCTION_AMBIGUITY.on(delegateExpression, expectedFunction, delegateOperatorResults.resultingCalls))
-            else ->
-                if (operatorRequired) trace.report(DELEGATE_SPECIAL_FUNCTION_MISSING.on(delegateExpression, expectedFunction, delegateType))
+            delegateOperatorResults.resultCode == OverloadResolutionResults.Code.MANY_FAILED_CANDIDATES -> DELEGATE_SPECIAL_FUNCTION_NONE_APPLICABLE
+
+            delegateOperatorResults.isAmbiguity -> DELEGATE_SPECIAL_FUNCTION_AMBIGUITY
+
+            else -> null
         }
+
+        if (resolutionErrorFactory != null) {
+            trace.report(resolutionErrorFactory.on(delegateExpression, expectedFunction, delegateOperatorResults.resultingCalls))
+            return true
+        }
+
+        if (operatorRequired) {
+            trace.report(DELEGATE_SPECIAL_FUNCTION_MISSING.on(delegateExpression, expectedFunction, delegateType))
+            return true
+        }
+
+        return false
     }
 
     private fun resolveProvideDelegateMethod(
@@ -234,15 +254,24 @@ class DelegatedPropertyResolver(
         if (!isOperatorProvideDelegateSupported) return
         if (trace.bindingContext.get(BindingContext.PROVIDE_DELEGATE_CALL, propertyDescriptor) != null) return
 
+        val traceForProvideDelegate = TemporaryBindingTrace.create(trace, "trace to resolve provideDelegate method")
+
         val provideDelegateResults = getProvideDelegateMethod(propertyDescriptor, byExpression, byExpressionType,
-                                                            trace, initializerScope, dataFlowInfo)
+                                                            traceForProvideDelegate, initializerScope, dataFlowInfo)
         if (!provideDelegateResults.isSuccess) {
-            val call = trace.bindingContext.get(BindingContext.PROVIDE_DELEGATE_CALL, propertyDescriptor)
+            val call = traceForProvideDelegate.bindingContext.get(BindingContext.PROVIDE_DELEGATE_CALL, propertyDescriptor)
                        ?: throw AssertionError("'getDelegatedPropertyConventionMethod' didn't record a call")
-            reportDelegateOperatorResolutionError(trace, call, provideDelegateResults, byExpression, byExpressionType,
-                                                  operatorRequired = false)
+            val shouldCommitTrace = reportDelegateOperatorResolutionError(
+                    traceForProvideDelegate, call, provideDelegateResults, byExpression, byExpressionType, operatorRequired = false)
+
+            if (shouldCommitTrace) {
+                traceForProvideDelegate.commit()
+            }
+
             return
         }
+
+        traceForProvideDelegate.commit()
 
         val resultingDescriptor = provideDelegateResults.resultingDescriptor
         if (!resultingDescriptor.isOperator) {
@@ -275,7 +304,7 @@ class DelegatedPropertyResolver(
         else
             TypeUtils.NO_EXPECTED_TYPE
 
-        val context = ExpressionTypingContext.newContext(trace, delegateFunctionsScope, dataFlowInfo, expectedType)
+        val context = ExpressionTypingContext.newContext(trace, delegateFunctionsScope, dataFlowInfo, expectedType, languageVersionSettings)
 
         val hasThis = propertyDescriptor.extensionReceiverParameter != null || propertyDescriptor.dispatchReceiverParameter != null
 
@@ -310,8 +339,16 @@ class DelegatedPropertyResolver(
             initializerScope: LexicalScope,
             dataFlowInfo: DataFlowInfo
     ): OverloadResolutionResults<FunctionDescriptor> {
-        val expectedType = TypeUtils.NO_EXPECTED_TYPE
-        val context = ExpressionTypingContext.newContext(trace, initializerScope, dataFlowInfo, expectedType)
+        val context = ExpressionTypingContext.newContext(trace, initializerScope, dataFlowInfo, NO_EXPECTED_TYPE, languageVersionSettings)
+        return getProvideDelegateMethod(propertyDescriptor, delegateExpression, delegateExpressionType, context)
+    }
+
+    private fun getProvideDelegateMethod(
+            propertyDescriptor: VariableDescriptorWithAccessors,
+            delegateExpression: KtExpression,
+            delegateExpressionType: KotlinType,
+            context: ExpressionTypingContext
+    ): OverloadResolutionResults<FunctionDescriptor> {
         val propertyHasReceiver = propertyDescriptor.dispatchReceiverParameter != null
         val arguments = KtPsiFactory(delegateExpression, markGenerated = false).run {
             listOf(
@@ -320,11 +357,15 @@ class DelegatedPropertyResolver(
             )
         }
         val functionName = OperatorNameConventions.PROVIDE_DELEGATE
-        val receiver = ExpressionReceiver.create(delegateExpression, delegateExpressionType, trace.bindingContext)
+        val receiver = ExpressionReceiver.create(delegateExpression, delegateExpressionType, context.trace.bindingContext)
 
         val (provideDelegateCall, provideDelegateResults) =
                 fakeCallResolver.makeAndResolveFakeCallInContext(receiver, context, arguments, functionName, delegateExpression)
-        trace.record(BindingContext.PROVIDE_DELEGATE_CALL, propertyDescriptor, provideDelegateCall)
+
+        if (provideDelegateResults.isSingleResult) {
+            context.trace.record(BindingContext.DELEGATE_EXPRESSION_TO_PROVIDE_DELEGATE_CALL, delegateExpression, provideDelegateCall)
+        }
+        context.trace.record(BindingContext.PROVIDE_DELEGATE_CALL, propertyDescriptor, provideDelegateCall)
 
         return provideDelegateResults
     }
@@ -354,132 +395,193 @@ class DelegatedPropertyResolver(
             dataFlowInfo: DataFlowInfo
     ): KotlinType {
         val traceToResolveDelegatedProperty = TemporaryBindingTrace.create(trace, "Trace to resolve delegated property")
-        val calleeExpression = delegateExpression.getCalleeExpressionIfAny()
-        val completer = createConstraintSystemCompleter(property, variableDescriptor, delegateExpression, scopeForDelegate, trace, dataFlowInfo)
 
-        calleeExpression?.let {
+        val propertyExpectedType = if (property.typeReference != null) variableDescriptor.type else NO_EXPECTED_TYPE
+        val completer = ConstraintSystemCompleterImpl(property, propertyExpectedType, variableDescriptor, delegateExpression, scopeForDelegate, trace, dataFlowInfo)
+
+        delegateExpression.getCalleeExpressionIfAny()?.let {
             traceToResolveDelegatedProperty.record(CONSTRAINT_SYSTEM_COMPLETER, it, completer)
         }
 
-        val delegateType = expressionTypingServices.safeGetType(scopeForDelegate, delegateExpression, NO_EXPECTED_TYPE, dataFlowInfo, traceToResolveDelegatedProperty)
+        val expectedTypeByNewInference = completer.resolveViaNewInference(delegateExpression, variableDescriptor, scopeForDelegate, trace, dataFlowInfo)
+        val delegateType = expressionTypingServices.safeGetType(scopeForDelegate, delegateExpression, expectedTypeByNewInference ?: NO_EXPECTED_TYPE, dataFlowInfo, traceToResolveDelegatedProperty)
 
         traceToResolveDelegatedProperty.commit({ slice, _ -> slice !== CONSTRAINT_SYSTEM_COMPLETER }, true)
 
         return delegateType
     }
 
-    private fun createConstraintSystemCompleter(
-            property: KtProperty,
-            variableDescriptor: VariableDescriptorWithAccessors,
-            delegateExpression: KtExpression,
-            scopeForDelegate: LexicalScope,
-            trace: BindingTrace,
-            dataFlowInfo: DataFlowInfo
-    ): ConstraintSystemCompleter {
-        val expectedType = if (property.typeReference != null) variableDescriptor.type else NO_EXPECTED_TYPE
+    inner class ConstraintSystemCompleterImpl(
+                val property: KtProperty,
+                val expectedType: KotlinType,
+                val variableDescriptor: VariableDescriptorWithAccessors,
+                val delegateExpression: KtExpression,
+                val scopeForDelegate: LexicalScope,
+                val trace: BindingTrace,
+                val dataFlowInfo: DataFlowInfo
+        ): ConstraintSystemCompleter {
+        override fun completeConstraintSystem(constraintSystem: ConstraintSystem.Builder, resolvedCall: ResolvedCall<*>) {
+            val returnType = resolvedCall.candidateDescriptor.returnType ?: return
 
-        return object : ConstraintSystemCompleter {
-            override fun completeConstraintSystem(constraintSystem: ConstraintSystem.Builder, resolvedCall: ResolvedCall<*>) {
-                val returnType = resolvedCall.candidateDescriptor.returnType ?: return
+            val typeVariableSubstitutor = constraintSystem.typeVariableSubstitutors[resolvedCall.call.toHandle()]
+                                          ?: throw AssertionError("No substitutor in the system for call: " + resolvedCall.call)
 
-                val typeVariableSubstitutor = constraintSystem.typeVariableSubstitutors[resolvedCall.call.toHandle()]
-                                              ?: throw AssertionError("No substitutor in the system for call: " + resolvedCall.call)
+            val traceToResolveConventionMethods = TemporaryBindingTrace.create(trace, "Trace to resolve delegated property convention methods")
 
-                val traceToResolveConventionMethods = TemporaryBindingTrace.create(trace, "Trace to resolve delegated property convention methods")
+            val delegateType = getDelegateType(returnType, constraintSystem, typeVariableSubstitutor, traceToResolveConventionMethods)
 
-                val delegateType = getDelegateType(returnType, constraintSystem, typeVariableSubstitutor, traceToResolveConventionMethods)
-
-                val getValueResults = getGetSetValueMethod(
-                        variableDescriptor, delegateExpression, delegateType, traceToResolveConventionMethods, scopeForDelegate, dataFlowInfo,
-                        isGet = true, isComplete = false
-                )
-                if (conventionMethodFound(getValueResults)) {
-                    val getValueDescriptor = getValueResults.resultingDescriptor
-                    val getValueReturnType = getValueDescriptor.returnType
-                    if (getValueReturnType != null && !TypeUtils.noExpectedType(expectedType)) {
-                        val returnTypeInSystem = typeVariableSubstitutor.substitute(getValueReturnType, Variance.INVARIANT)
-                        if (returnTypeInSystem != null) {
-                            constraintSystem.addSubtypeConstraint(returnTypeInSystem, expectedType, FROM_COMPLETER.position())
-                        }
-                    }
-                    addConstraintForThisValue(constraintSystem, typeVariableSubstitutor, getValueDescriptor)
-                }
-                if (!variableDescriptor.isVar) return
-
-                // For the case: 'val v by d' (no declared type).
-                // When we add a constraint for 'set' method for delegated expression 'd' we use a type of the declared variable 'v'.
-                // But if the type isn't known yet, the constraint shouldn't be added (we try to infer the type of 'v' here as well).
-                if (variableDescriptor.returnType is DeferredType) return
-
-                val setValueResults = getGetSetValueMethod(
-                        variableDescriptor, delegateExpression, delegateType, traceToResolveConventionMethods, scopeForDelegate, dataFlowInfo,
-                        isGet = false, isComplete = false
-                )
-                if (conventionMethodFound(setValueResults)) {
-                    val setValueDescriptor = setValueResults.resultingDescriptor
-                    val setValueParameters = setValueDescriptor.valueParameters
-                    if (setValueParameters.size == 3) {
-                        if (!noExpectedType(expectedType)) {
-                            val thisParameterType = setValueParameters[2].type
-                            val substitutedThisParameterType = typeVariableSubstitutor.substitute(thisParameterType, Variance.INVARIANT)
-                            constraintSystem.addSubtypeConstraint(expectedType, substitutedThisParameterType, FROM_COMPLETER.position())
-                        }
-                        addConstraintForThisValue(constraintSystem, typeVariableSubstitutor, setValueDescriptor)
+            val getValueResults = getGetSetValueMethod(
+                    variableDescriptor, delegateExpression, delegateType, traceToResolveConventionMethods, scopeForDelegate, dataFlowInfo,
+                    isGet = true, isComplete = false
+            )
+            if (conventionMethodFound(getValueResults)) {
+                val getValueDescriptor = getValueResults.resultingDescriptor
+                val getValueReturnType = getValueDescriptor.returnType
+                if (getValueReturnType != null && !TypeUtils.noExpectedType(expectedType)) {
+                    val returnTypeInSystem = typeVariableSubstitutor.substitute(getValueReturnType, Variance.INVARIANT)
+                    if (returnTypeInSystem != null) {
+                        constraintSystem.addSubtypeConstraint(returnTypeInSystem, expectedType, FROM_COMPLETER.position())
                     }
                 }
+                addConstraintForThisValue(constraintSystem, typeVariableSubstitutor, getValueDescriptor)
             }
+            if (!variableDescriptor.isVar) return
 
-            private fun getDelegateType(
-                    byExpressionType: KotlinType,
-                    constraintSystem: ConstraintSystem.Builder,
-                    typeVariableSubstitutor: TypeSubstitutor,
-                    traceToResolveConventionMethods: TemporaryBindingTrace
-            ): KotlinType {
-                if (isOperatorProvideDelegateSupported) {
-                    val provideDelegateResults = getProvideDelegateMethod(
-                            variableDescriptor, delegateExpression, byExpressionType,
-                            traceToResolveConventionMethods, scopeForDelegate, dataFlowInfo
-                    )
-                    if (conventionMethodFound(provideDelegateResults)) {
-                        val provideDelegateDescriptor = provideDelegateResults.resultingDescriptor
-                        val provideDelegateReturnType = provideDelegateDescriptor.returnType
-                        if (provideDelegateDescriptor.isOperator) {
-                            addConstraintForThisValue(constraintSystem, typeVariableSubstitutor, provideDelegateDescriptor,
-                                                      dispatchReceiverOnly = true)
-                            return provideDelegateReturnType
-                                   ?: throw AssertionError("No return type fore 'provideDelegate' of ${delegateExpression.text}")
-                        }
+            // For the case: 'val v by d' (no declared type).
+            // When we add a constraint for 'set' method for delegated expression 'd' we use a type of the declared variable 'v'.
+            // But if the type isn't known yet, the constraint shouldn't be added (we try to infer the type of 'v' here as well).
+            if (variableDescriptor.returnType is DeferredType) return
+
+            val setValueResults = getGetSetValueMethod(
+                    variableDescriptor, delegateExpression, delegateType, traceToResolveConventionMethods, scopeForDelegate, dataFlowInfo,
+                    isGet = false, isComplete = false
+            )
+            if (conventionMethodFound(setValueResults)) {
+                val setValueDescriptor = setValueResults.resultingDescriptor
+                val setValueParameters = setValueDescriptor.valueParameters
+                if (setValueParameters.size == 3) {
+                    if (!noExpectedType(expectedType)) {
+                        val thisParameterType = setValueParameters[2].type
+                        val substitutedThisParameterType = typeVariableSubstitutor.substitute(thisParameterType, Variance.INVARIANT)
+                        constraintSystem.addSubtypeConstraint(expectedType, substitutedThisParameterType, FROM_COMPLETER.position())
                     }
+                    addConstraintForThisValue(constraintSystem, typeVariableSubstitutor, setValueDescriptor)
                 }
-
-                return byExpressionType
-            }
-
-            private fun conventionMethodFound(results: OverloadResolutionResults<FunctionDescriptor>): Boolean =
-                    results.isSuccess ||
-                    results.isSingleResult && results.resultCode == OverloadResolutionResults.Code.SINGLE_CANDIDATE_ARGUMENT_MISMATCH
-
-            private fun addConstraintForThisValue(
-                    constraintSystem: ConstraintSystem.Builder,
-                    typeVariableSubstitutor: TypeSubstitutor,
-                    resultingDescriptor: FunctionDescriptor,
-                    dispatchReceiverOnly: Boolean = false
-            ) {
-                val extensionReceiver = variableDescriptor.extensionReceiverParameter
-                val dispatchReceiver = variableDescriptor.dispatchReceiverParameter
-                val typeOfThis = (if (dispatchReceiverOnly) dispatchReceiver?.type else (extensionReceiver?.type ?: dispatchReceiver?.type))
-                                 ?: builtIns.nullableNothingType
-
-                val valueParameters = resultingDescriptor.valueParameters
-                if (valueParameters.isEmpty()) return
-                val valueParameterForThis = valueParameters[0]
-
-                constraintSystem.addSubtypeConstraint(
-                        typeOfThis,
-                        typeVariableSubstitutor.substitute(valueParameterForThis.type, Variance.INVARIANT),
-                        FROM_COMPLETER.position()
-                )
             }
         }
+
+        private fun getDelegateType(
+                byExpressionType: KotlinType,
+                constraintSystem: ConstraintSystem.Builder,
+                typeVariableSubstitutor: TypeSubstitutor,
+                traceToResolveConventionMethods: TemporaryBindingTrace
+        ): KotlinType {
+            if (isOperatorProvideDelegateSupported) {
+                val provideDelegateResults = getProvideDelegateMethod(
+                        variableDescriptor, delegateExpression, byExpressionType,
+                        traceToResolveConventionMethods, scopeForDelegate, dataFlowInfo
+                )
+                if (conventionMethodFound(provideDelegateResults)) {
+                    val provideDelegateDescriptor = provideDelegateResults.resultingDescriptor
+                    val provideDelegateReturnType = provideDelegateDescriptor.returnType
+                    if (provideDelegateDescriptor.isOperator) {
+                        addConstraintForThisValue(constraintSystem, typeVariableSubstitutor, provideDelegateDescriptor,
+                                                  dispatchReceiverOnly = true)
+                        return provideDelegateReturnType
+                               ?: throw AssertionError("No return type fore 'provideDelegate' of ${delegateExpression.text}")
+                    }
+                }
+            }
+
+            return byExpressionType
+        }
+
+        private fun conventionMethodFound(results: OverloadResolutionResults<FunctionDescriptor>): Boolean =
+                results.isSuccess ||
+                results.isSingleResult && results.resultCode == OverloadResolutionResults.Code.SINGLE_CANDIDATE_ARGUMENT_MISMATCH
+
+        private fun addConstraintForThisValue(
+                constraintSystem: ConstraintSystem.Builder,
+                typeVariableSubstitutor: TypeSubstitutor,
+                resultingDescriptor: FunctionDescriptor,
+                dispatchReceiverOnly: Boolean = false
+        ) {
+            val extensionReceiver = variableDescriptor.extensionReceiverParameter
+            val dispatchReceiver = variableDescriptor.dispatchReceiverParameter
+            val typeOfThis = (if (dispatchReceiverOnly) dispatchReceiver?.type else (extensionReceiver?.type ?: dispatchReceiver?.type))
+                             ?: builtIns.nullableNothingType
+
+            val valueParameters = resultingDescriptor.valueParameters
+            if (valueParameters.isEmpty()) return
+            val valueParameterForThis = valueParameters[0]
+
+            constraintSystem.addSubtypeConstraint(
+                    typeOfThis,
+                    typeVariableSubstitutor.substitute(valueParameterForThis.type, Variance.INVARIANT),
+                    FROM_COMPLETER.position()
+            )
+        }
+
+        fun resolveViaNewInference(
+                delegateExpression: KtExpression,
+                variableDescriptor: VariableDescriptorWithAccessors,
+                scopeForDelegate: LexicalScope,
+                trace: BindingTrace,
+                dataFlowInfo: DataFlowInfo
+        ): KotlinType? {
+            if (!USE_NEW_INFERENCE) return null
+
+            val traceToResolveConventionMethods = TemporaryBindingTrace.create(trace, "Trace to resolve delegated property convention methods")
+
+            val delegateType = expressionTypingServices.getTypeInfo(scopeForDelegate, delegateExpression, NO_EXPECTED_TYPE, dataFlowInfo,
+                                                                    traceToResolveConventionMethods, false, delegateExpression, ContextDependency.DEPENDENT)
+
+            val contextForProvideDelegate = ExpressionTypingContext.newContext(traceToResolveConventionMethods, scopeForDelegate, delegateType.dataFlowInfo,
+                                                                               NO_EXPECTED_TYPE, ContextDependency.DEPENDENT, StatementFilter.NONE,
+                                                                               languageVersionSettings)
+
+            val provideDelegateResults = getProvideDelegateMethod(
+                    variableDescriptor, delegateExpression, delegateType.type ?: return null, contextForProvideDelegate
+            )
+
+            var typeInfoForGetValueReceiver = delegateType
+            if (conventionMethodFound(provideDelegateResults)) {
+                val provideDelegateDescriptor = provideDelegateResults.resultingDescriptor
+                if (provideDelegateDescriptor.isOperator) {
+                    typeInfoForGetValueReceiver = KotlinTypeInfo(provideDelegateDescriptor.returnType,
+                                                                 provideDelegateResults.resultingCall.dataFlowInfoForArguments.resultInfo)
+                }
+            }
+
+            getGetSetValueMethod(
+                    variableDescriptor, delegateExpression, typeInfoForGetValueReceiver.type ?: return null,
+                    traceToResolveConventionMethods, scopeForDelegate, typeInfoForGetValueReceiver.dataFlowInfo,
+                    isGet = true, isComplete = true
+            )
+
+            if (variableDescriptor.isVar && variableDescriptor.returnType !is DeferredType) {
+                getGetSetValueMethod(
+                        variableDescriptor, delegateExpression, typeInfoForGetValueReceiver.type ?: return null,
+                        traceToResolveConventionMethods, scopeForDelegate, typeInfoForGetValueReceiver.dataFlowInfo,
+                        isGet = false, isComplete = true
+                )
+            }
+
+            val call = delegateExpression.getCall(traceToResolveConventionMethods.bindingContext)
+            val pretendReturnType = call.getResolvedCall(traceToResolveConventionMethods.bindingContext)?.resultingDescriptor?.returnType
+            val expectedType = pretendReturnType?.takeUnless { it.contains { it.constructor is TypeVariableTypeConstructor } }
+            return expectedType?.let { AnonymousTypeSubstitutor.safeSubstitute(it.unwrap()) }
+        }
+    }
+}
+
+private object AnonymousTypeSubstitutor : NewTypeSubstitutor {
+    override fun substituteNotNullTypeWithConstructor(constructor: TypeConstructor): UnwrappedType? {
+        val declarationDescriptor = constructor.declarationDescriptor
+        if (declarationDescriptor is ClassifierDescriptor && DescriptorUtils.isAnonymousObject(declarationDescriptor)) {
+            return constructor.supertypes.firstOrNull()?.unwrap()
+        }
+
+        return null
     }
 }

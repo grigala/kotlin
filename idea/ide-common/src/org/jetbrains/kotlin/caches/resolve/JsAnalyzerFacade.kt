@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.descriptors.PackagePartProvider
 import org.jetbrains.kotlin.descriptors.impl.CompositePackageFragmentProvider
 import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl
 import org.jetbrains.kotlin.frontend.di.createContainerForLazyResolve
+import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.js.resolve.JsPlatform
 import org.jetbrains.kotlin.resolve.BindingTraceContext
 import org.jetbrains.kotlin.resolve.TargetEnvironment
@@ -36,7 +37,7 @@ import org.jetbrains.kotlin.serialization.deserialization.DeserializationConfigu
 import org.jetbrains.kotlin.serialization.js.KotlinJavascriptSerializationUtil
 import org.jetbrains.kotlin.utils.KotlinJavascriptMetadataUtils
 
-object JsAnalyzerFacade : AnalyzerFacade<PlatformAnalysisParameters>() {
+object JsAnalyzerFacade : AnalyzerFacade() {
 
     override fun <M : ModuleInfo> createResolverForModule(
             moduleInfo: M,
@@ -46,6 +47,7 @@ object JsAnalyzerFacade : AnalyzerFacade<PlatformAnalysisParameters>() {
             platformParameters: PlatformAnalysisParameters,
             targetEnvironment: TargetEnvironment,
             resolverForProject: ResolverForProject<M>,
+            languageSettingsProvider: LanguageSettingsProvider,
             packagePartProvider: PackagePartProvider
     ): ResolverForModule {
         val (syntheticFiles, moduleContentScope) = moduleContent
@@ -58,8 +60,6 @@ object JsAnalyzerFacade : AnalyzerFacade<PlatformAnalysisParameters>() {
                 moduleInfo
         )
 
-        val languageVersionSettings = LanguageSettingsProvider.getInstance(project).getLanguageVersionSettings(moduleInfo, project)
-
         val container = createContainerForLazyResolve(
                 moduleContext,
                 declarationProviderFactory,
@@ -67,7 +67,7 @@ object JsAnalyzerFacade : AnalyzerFacade<PlatformAnalysisParameters>() {
                 JsPlatform,
                 TargetPlatformVersion.NoVersion,
                 targetEnvironment,
-                languageVersionSettings
+                languageSettingsProvider.getLanguageVersionSettings(moduleInfo, project)
         )
         var packageFragmentProvider = container.get<ResolveSession>().packageFragmentProvider
 
@@ -77,7 +77,8 @@ object JsAnalyzerFacade : AnalyzerFacade<PlatformAnalysisParameters>() {
                     .filter { it.version.isCompatible() }
                     .mapNotNull {
                         KotlinJavascriptSerializationUtil.readModule(
-                                it.body, moduleContext.storageManager, moduleDescriptor, container.get<DeserializationConfiguration>()
+                                it.body, moduleContext.storageManager, moduleDescriptor, container.get<DeserializationConfiguration>(),
+                                LookupTracker.DO_NOTHING
                         ).data
                     }
 

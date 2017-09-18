@@ -31,7 +31,6 @@ class ValByMapExtensionsTest {
 }
 
 
-
 class VarByMapExtensionsTest {
     val map = hashMapOf<String, Any?>("a" to "all", "b" to null, "c" to 1, "xProperty" to 1.0)
     val map2: MutableMap<String, CharSequence> = hashMapOf("a2" to "all")
@@ -54,12 +53,6 @@ class VarByMapExtensionsTest {
         assertEquals("all", a2)
         map2.remove("a2")
         assertEquals("empty", a2)
-
-        map["c"] = "string"
-        // fails { c }  // does not fail in JS due to KT-8135
-
-        map["a"] = null
-        a // fails { a } // does not fail due to KT-8135
 
         assertFailsWith<NoSuchElementException> { d }
         map["d"] = null

@@ -18,8 +18,6 @@ package org.jetbrains.kotlin.codegen;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Lists;
-import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.io.FileUtil;
@@ -27,6 +25,7 @@ import com.intellij.testFramework.TestDataFile;
 import kotlin.collections.ArraysKt;
 import kotlin.collections.CollectionsKt;
 import kotlin.io.FilesKt;
+import kotlin.script.experimental.dependencies.ScriptDependencies;
 import kotlin.text.Charsets;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -37,17 +36,17 @@ import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys;
 import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsKt;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
-import org.jetbrains.kotlin.cli.jvm.config.JvmContentRootsKt;
-import org.jetbrains.kotlin.test.clientserver.TestProxy;
 import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime;
 import org.jetbrains.kotlin.config.*;
 import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.psi.KtFile;
+import org.jetbrains.kotlin.script.ScriptDependenciesProvider;
 import org.jetbrains.kotlin.test.ConfigurationKind;
 import org.jetbrains.kotlin.test.InTextDirectivesUtils;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestJdkKind;
+import org.jetbrains.kotlin.test.clientserver.TestProxy;
 import org.jetbrains.kotlin.test.testFramework.KtUsefulTestCase;
 import org.jetbrains.kotlin.utils.ExceptionUtilsKt;
 import org.jetbrains.org.objectweb.asm.ClassReader;
@@ -84,14 +83,15 @@ import static org.jetbrains.kotlin.test.KotlinTestUtils.getAnnotationsJar;
 
 public abstract class CodegenTestCase extends KtUsefulTestCase {
     private static final String DEFAULT_TEST_FILE_NAME = "a_test";
-    public static final String DEFAULT_JVM_TARGET_FOR_TEST = "kotlin.test.default.jvm.target";
-    public static final String JAVA_COMPILATION_TARGET = "kotlin.test.java.compilation.target";
+    private static final String DEFAULT_JVM_TARGET_FOR_TEST = "kotlin.test.default.jvm.target";
+    private static final String JAVA_COMPILATION_TARGET = "kotlin.test.java.compilation.target";
     public static final String RUN_BOX_TEST_IN_SEPARATE_PROCESS_PORT = "kotlin.test.box.in.separate.process.port";
 
     protected KotlinCoreEnvironment myEnvironment;
     protected CodegenTestFiles myFiles;
     protected ClassFileFactory classFileFactory;
     protected GeneratedClassLoader initializedClassLoader;
+    protected File javaClassesOutputDirectory = null;
 
     protected ConfigurationKind configurationKind = ConfigurationKind.JDK_ONLY;
     private final String defaultJvmTarget = System.getProperty(DEFAULT_JVM_TARGET_FOR_TEST);
@@ -321,10 +321,7 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
 
     @NotNull
     protected String relativePath(@NotNull File file) {
-        String stringToCut = codegenTestBasePath();
-        String systemIndependentPath = file.getPath().replace(File.separatorChar, '/');
-        assert systemIndependentPath.startsWith(stringToCut) : "File path is not absolute: " + file;
-        return systemIndependentPath.substring(stringToCut.length());
+        return FilesKt.toRelativeString(file.getAbsoluteFile(), new File(codegenTestBasePath()).getAbsoluteFile());
     }
 
     @NotNull
@@ -358,18 +355,33 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
     }
 
     @NotNull
-    private URL[] getClassPathURLs() {
-        List<URL> urls = Lists.newArrayList();
-        for (File file : JvmContentRootsKt.getJvmClasspathRoots(myEnvironment.getConfiguration())) {
-            try {
-                urls.add(file.toURI().toURL());
-            }
-            catch (MalformedURLException e) {
-                throw new RuntimeException(e);
-            }
+    protected URL[] getClassPathURLs() {
+        List<File> files = new ArrayList<>();
+        if (javaClassesOutputDirectory != null) {
+            files.add(javaClassesOutputDirectory);
         }
 
-        return urls.toArray(new URL[urls.size()]);
+        ScriptDependenciesProvider externalImportsProvider =
+                ScriptDependenciesProvider.Companion.getInstance(myEnvironment.getProject());
+        myEnvironment.getSourceFiles().forEach(
+                file -> {
+                    ScriptDependencies dependencies = externalImportsProvider.getScriptDependencies(file);
+                    if (dependencies != null) {
+                        files.addAll(dependencies.getClasspath());
+                    }
+                }
+        );
+
+        try {
+            URL[] result = new URL[files.size()];
+            for (int i = 0; i < files.size(); i++) {
+                result[i] = files.get(i).toURI().toURL();
+            }
+            return result;
+        }
+        catch (MalformedURLException e) {
+            throw ExceptionUtilsKt.rethrow(e);
+        }
     }
 
     @NotNull
@@ -568,26 +580,10 @@ public abstract class CodegenTestCase extends KtUsefulTestCase {
 
             OutputUtilsKt.writeAllTo(classFileFactory, kotlinOut);
 
-            File output = CodegenTestUtil.compileJava(
+            javaClassesOutputDirectory = CodegenTestUtil.compileJava(
                     findJavaSourcesInDirectory(javaSourceDir), Collections.singletonList(kotlinOut.getPath()), javacOptions
             );
-            // Add javac output to classpath so that the created class loader can find generated Java classes
-            JvmContentRootsKt.addJvmClasspathRoot(configuration, output);
         }
-    }
-
-    @NotNull
-    protected static List<String> findJavaSourcesInDirectory(@NotNull File directory) {
-        List<String> javaFilePaths = new ArrayList<>(1);
-
-        FileUtil.processFilesRecursively(directory, file -> {
-            if (file.isFile() && FilesKt.getExtension(file).equals(JavaFileType.DEFAULT_EXTENSION)) {
-                javaFilePaths.add(file.getPath());
-            }
-            return true;
-        });
-
-        return javaFilePaths;
     }
 
 

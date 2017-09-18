@@ -54,6 +54,12 @@ public class DiagnosticsTestWithJsStdLibGenerated extends AbstractDiagnosticsTes
         doTest(fileName);
     }
 
+    @TestMetadata("platformDependent.kt")
+    public void testPlatformDependent() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/testsWithJsStdLib/platformDependent.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("runtimeAnnotations.kt")
     public void testRuntimeAnnotations() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/testsWithJsStdLib/runtimeAnnotations.kt");
@@ -311,6 +317,18 @@ public class DiagnosticsTestWithJsStdLibGenerated extends AbstractDiagnosticsTes
         @TestMetadata("typealiasExpandingToDynamic.kt")
         public void testTypealiasExpandingToDynamic() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/testsWithJsStdLib/dynamicTypes/typealiasExpandingToDynamic.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("typealiasWithAnnotatedDynamic.kt")
+        public void testTypealiasWithAnnotatedDynamic() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/testsWithJsStdLib/dynamicTypes/typealiasWithAnnotatedDynamic.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("typealiasWithDynamic.kt")
+        public void testTypealiasWithDynamic() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/diagnostics/testsWithJsStdLib/dynamicTypes/typealiasWithDynamic.kt");
             doTest(fileName);
         }
 

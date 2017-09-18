@@ -16,23 +16,22 @@
 
 package org.jetbrains.kotlin.codegen
 
-import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoots
+import org.jetbrains.kotlin.cli.jvm.config.addJvmClasspathRoot
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.test.ConfigurationKind
 import java.io.File
 
 abstract class AbstractBlackBoxAgainstJavaCodegenTest : AbstractBlackBoxCodegenTest() {
-    private lateinit var javaOutputDir: File
     override fun doMultiFileTest(wholeFile: File, files: MutableList<TestFile>, javaFilesDir: File?) {
-        javaOutputDir = javaFilesDir!!.let { directory ->
-            CodegenTestUtil.compileJava(findJavaSourcesInDirectory(directory), emptyList(), extractJavacOptions(files))
+        javaClassesOutputDirectory = javaFilesDir!!.let { directory ->
+            CodegenTestUtil.compileJava(CodegenTestUtil.findJavaSourcesInDirectory(directory), emptyList(), extractJavacOptions(files))
         }
 
         super.doMultiFileTest(wholeFile, files, null)
     }
 
     override fun updateConfiguration(configuration: CompilerConfiguration) {
-        configuration.addJvmClasspathRoots(listOf(javaOutputDir))
+        configuration.addJvmClasspathRoot(javaClassesOutputDirectory)
     }
 
     override fun extractConfigurationKind(files: MutableList<TestFile>): ConfigurationKind {

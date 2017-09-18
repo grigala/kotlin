@@ -87,16 +87,15 @@ class KotlinChangeSignatureDialog(
     override fun getRowPresentation(item: ParameterTableModelItemBase<KotlinParameterInfo>, selected: Boolean, focused: Boolean): JComponent? {
         val panel = JPanel(BorderLayout())
 
-        val valOrVar: String
-        if (myMethod.kind === Kind.PRIMARY_CONSTRUCTOR) {
-            valOrVar = when (item.parameter.valOrVar) {
+        val valOrVar = if (myMethod.kind === Kind.PRIMARY_CONSTRUCTOR) {
+            when (item.parameter.valOrVar) {
                 KotlinValVar.None -> "    "
                 KotlinValVar.Val -> "val "
                 KotlinValVar.Var -> "var "
             }
         }
         else {
-            valOrVar = ""
+            ""
         }
 
         val parameterName = getPresentationName(item)
@@ -148,8 +147,8 @@ class KotlinChangeSignatureDialog(
     override fun isListTableViewSupported() = true
 
     override fun isEmptyRow(row: ParameterTableModelItemBase<KotlinParameterInfo>): Boolean {
-        if (!row.parameter.name.isNullOrEmpty()) return false
-        if (!row.parameter.typeText.isNullOrEmpty()) return false
+        if (!row.parameter.name.isEmpty()) return false
+        if (!row.parameter.typeText.isEmpty()) return false
         return true
     }
 
@@ -248,16 +247,18 @@ class KotlinChangeSignatureDialog(
                 return JBTableRow { column ->
                     val columnInfo = parametersTableModel.columnInfos[column]
 
-                    if (KotlinPrimaryConstructorParameterTableModel.isValVarColumn(columnInfo))
-                        (components[column] as @Suppress("NO_TYPE_ARGUMENTS_ON_RHS") JComboBox).selectedItem
-                    else if (KotlinCallableParameterTableModel.isTypeColumn(columnInfo))
-                        item.typeCodeFragment
-                    else if (KotlinCallableParameterTableModel.isNameColumn(columnInfo))
-                        (components[column] as EditorTextField).text
-                    else if (KotlinCallableParameterTableModel.isDefaultValueColumn(columnInfo))
-                        item.defaultValueCodeFragment
-                    else
-                        null
+                    when {
+                        KotlinPrimaryConstructorParameterTableModel.isValVarColumn(columnInfo) ->
+                            (components[column] as @Suppress("NO_TYPE_ARGUMENTS_ON_RHS") JComboBox).selectedItem
+                        KotlinCallableParameterTableModel.isTypeColumn(columnInfo) ->
+                            item.typeCodeFragment
+                        KotlinCallableParameterTableModel.isNameColumn(columnInfo) ->
+                            (components[column] as EditorTextField).text
+                        KotlinCallableParameterTableModel.isDefaultValueColumn(columnInfo) ->
+                            item.defaultValueCodeFragment
+                        else ->
+                            null
+                    }
                 }
             }
 
@@ -291,9 +292,11 @@ class KotlinChangeSignatureDialog(
 
             override fun getPreferredFocusedComponent(): JComponent {
                 val me = mouseEvent
-                val index = if (me != null)
-                    getEditorIndex(me.point.getX().toInt())
-                else if (myMethod.kind === Kind.PRIMARY_CONSTRUCTOR) 1 else 0
+                val index = when {
+                    me != null -> getEditorIndex(me.point.getX().toInt())
+                    myMethod.kind === Kind.PRIMARY_CONSTRUCTOR -> 1
+                    else -> 0
+                }
                 val component = components[index]
                 return if (component is EditorTextField) component.focusTarget else component
             }
@@ -390,7 +393,7 @@ class KotlinChangeSignatureDialog(
         return KotlinChangeSignatureProcessor(myProject, changeInfo, commandName ?: title)
     }
 
-    fun getMethodDescriptor(): KotlinMethodDescriptor = myMethod
+    private fun getMethodDescriptor(): KotlinMethodDescriptor = myMethod
 
     override fun getSelectedIdx(): Int {
         return myMethod.parameters.withIndex().firstOrNull { it.value.isNewParameter }?.index

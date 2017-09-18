@@ -17,17 +17,21 @@
 package org.jetbrains.kotlin.codegen.coroutines
 
 import com.intellij.util.containers.Stack
+import org.jetbrains.kotlin.backend.common.CodegenUtil
 import org.jetbrains.kotlin.codegen.AsmUtil
 import org.jetbrains.kotlin.codegen.ClassBuilder
 import org.jetbrains.kotlin.codegen.StackValue
 import org.jetbrains.kotlin.codegen.TransformationMethodVisitor
-import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil
 import org.jetbrains.kotlin.codegen.inline.MaxStackFrameSizeAndLocalsCalculator
+import org.jetbrains.kotlin.codegen.inline.isAfterSuspendMarker
+import org.jetbrains.kotlin.codegen.inline.isBeforeSuspendMarker
+import org.jetbrains.kotlin.codegen.inline.isInlineMarker
 import org.jetbrains.kotlin.codegen.optimization.DeadCodeEliminationMethodTransformer
 import org.jetbrains.kotlin.codegen.optimization.common.*
 import org.jetbrains.kotlin.codegen.optimization.fixStack.FixStackMethodTransformer
 import org.jetbrains.kotlin.codegen.optimization.fixStack.top
 import org.jetbrains.kotlin.codegen.optimization.transformer.MethodTransformer
+import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin
 import org.jetbrains.kotlin.utils.sure
@@ -50,6 +54,7 @@ class CoroutineTransformerMethodVisitor(
         private val containingClassInternalName: String,
         obtainClassBuilderForCoroutineState: () -> ClassBuilder,
         private val isForNamedFunction: Boolean,
+        private val element: KtElement,
         // It's only matters for named functions, may differ from '!isStatic(access)' in case of DefaultImpls
         private val needDispatchReceiver: Boolean = false,
         // May differ from containingClassInternalName in case of DefaultImpls
@@ -58,9 +63,9 @@ class CoroutineTransformerMethodVisitor(
 
     private val classBuilderForCoroutineState: ClassBuilder by lazy(obtainClassBuilderForCoroutineState)
 
-    private val continuationIndex = if (isForNamedFunction) getLastParameterIndex(desc, access) else 0
-    var dataIndex = if (isForNamedFunction) -1 else 1
-    var exceptionIndex = if (isForNamedFunction) -1 else 2
+    private var continuationIndex = if (isForNamedFunction) -1 else 0
+    private var dataIndex = if (isForNamedFunction) -1 else 1
+    private var exceptionIndex = if (isForNamedFunction) -1 else 2
 
     override fun performTransformations(methodNode: MethodNode) {
         val suspensionPoints = collectSuspensionPoints(methodNode)
@@ -78,6 +83,7 @@ class CoroutineTransformerMethodVisitor(
 
             dataIndex = methodNode.maxLocals++
             exceptionIndex = methodNode.maxLocals++
+            continuationIndex = methodNode.maxLocals++
 
             prepareMethodNodePreludeForNamedFunction(methodNode)
         }
@@ -106,11 +112,16 @@ class CoroutineTransformerMethodVisitor(
         methodNode.instructions.apply {
             val startLabel = LabelNode()
             val defaultLabel = LabelNode()
-            val firstToInsertBefore = actualCoroutineStart
+            val tableSwitchLabel = LabelNode()
+            val lineNumber = CodegenUtil.getLineNumberForElement(element, false) ?: 0
+
             // tableswitch(this.label)
-            insertBefore(firstToInsertBefore,
+            insertBefore(actualCoroutineStart,
                          insnListOf(
                                  *withInstructionAdapter { loadCoroutineSuspendedMarker() }.toArray(),
+                                 tableSwitchLabel,
+                                 // Allow debugger to stop on enter into suspend function
+                                 LineNumberNode(lineNumber, tableSwitchLabel),
                                  VarInsnNode(Opcodes.ASTORE, suspendMarkerVarIndex),
                                  VarInsnNode(Opcodes.ALOAD, continuationIndex),
                                  createInsnForReadingLabel(),
@@ -184,6 +195,13 @@ class CoroutineTransformerMethodVisitor(
 
     private fun prepareMethodNodePreludeForNamedFunction(methodNode: MethodNode) {
         val objectTypeForState = Type.getObjectType(classBuilderForCoroutineState.thisName)
+        val continuationArgumentIndex = getLastParameterIndex(methodNode.desc, methodNode.access)
+        methodNode.instructions.asSequence().filterIsInstance<VarInsnNode>().forEach {
+            if (it.`var` != continuationArgumentIndex) return@forEach
+            assert(it.opcode == Opcodes.ALOAD) { "Only ALOADs are allowed for continuation arguments" }
+            it.`var` = continuationIndex
+        }
+
         methodNode.instructions.insert(withInstructionAdapter {
             val createStateInstance = Label()
             val afterCoroutineStateCreated = Label()
@@ -202,11 +220,12 @@ class CoroutineTransformerMethodVisitor(
             // - Otherwise it's still can be a recursive call. To check it's not the case we set the last bit in the label in
             // `doResume` just before calling the suspend function (see kotlin.coroutines.experimental.jvm.internal.CoroutineImplForNamedFunction).
             // So, if it's set we're in continuation.
-            visitVarInsn(Opcodes.ALOAD, continuationIndex)
+
+            visitVarInsn(Opcodes.ALOAD, continuationArgumentIndex)
             instanceOf(objectTypeForState)
             ifeq(createStateInstance)
 
-            visitVarInsn(Opcodes.ALOAD, continuationIndex)
+            visitVarInsn(Opcodes.ALOAD, continuationArgumentIndex)
             checkcast(objectTypeForState)
             visitVarInsn(Opcodes.ASTORE, continuationIndex)
 
@@ -293,7 +312,7 @@ class CoroutineTransformerMethodVisitor(
         // It doesn't introduce an additional state to the corresponding coroutine's FSM.
         suspensionPoints.forEach {
             if (dceResult.isAlive(it.suspensionCallBegin) && dceResult.isRemoved(it.suspensionCallEnd)) {
-                methodNode.instructions.remove(it.suspensionCallBegin)
+                it.removeBeforeSuspendMarker(methodNode)
             }
         }
 
@@ -302,17 +321,15 @@ class CoroutineTransformerMethodVisitor(
 
     private fun collectSuspensionPoints(methodNode: MethodNode): MutableList<SuspensionPoint> {
         val suspensionPoints = mutableListOf<SuspensionPoint>()
-        val beforeSuspensionPointMarkerStack = Stack<MethodInsnNode>()
+        val beforeSuspensionPointMarkerStack = Stack<AbstractInsnNode>()
 
         for (methodInsn in methodNode.instructions.toArray().filterIsInstance<MethodInsnNode>()) {
-            if (methodInsn.owner != COROUTINE_MARKER_OWNER) continue
-
-            when (methodInsn.name) {
-                BEFORE_SUSPENSION_POINT_MARKER_NAME -> {
-                    beforeSuspensionPointMarkerStack.add(methodInsn)
+            when {
+                isBeforeSuspendMarker(methodInsn) -> {
+                    beforeSuspensionPointMarkerStack.add(methodInsn.previous)
                 }
 
-                AFTER_SUSPENSION_POINT_MARKER_NAME -> {
+                isAfterSuspendMarker(methodInsn) -> {
                     suspensionPoints.add(SuspensionPoint(beforeSuspensionPointMarkerStack.pop(), methodInsn))
                 }
             }
@@ -326,10 +343,8 @@ class CoroutineTransformerMethodVisitor(
     private fun dropSuspensionMarkers(methodNode: MethodNode, suspensionPoints: List<SuspensionPoint>) {
         // Drop markers
         suspensionPoints.forEach {
-            // before-marker
-            methodNode.instructions.remove(it.suspensionCallBegin)
-            // after-marker
-            methodNode.instructions.remove(it.suspensionCallEnd)
+            it.removeBeforeSuspendMarker(methodNode)
+            it.removeAfterSuspendMarker(methodNode)
         }
     }
 
@@ -463,6 +478,8 @@ class CoroutineTransformerMethodVisitor(
     ): LabelNode {
         val continuationLabel = LabelNode()
         val continuationLabelAfterLoadedResult = LabelNode()
+        val suspendElementLineNumber = CodegenUtil.getLineNumberForElement(element, false) ?: 0
+        val nextLineNumberNode = suspension.suspensionCallEnd.findNextOrNull { it is LineNumberNode } as? LineNumberNode
         with(methodNode.instructions) {
             // Save state
             insertBefore(suspension.suspensionCallBegin,
@@ -479,6 +496,10 @@ class CoroutineTransformerMethodVisitor(
                 ifacmpne(continuationLabelAfterLoadedResult.label)
 
                 // Exit
+                val returnLabel = LabelNode()
+                visitLabel(returnLabel.label)
+                // Special line number to stop in debugger before suspend return
+                visitLineNumber(suspendElementLineNumber, returnLabel.label)
                 load(suspendMarkerVarIndex, AsmTypes.OBJECT_TYPE)
                 areturn(AsmTypes.OBJECT_TYPE)
                 // Mark place for continuation
@@ -503,7 +524,18 @@ class CoroutineTransformerMethodVisitor(
                 load(dataIndex, AsmTypes.OBJECT_TYPE)
 
                 visitLabel(continuationLabelAfterLoadedResult.label)
+
+                // Extend next instruction linenumber. Can't use line number of suspension point here because both non-suspended execution
+                // and re-entering after suspension passes this label.
+                val afterSuspensionPointLineNumber = nextLineNumberNode?.line ?: suspendElementLineNumber
+                visitLineNumber(afterSuspensionPointLineNumber, continuationLabelAfterLoadedResult.label)
             })
+
+            if (nextLineNumberNode != null) {
+                // Remove the line number instruction as it now covered with line number on continuation label.
+                // If both linenumber are present in bytecode, debugger will trigger line specific events twice.
+                remove(nextLineNumberNode)
+            }
         }
 
         return continuationLabel
@@ -589,18 +621,30 @@ private fun Type.normalize() =
 
 /**
  * Suspension call may consists of several instructions:
- * INVOKESTATIC beforeSuspensionMarker
+ * ICONST_0
+ * INVOKESTATIC InlineMarker.mark()
  * INVOKEVIRTUAL suspensionMethod()Ljava/lang/Object; // actually it could be some inline method instead of plain call
  * CHECKCAST Type
- * INVOKESTATIC afterSuspensionMarker
+ * ICONST_1
+ * INVOKESTATIC InlineMarker.mark()
  */
 private class SuspensionPoint(
-        // INVOKESTATIC beforeSuspensionMarker
+        // ICONST_0
         val suspensionCallBegin: AbstractInsnNode,
-        // INVOKESTATIC afterSuspensionMarker
+        // INVOKESTATIC InlineMarker.mark()
         val suspensionCallEnd: AbstractInsnNode
 ) {
     lateinit var tryCatchBlocksContinuationLabel: LabelNode
+
+    fun removeBeforeSuspendMarker(methodNode: MethodNode) {
+        methodNode.instructions.remove(suspensionCallBegin.next)
+        methodNode.instructions.remove(suspensionCallBegin)
+    }
+
+    fun removeAfterSuspendMarker(methodNode: MethodNode) {
+        methodNode.instructions.remove(suspensionCallEnd.previous)
+        methodNode.instructions.remove(suspensionCallEnd)
+    }
 }
 
 private fun getLastParameterIndex(desc: String, access: Int) =
@@ -681,7 +725,7 @@ private fun findSafelyReachableReturns(methodNode: MethodNode): Array<Set<Int>?>
         }
 
         if (!insn.isMeaningful || insn.opcode in SAFE_OPCODES || insn.isInvisibleInDebugVarInsn(methodNode) ||
-            InlineCodegenUtil.isInlineMarker(insn)) {
+            isInlineMarker(insn)) {
             setOf()
         }
         else null
@@ -693,6 +737,7 @@ private fun findSafelyReachableReturns(methodNode: MethodNode): Array<Set<Int>?>
         for (index in 0 until insns.size()) {
             if (insns[index].opcode == Opcodes.ARETURN) continue
 
+            @Suppress("RemoveExplicitTypeArguments")
             val newResult =
                     controlFlowGraph
                             .getSuccessorsIndices(index).plus(index)
@@ -720,4 +765,4 @@ private fun AbstractInsnNode?.isInvisibleInDebugVarInsn(methodNode: MethodNode):
 }
 
 private val SAFE_OPCODES =
-        ((Opcodes.DUP..Opcodes.DUP2_X2) + Opcodes.POP + Opcodes.POP2 + (Opcodes.IFEQ..Opcodes.GOTO)).toSet()
+        ((Opcodes.DUP..Opcodes.DUP2_X2) + Opcodes.NOP + Opcodes.POP + Opcodes.POP2 + (Opcodes.IFEQ..Opcodes.GOTO)).toSet()

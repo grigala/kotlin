@@ -60,6 +60,12 @@ public class GenerateHashCodeAndEqualsActionTestGenerated extends AbstractGenera
         doTest(fileName);
     }
 
+    @TestMetadata("dataClassHasArrayProperty.kt")
+    public void testDataClassHasArrayProperty() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/dataClassHasArrayProperty.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("enum.kt")
     public void testEnum() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/enum.kt");
@@ -102,6 +108,18 @@ public class GenerateHashCodeAndEqualsActionTestGenerated extends AbstractGenera
         doTest(fileName);
     }
 
+    @TestMetadata("multipleVarsCommon.kt")
+    public void testMultipleVarsCommon() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/multipleVarsCommon.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("multipleVarsJS.kt")
+    public void testMultipleVarsJS() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/multipleVarsJS.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("multipleVarsNullable.kt")
     public void testMultipleVarsNullable() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/multipleVarsNullable.kt");
@@ -126,15 +144,21 @@ public class GenerateHashCodeAndEqualsActionTestGenerated extends AbstractGenera
         doTest(fileName);
     }
 
-    @TestMetadata("noVarsForced.kt")
-    public void testNoVarsForced() throws Exception {
-        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/noVarsForced.kt");
+    @TestMetadata("noVarsCommon.kt")
+    public void testNoVarsCommon() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/noVarsCommon.kt");
         doTest(fileName);
     }
 
-    @TestMetadata("noVarsForcedWithSuperClass.kt")
-    public void testNoVarsForcedWithSuperClass() throws Exception {
-        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/noVarsForcedWithSuperClass.kt");
+    @TestMetadata("noVarsJS.kt")
+    public void testNoVarsJS() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/noVarsJS.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("noVarsWithSuperClass.kt")
+    public void testNoVarsWithSuperClass() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/codeInsight/generate/equalsWithHashCode/noVarsWithSuperClass.kt");
         doTest(fileName);
     }
 

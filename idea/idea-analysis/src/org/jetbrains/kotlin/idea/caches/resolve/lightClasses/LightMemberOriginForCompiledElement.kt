@@ -52,6 +52,11 @@ data class LightMemberOriginForCompiledField(val psiField: PsiField, val file: K
         return LightMemberOriginForCompiledField(psiField.copy() as PsiField, file)
     }
 
+    override fun isEquivalentTo(other: LightMemberOrigin?): Boolean {
+        if (other !is LightMemberOriginForCompiledField) return false
+        return psiField.isEquivalentTo(other.psiField)
+    }
+
     override val originalElement: KtDeclaration? by lazyPub {
         val desc = MapPsiToAsmDesc.typeDesc(psiField.type)
         val signature = MemberSignature.fromFieldNameAndDesc(psiField.name!!, desc)
@@ -60,6 +65,11 @@ data class LightMemberOriginForCompiledField(val psiField: PsiField, val file: K
 }
 
 data class LightMemberOriginForCompiledMethod(val psiMethod: PsiMethod, val file: KtClsFile) : LightMemberOriginForCompiledElement {
+    override fun isEquivalentTo(other: LightMemberOrigin?): Boolean {
+        if (other !is LightMemberOriginForCompiledMethod) return false
+        return psiMethod.isEquivalentTo(other.psiMethod)
+    }
+
     override fun copy(): LightMemberOrigin {
         return LightMemberOriginForCompiledMethod(psiMethod.copy() as PsiMethod, file)
     }
@@ -82,7 +92,7 @@ private fun findDeclarationInCompiledFile(file: KtClsFile, member: PsiMember, si
             file
         else {
             val topClassOrObject = file.declarations.singleOrNull() as? KtClassOrObject
-            relativeClassName.fold<Name, KtClassOrObject?>(topClassOrObject) { classOrObject, name ->
+            relativeClassName.fold(topClassOrObject) { classOrObject, name ->
                 classOrObject?.declarations?.singleOrNull { it.name == name.asString() } as? KtClassOrObject
             }
         }
@@ -113,7 +123,7 @@ private fun PsiMember.relativeClassName(): List<Name> {
 }
 
 private fun ClassDescriptor.relativeClassName(): List<Name> {
-    return classId!!.relativeClassName.pathSegments().drop(1).orEmpty()
+    return classId!!.relativeClassName.pathSegments().drop(1)
 }
 
 private fun ClassDescriptor.desc(): String = "L" + JvmClassName.byClassId(classId!!).internalName + ";"

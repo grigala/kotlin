@@ -52,6 +52,8 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.findClassAcrossModuleDependencies
+import org.jetbrains.kotlin.diagnostics.DiagnosticFactory
+import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.diagnostics.Severity
 import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages
 import org.jetbrains.kotlin.idea.KotlinLanguage
@@ -61,9 +63,11 @@ import org.jetbrains.kotlin.idea.core.quoteSegmentsIfNeeded
 import org.jetbrains.kotlin.idea.debugger.DebuggerUtils
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches.CompiledDataDescriptor
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches.ParametersDescriptor
+import org.jetbrains.kotlin.idea.debugger.evaluate.classLoading.ClassToLoad
 import org.jetbrains.kotlin.idea.debugger.evaluate.compilingEvaluator.loadClasses
+import org.jetbrains.kotlin.idea.debugger.evaluate.compilingEvaluator.loadClassesSafely
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.ExtractionResult
-import org.jetbrains.kotlin.idea.runInReadActionWithWriteActionPriority
+import org.jetbrains.kotlin.idea.runInReadActionWithWriteActionPriorityWithPCE
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.idea.util.attachment.attachmentByPsiFile
 import org.jetbrains.kotlin.idea.util.attachment.mergeAttachments
@@ -71,13 +75,16 @@ import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.codeFragmentUtil.debugTypeInfo
 import org.jetbrains.kotlin.psi.codeFragmentUtil.suppressDiagnosticsInDebugMode
+import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 import org.jetbrains.kotlin.resolve.AnalyzingUtils
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.BindingTrace
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
+import org.jetbrains.kotlin.resolve.jvm.diagnostics.ErrorsJvm
 import org.jetbrains.org.objectweb.asm.*
 import org.jetbrains.org.objectweb.asm.Opcodes.ASM5
 import org.jetbrains.org.objectweb.asm.Type
+import org.jetbrains.org.objectweb.asm.tree.ClassNode
 import org.jetbrains.org.objectweb.asm.tree.MethodNode
 import java.util.*
 
@@ -134,14 +141,37 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                 isCompiledDataFromCache = false
                 extractAndCompile(fragment, position, context)
             }
-            val result = runEval4j(context, compiledData)
+
+            val classLoaderHandler = loadClassesSafely(context, compiledData.classes)
+
+            val result = if (classLoaderHandler != null) {
+                try {
+                    evaluateWithCompilation(context, compiledData) ?: runEval4j(context, compiledData)
+                } finally {
+                    classLoaderHandler.dispose()
+                }
+            }
+            else {
+                runEval4j(context, compiledData)
+            }
 
             // If bytecode was taken from cache and exception was thrown - recompile bytecode and run eval4j again
             if (isCompiledDataFromCache && result is ExceptionThrown && result.kind == ExceptionThrown.ExceptionKind.BROKEN_CODE) {
-                return runEval4j(context, extractAndCompile(codeFragment, sourcePosition, context)).toJdiValue(context)
+                // We need only lambda classes here cause we using only eval4j evaluation method
+                val classLoaderHandler = loadClasses(context, compiledData.classes.drop(1))
+
+                try {
+                    return runEval4j(context, extractAndCompile(codeFragment, sourcePosition, context)).toJdiValue(context)
+                } finally {
+                    classLoaderHandler?.dispose()
+                }
             }
 
-            return result.toJdiValue(context)
+            return if (result is InterpreterResult) {
+                result.toJdiValue(context)
+            } else {
+                result
+            }
         }
         catch(e: EvaluateException) {
             throw e
@@ -217,10 +247,9 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                 }
             }
 
-            val additionalFiles = outputFiles.drop(1).map { getClassName(it.relativePath) to it.asByteArray() }
+            val additionalFiles = outputFiles.map { ClassToLoad(getClassName(it.relativePath), it.relativePath, it.asByteArray()) }
 
             return CompiledDataDescriptor(
-                    outputFiles.first().asByteArray(),
                     additionalFiles,
                     sourcePosition,
                     parametersDescriptor)
@@ -230,15 +259,59 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             return fileName.substringBeforeLast(".class").replace("/", ".")
         }
 
+        private val CompiledDataDescriptor.mainClass
+            get() = classes.firstOrNull() ?: error(
+                    "Can't find main class for " + sourcePosition.elementAt.getParentOfType<KtDeclaration>(strict = false))
+
+        private fun evaluateWithCompilation(context: EvaluationContextImpl, compiledData: CompiledDataDescriptor): Any? {
+            val vm = context.debugProcess.virtualMachineProxy.virtualMachine
+            val classLoader = context.classLoader ?: return null
+            val mainClassBytecode = compiledData.mainClass.bytes
+
+            try {
+                val mainClassAsmNode = ClassNode().apply { ClassReader(mainClassBytecode).accept(this, ClassReader.SKIP_CODE) }
+                val mainClassJdiName = mainClassAsmNode.name.replace('/', '.')
+                assert(mainClassAsmNode.methods.size == 1)
+
+                val methodToInvoke = mainClassAsmNode.methods[0]
+                assert(methodToInvoke.parameters == null || methodToInvoke.parameters.isEmpty())
+
+                val mainClass = context.debugProcess.findClass(context, mainClassJdiName, classLoader) as ClassType
+
+                val thread = context.suspendContext.thread?.threadReference!!
+                val invokePolicy = context.suspendContext.getInvokePolicy()
+                val eval = JDIEval(vm, classLoader, thread, invokePolicy)
+
+                return vm.executeWithBreakpointsDisabled {
+                    // Prepare the main class
+                    eval.loadClass(Type.getObjectType(mainClassAsmNode.name), classLoader)
+
+                    val argumentTypes = Type.getArgumentTypes(methodToInvoke.desc)
+                    val args = context.getArgumentsForEval4j(compiledData.parameters, argumentTypes)
+                            .zip(argumentTypes)
+                            .map { (value, type) ->
+                                // Make argument type classes prepared for sure
+                                eval.loadClass(type, classLoader)
+                                boxOrUnboxArgumentIfNeeded(eval, value, type).asJdiValue(vm, type)
+                            }
+
+
+                    mainClass.invokeMethod(thread, mainClass.methods().single(), args, invokePolicy)
+                }
+            } catch (e: Throwable) {
+                LOG.debug("Unable to evaluate expression with compilation", e)
+                return null
+            }
+        }
+
         private fun runEval4j(context: EvaluationContextImpl, compiledData: CompiledDataDescriptor): InterpreterResult {
             val virtualMachine = context.debugProcess.virtualMachineProxy.virtualMachine
-
-            if (compiledData.additionalClasses.isNotEmpty()) {
-                loadClasses(context, compiledData.additionalClasses)
-            }
-
             var resultValue: InterpreterResult? = null
-            ClassReader(compiledData.bytecodes).accept(object : ClassVisitor(ASM5) {
+
+            // assert [0] with some context
+            val mainClassBytecode = compiledData.mainClass.bytes
+
+            ClassReader(mainClassBytecode).accept(object : ClassVisitor(ASM5) {
                 override fun visitMethod(access: Int, name: String, desc: String, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
                     if (name == GENERATED_FUNCTION_NAME) {
                         val argumentTypes = Type.getArgumentTypes(desc)
@@ -246,22 +319,18 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
 
                         return object : MethodNode(Opcodes.ASM5, access, name, desc, signature, exceptions) {
                             override fun visitEnd() {
-                                val allRequests = virtualMachine.eventRequestManager().breakpointRequests() +
-                                                  virtualMachine.eventRequestManager().classPrepareRequests()
-                                allRequests.forEach { it.disable() }
+                                virtualMachine.executeWithBreakpointsDisabled {
+                                    val eval = JDIEval(virtualMachine,
+                                                       context.classLoader,
+                                                       context.suspendContext.thread?.threadReference!!,
+                                                       context.suspendContext.getInvokePolicy())
 
-                                val eval = JDIEval(virtualMachine,
-                                                   context.classLoader,
-                                                   context.suspendContext.thread?.threadReference!!,
-                                                   context.suspendContext.getInvokePolicy())
-
-                                resultValue = interpreterLoop(
-                                        this,
-                                        makeInitialFrame(this, args.zip(argumentTypes).map { boxOrUnboxArgumentIfNeeded(eval, it.first, it.second) }),
-                                        eval
-                                )
-
-                                allRequests.forEach { it.enable() }
+                                    resultValue = interpreterLoop(
+                                            this,
+                                            makeInitialFrame(this, args.zip(argumentTypes).map { boxOrUnboxArgumentIfNeeded(eval, it.first, it.second) }),
+                                            eval
+                                    )
+                                }
                             }
                         }
                     }
@@ -271,6 +340,17 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             }, 0)
 
             return resultValue ?: throw IllegalStateException("resultValue is null: cannot find method " + GENERATED_FUNCTION_NAME)
+        }
+
+        private inline fun <T> VirtualMachine.executeWithBreakpointsDisabled(block: () -> T): T {
+            val allRequests = eventRequestManager().breakpointRequests() + eventRequestManager().classPrepareRequests()
+
+            try {
+                allRequests.forEach { it.disable() }
+                return block()
+            } finally {
+                allRequests.forEach { it.enable() }
+            }
         }
 
         private fun boxOrUnboxArgumentIfNeeded(eval: JDIEval, argumentValue: Value, parameterType: Type): Value {
@@ -300,14 +380,13 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             val jdiValue = when (this) {
                 is ValueReturned -> result
                 is ExceptionThrown -> {
-                    if (this.kind == ExceptionThrown.ExceptionKind.FROM_EVALUATED_CODE) {
-                        exception(InvocationException(this.exception.value as ObjectReference))
-                    }
-                    else if (this.kind == ExceptionThrown.ExceptionKind.BROKEN_CODE) {
-                        throw exception.value as Throwable
-                    }
-                    else {
-                        exception(exception.toString())
+                    when {
+                        this.kind == ExceptionThrown.ExceptionKind.FROM_EVALUATED_CODE ->
+                            exception(InvocationException(this.exception.value as ObjectReference))
+                        this.kind == ExceptionThrown.ExceptionKind.BROKEN_CODE ->
+                            throw exception.value as Throwable
+                        else ->
+                            exception(exception.toString())
                     }
                 }
                 is AbnormalTermination -> exception(message)
@@ -448,9 +527,11 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
 
         private fun exception(e: Throwable): Nothing = throw EvaluateExceptionUtil.createEvaluateException(e)
 
+        private val IGNORED_DIAGNOSTICS: Set<DiagnosticFactory<*>> = Errors.INVISIBLE_REFERENCE_DIAGNOSTICS
+
         // contextFile must be NotNull when analyzeInlineFunctions = true
         private fun KtFile.checkForErrors(analyzeInlineFunctions: Boolean = false, contextFile: KtFile? = null): ExtendedAnalysisResult {
-            return runInReadActionWithWriteActionPriority {
+            return runInReadActionWithWriteActionPriorityWithPCE {
                 try {
                     AnalyzingUtils.checkForSyntacticErrors(this)
                 }
@@ -467,7 +548,8 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
                 }
 
                 val bindingContext = analysisResult.bindingContext
-                bindingContext.diagnostics.firstOrNull { it.severity == Severity.ERROR }?.let {
+                val filteredDiagnostics = bindingContext.diagnostics.filter { it.factory !in IGNORED_DIAGNOSTICS }
+                filteredDiagnostics.firstOrNull { it.severity == Severity.ERROR }?.let {
                     if (it.psiElement.containingFile == this) {
                         exception(DefaultErrorMessages.render(it))
                     }
@@ -542,7 +624,7 @@ private fun PsiElement.createKtFile(fileName: String, fileText: String): KtFile 
     return jetFile
 }
 
-private fun SuspendContext.getInvokePolicy(): Int {
+internal fun SuspendContext.getInvokePolicy(): Int {
     return if (suspendPolicy == EventRequest.SUSPEND_EVENT_THREAD) ObjectReference.INVOKE_SINGLE_THREADED else 0
 }
 

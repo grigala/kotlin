@@ -86,6 +86,7 @@ internal class TypeKindHighlightingVisitor(holder: AnnotationHolder, bindingCont
         val identifier = classOrObject.nameIdentifier
         val classDescriptor = bindingContext.get(BindingContext.CLASS, classOrObject)
         if (identifier != null && classDescriptor != null) {
+            if (applyHighlighterExtensions(identifier, classDescriptor)) return
             highlightName(identifier, textAttributesKeyForClass(classDescriptor))
         }
         super.visitClassOrObject(classOrObject)
@@ -95,16 +96,11 @@ internal class TypeKindHighlightingVisitor(holder: AnnotationHolder, bindingCont
         // Do nothing: 'dynamic' is highlighted as a keyword
     }
 
-    private fun textAttributesKeyForClass(descriptor: ClassDescriptor): TextAttributesKey {
-        when (descriptor.kind) {
-            ClassKind.INTERFACE -> return TRAIT
-            ClassKind.ANNOTATION_CLASS -> return ANNOTATION
-            ClassKind.OBJECT -> return OBJECT
-            ClassKind.ENUM_ENTRY -> return ENUM_ENTRY
-            else -> return if (descriptor.modality === Modality.ABSTRACT)
-                ABSTRACT_CLASS
-            else
-                CLASS
-        }
+    private fun textAttributesKeyForClass(descriptor: ClassDescriptor): TextAttributesKey = when (descriptor.kind) {
+        ClassKind.INTERFACE -> TRAIT
+        ClassKind.ANNOTATION_CLASS -> ANNOTATION
+        ClassKind.OBJECT -> OBJECT
+        ClassKind.ENUM_ENTRY -> ENUM_ENTRY
+        else -> if (descriptor.modality === Modality.ABSTRACT) ABSTRACT_CLASS else CLASS
     }
 }

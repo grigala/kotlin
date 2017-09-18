@@ -30,7 +30,7 @@ class IfThenToSafeAccessInspection : IntentionBasedInspection<KtIfExpression>(If
     override fun inspectionTarget(element: KtIfExpression) = element.ifKeyword
 
     override fun problemHighlightType(element: KtIfExpression): ProblemHighlightType =
-            if (element.shouldBeTransformed()) ProblemHighlightType.WEAK_WARNING else ProblemHighlightType.INFORMATION
+            if (element.shouldBeTransformed()) super.problemHighlightType(element) else ProblemHighlightType.INFORMATION
 }
 
 class IfThenToSafeAccessIntention : SelfTargetingOffsetIndependentIntention<KtIfExpression>(
@@ -39,13 +39,13 @@ class IfThenToSafeAccessIntention : SelfTargetingOffsetIndependentIntention<KtIf
 
     override fun isApplicableTo(element: KtIfExpression): Boolean {
         val ifThenToSelectData = element.buildSelectTransformationData() ?: return false
-        if (!ifThenToSelectData.receiverExpression.isStableVariable(ifThenToSelectData.context)) return false
-        if (ifThenToSelectData.baseClause !is KtDotQualifiedExpression) {
-            if (ifThenToSelectData.condition is KtIsExpression) {
-                text = "Replace 'if' expression with safe cast expression"
+        if (!ifThenToSelectData.receiverExpression.isStable(ifThenToSelectData.context)) return false
+        if (ifThenToSelectData.baseClauseEvaluatesToReceiver()) {
+            text = if (ifThenToSelectData.condition is KtIsExpression) {
+                "Replace 'if' expression with safe cast expression"
             }
             else {
-                text = "Remove redundant 'if' expression"
+                "Remove redundant 'if' expression"
             }
         }
 
@@ -73,6 +73,7 @@ class IfThenToSafeAccessIntention : SelfTargetingOffsetIndependentIntention<KtIf
         baseClause == null -> false
         negatedClause == null && baseClause.isUsedAsExpression(context) -> false
         negatedClause != null && !negatedClause.isNullExpression() -> false
-        else -> baseClause.evaluatesTo(receiverExpression) || baseClause.hasFirstReceiverOf(receiverExpression)
+        else -> baseClause.evaluatesTo(receiverExpression) || baseClause.hasFirstReceiverOf(receiverExpression) ||
+                receiverExpression is KtThisExpression && hasImplicitReceiver()
     }
 }

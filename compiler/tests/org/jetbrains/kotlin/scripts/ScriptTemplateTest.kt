@@ -13,24 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.jetbrains.kotlin.scripts
 
 import com.intellij.openapi.util.Disposer
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
 import org.jetbrains.kotlin.cli.common.messages.*
-import org.jetbrains.kotlin.script.tryConstructClassFromStringArgs
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinToJVMBytecodeCompiler
 import org.jetbrains.kotlin.codegen.CompilationException
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.config.addKotlinSourceRoot
+import org.jetbrains.kotlin.daemon.TestMessageCollector
+import org.jetbrains.kotlin.daemon.assertHasMessage
 import org.jetbrains.kotlin.daemon.toFile
-import org.jetbrains.kotlin.script.*
+import org.jetbrains.kotlin.script.InvalidScriptResolverAnnotation
+import org.jetbrains.kotlin.script.KotlinScriptDefinition
+import org.jetbrains.kotlin.script.KotlinScriptDefinitionFromAnnotatedTemplate
+import org.jetbrains.kotlin.script.tryConstructClassFromStringArgs
 import org.jetbrains.kotlin.test.ConfigurationKind
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.test.TestJdkKind
+import org.jetbrains.kotlin.util.KotlinFrontEndException
 import org.jetbrains.kotlin.utils.PathUtil
 import org.junit.Assert
 import org.junit.Test
@@ -43,10 +47,10 @@ import java.net.URL
 import java.net.URLClassLoader
 import java.util.concurrent.Future
 import kotlin.reflect.KClass
-import kotlin.script.dependencies.KotlinScriptExternalDependencies
-import kotlin.script.dependencies.ScriptContents
-import kotlin.script.dependencies.ScriptDependenciesResolver
-import kotlin.script.dependencies.asFuture
+import kotlin.script.dependencies.*
+import kotlin.script.experimental.dependencies.*
+import kotlin.script.experimental.dependencies.DependenciesResolver.ResolveResult
+import kotlin.script.experimental.dependencies.AsyncDependenciesResolver
 import kotlin.script.templates.AcceptedAnnotations
 import kotlin.script.templates.ScriptTemplateDefinition
 import kotlin.script.templates.standard.ScriptTemplateWithArgs
@@ -237,6 +241,65 @@ class ScriptTemplateTest {
     }
 
     @Test
+    fun testScriptErrorReporting() {
+        val messageCollector = TestMessageCollector()
+        compileScript("fib.kts", ScriptReportingErrors::class, messageCollector = messageCollector)
+
+        messageCollector.assertHasMessage("error", desiredSeverity = CompilerMessageSeverity.ERROR)
+        messageCollector.assertHasMessage("warning", desiredSeverity = CompilerMessageSeverity.WARNING)
+        messageCollector.assertHasMessage("info", desiredSeverity = CompilerMessageSeverity.INFO)
+        messageCollector.assertHasMessage("debug", desiredSeverity = CompilerMessageSeverity.LOGGING)
+    }
+
+    @Test
+    fun testAsyncResolver() {
+        val aClass = compileScript("fib.kts", ScriptWithAsyncResolver::class, null)
+        Assert.assertNotNull(aClass)
+        val out = captureOut {
+            aClass!!.getConstructor(Integer.TYPE).newInstance(4)
+        }
+        assertEqualsTrimmed(NUM_4_LINE + FIB_SCRIPT_OUTPUT_TAIL, out)
+    }
+
+    @Test
+    fun testAcceptedAnnotationsSync() {
+        val aClass = compileScript("acceptedAnnotations.kts", ScriptWithAcceptedAnnotationsSyncResolver::class, null)
+        Assert.assertNotNull(aClass)
+    }
+
+    @Test
+    fun testAcceptedAnnotationsAsync() {
+        val aClass = compileScript("acceptedAnnotations.kts", ScriptWithAcceptedAnnotationsAsyncResolver::class, null)
+        Assert.assertNotNull(aClass)
+    }
+
+    @Test
+    fun testAcceptedAnnotationsLegacy() {
+        val aClass = compileScript("acceptedAnnotations.kts", ScriptWithAcceptedAnnotationsLegacyResolver::class, null)
+        Assert.assertNotNull(aClass)
+    }
+
+    @Test
+    fun testSeveralConstructors() {
+        val aClass = compileScript("fib.kts", ScriptWithSeveralConstructorsResolver::class, null)
+        Assert.assertNotNull(aClass)
+    }
+
+    @Test
+    fun testConstructorWithDefaultArgs() {
+        val aClass = compileScript("fib.kts", ScriptWithDefaultArgsResolver::class, null)
+        Assert.assertNotNull(aClass)
+    }
+
+    @Test
+    fun testThrowing() {
+        val messageCollector = TestMessageCollector()
+        compileScript("fib.kts", ScriptWithThrowingResolver::class, null, messageCollector = messageCollector)
+
+        messageCollector.assertHasMessage("Exception from resolver", desiredSeverity = CompilerMessageSeverity.ERROR)
+    }
+
+    @Test
     fun testSmokeScriptException() {
         val aClass = compileScript("smoke_exception.kts", ScriptWithArrayParam::class)
         Assert.assertNotNull(aClass)
@@ -251,27 +314,39 @@ class ScriptTemplateTest {
         Assert.assertTrue(exceptionThrown)
     }
 
+    @Test
+    fun testScriptWithNoMatchingTemplate() {
+        try {
+            compileScript("fib.kts", ScriptWithDifferentFileNamePattern::class, null)
+            Assert.fail("should throw compilation error")
+        }
+        catch (e: KotlinFrontEndException) {
+            if (e.message?.contains("Should not parse a script without definition") != true) {
+                // unexpected error
+                throw e
+            }
+        }
+    }
+
     private fun compileScript(
             scriptPath: String,
             scriptTemplate: KClass<out Any>,
             environment: Map<String, Any?>? = null,
             runIsolated: Boolean = true,
-            suppressOutput: Boolean = false,
-            includeKotlinRuntime: Boolean = true): Class<*>? =
-            compileScriptImpl("compiler/testData/script/" + scriptPath, KotlinScriptDefinitionFromAnnotatedTemplate(scriptTemplate, null, null, environment), runIsolated, suppressOutput, includeKotlinRuntime)
+            messageCollector: MessageCollector = PrintingMessageCollector(System.err, MessageRenderer.PLAIN_FULL_PATHS, false),
+            includeKotlinRuntime: Boolean = true
+    ): Class<*>? =
+            compileScriptImpl("compiler/testData/script/" + scriptPath, KotlinScriptDefinitionFromAnnotatedTemplate(
+                    scriptTemplate, null, null, environment
+            ), runIsolated, messageCollector, includeKotlinRuntime)
 
     private fun compileScriptImpl(
             scriptPath: String,
             scriptDefinition: KotlinScriptDefinition,
             runIsolated: Boolean,
-            suppressOutput: Boolean,
-            includeKotlinRuntime: Boolean): Class<*>?
-    {
-        val paths = PathUtil.getKotlinPathsForDistDirectory()
-        val messageCollector =
-                if (suppressOutput) MessageCollector.NONE
-                else PrintingMessageCollector(System.err, MessageRenderer.PLAIN_FULL_PATHS, false)
-
+            messageCollector: MessageCollector,
+            includeKotlinRuntime: Boolean
+    ): Class<*>? {
         val rootDisposable = Disposer.newDisposable()
         try {
             val configuration = KotlinTestUtils.newConfiguration(if (includeKotlinRuntime) ConfigurationKind.ALL else ConfigurationKind.JDK_ONLY, TestJdkKind.FULL_JDK)
@@ -283,8 +358,7 @@ class ScriptTemplateTest {
             val environment = KotlinCoreEnvironment.createForProduction(rootDisposable, configuration, EnvironmentConfigFiles.JVM_CONFIG_FILES)
 
             try {
-                return if (runIsolated) KotlinToJVMBytecodeCompiler.compileScript(environment, paths)
-                else KotlinToJVMBytecodeCompiler.compileScript(environment, this::class.java.classLoader)
+                return KotlinToJVMBytecodeCompiler.compileScript(environment, this::class.java.classLoader.takeUnless { runIsolated })
             }
             catch (e: CompilationException) {
                 messageCollector.report(CompilerMessageSeverity.EXCEPTION, OutputMessageUtil.renderException(e),
@@ -295,7 +369,6 @@ class ScriptTemplateTest {
                 MessageCollectorUtil.reportException(messageCollector, t)
                 throw t
             }
-
         }
         finally {
             Disposer.dispose(rootDisposable)
@@ -303,57 +376,152 @@ class ScriptTemplateTest {
     }
 }
 
-open class TestKotlinScriptDummyDependenciesResolver : ScriptDependenciesResolver {
+open class TestKotlinScriptDummyDependenciesResolver : DependenciesResolver {
 
     @AcceptedAnnotations(DependsOn::class, DependsOnTwo::class)
-    override fun resolve(script: ScriptContents,
-                         environment: Map<String, Any?>?,
-                         report: (ScriptDependenciesResolver.ReportSeverity, String, ScriptContents.Position?) -> Unit,
-                         previousDependencies: KotlinScriptExternalDependencies?
-    ): Future<KotlinScriptExternalDependencies?>
+    override fun resolve(scriptContents: ScriptContents,
+                         environment: Environment
+    ): ResolveResult
     {
-        return object : KotlinScriptExternalDependencies {
-            override val classpath: Iterable<File> = classpathFromClassloader()
-            override val imports: Iterable<String> = listOf("org.jetbrains.kotlin.scripts.DependsOn", "org.jetbrains.kotlin.scripts.DependsOnTwo")
-        }.asFuture()
+        return ScriptDependencies(
+            classpath = classpathFromClassloader(),
+            imports = listOf("org.jetbrains.kotlin.scripts.DependsOn", "org.jetbrains.kotlin.scripts.DependsOnTwo")
+        ).asSuccess()
     }
-
-    protected fun classpathFromClassloader(): List<File> =
-            (TestKotlinScriptDependenciesResolver::class.java.classLoader as? URLClassLoader)?.urLs
-                    ?.mapNotNull(URL::toFile)
-                    ?.filter { it.path.contains("out") && it.path.contains("test") }
-            ?: emptyList()
 }
 
-class TestKotlinScriptDependenciesResolver : TestKotlinScriptDummyDependenciesResolver() {
+private fun classpathFromClassloader(): List<File> =
+        (TestKotlinScriptDependenciesResolver::class.java.classLoader as? URLClassLoader)?.urLs
+                ?.mapNotNull(URL::toFile)
+                ?.filter { it.path.contains("out") && it.path.contains("test") }
+        ?: emptyList()
 
-    private val kotlinPaths by lazy { PathUtil.getKotlinPathsForCompiler() }
+
+open class TestKotlinScriptDependenciesResolver : TestKotlinScriptDummyDependenciesResolver() {
+
+    private val kotlinPaths by lazy { PathUtil.kotlinPathsForCompiler }
 
     @AcceptedAnnotations(DependsOn::class, DependsOnTwo::class)
-    override fun resolve(script: ScriptContents,
-                         environment: Map<String, Any?>?,
-                         report: (ScriptDependenciesResolver.ReportSeverity, String, ScriptContents.Position?) -> Unit,
-                         previousDependencies: KotlinScriptExternalDependencies?
-    ): Future<KotlinScriptExternalDependencies?>
-    {
-        val cp = script.annotations.flatMap {
-            when (it) {
-                is DependsOn -> if (it.path == "@{runtime}") listOf(kotlinPaths.runtimePath, kotlinPaths.scriptRuntimePath) else listOf(File(it.path))
-                is DependsOnTwo -> listOf(it.path1, it.path2).flatMap {
+    override fun resolve(scriptContents: ScriptContents, environment: Environment): ResolveResult {
+        val cp = scriptContents.annotations.flatMap { annotation ->
+            when (annotation) {
+                is DependsOn ->
+                    if (annotation.path == "@{kotlin-stdlib}") listOf(kotlinPaths.stdlibPath, kotlinPaths.scriptRuntimePath)
+                    else listOf(File(annotation.path))
+                is DependsOnTwo -> listOf(annotation.path1, annotation.path2).flatMap {
                     when {
                         it.isBlank() -> emptyList()
-                        it == "@{runtime}" -> listOf(kotlinPaths.runtimePath, kotlinPaths.scriptRuntimePath)
+                        it == "@{kotlin-stdlib}" -> listOf(kotlinPaths.stdlibPath, kotlinPaths.scriptRuntimePath)
                         else -> listOf(File(it))
                     }
                 }
-                is InvalidScriptResolverAnnotation -> throw Exception("Invalid annotation ${it.name}", it.error)
-                else -> throw Exception("Unknown annotation ${it::class.java}")
+                is InvalidScriptResolverAnnotation -> throw Exception("Invalid annotation ${annotation.name}", annotation.error)
+                else -> throw Exception("Unknown annotation ${annotation::class.java}")
             }
         }
+        return ScriptDependencies(
+            classpath = classpathFromClassloader() + cp,
+            imports = listOf("org.jetbrains.kotlin.scripts.DependsOn", "org.jetbrains.kotlin.scripts.DependsOnTwo")
+        ).asSuccess()
+    }
+}
+
+class TestParamClass(@Suppress("unused") val memberNum: Int)
+
+class ErrorReportingResolver : TestKotlinScriptDependenciesResolver() {
+    override fun resolve(
+            scriptContents: ScriptContents,
+            environment: Environment
+    ): ResolveResult {
+        return ResolveResult.Success(
+                super.resolve(scriptContents, environment).dependencies!!,
+                listOf(
+                        ScriptReport("error", ScriptReport.Severity.ERROR, null),
+                        ScriptReport("warning", ScriptReport.Severity.WARNING, ScriptReport.Position(1, 0)),
+                        ScriptReport("info", ScriptReport.Severity.INFO, ScriptReport.Position(2, 0)),
+                        ScriptReport("debug", ScriptReport.Severity.DEBUG, ScriptReport.Position(3, 0))
+
+                )
+        )
+    }
+}
+
+class TestAsyncResolver : TestKotlinScriptDependenciesResolver(), AsyncDependenciesResolver {
+    override suspend fun resolveAsync(
+            scriptContents: ScriptContents,
+            environment: Environment
+    ): ResolveResult = super<TestKotlinScriptDependenciesResolver>.resolve(scriptContents, environment)
+
+    override fun resolve(scriptContents: ScriptContents, environment: Environment): ResolveResult =
+            super<AsyncDependenciesResolver>.resolve(scriptContents, environment)
+}
+
+@Target(AnnotationTarget.FILE)
+annotation class TestAnno1
+@Target(AnnotationTarget.FILE)
+annotation class TestAnno2
+@Target(AnnotationTarget.FILE)
+annotation class TestAnno3
+
+private val annotationFqNames = listOf(TestAnno1::class, TestAnno2::class, TestAnno3::class).map { it.qualifiedName!! }
+
+interface AcceptedAnnotationsCheck {
+    fun checkHasAnno1Annotation(scriptContents: ScriptContents): ResolveResult.Success {
+        val actualAnnotations = scriptContents.annotations
+        Assert.assertTrue(
+                "Loaded annotation: $actualAnnotations",
+                actualAnnotations.single().annotationClass.qualifiedName == TestAnno1::class.qualifiedName
+        )
+
+        return ScriptDependencies(
+                classpath = classpathFromClassloader(),
+                imports = annotationFqNames
+        ).asSuccess()
+    }
+}
+
+class TestAcceptedAnnotationsSyncResolver: DependenciesResolver, AcceptedAnnotationsCheck {
+    @AcceptedAnnotations(TestAnno1::class, TestAnno3::class)
+    override fun resolve(scriptContents: ScriptContents, environment: Environment): ResolveResult {
+        return checkHasAnno1Annotation(scriptContents)
+    }
+}
+
+class TestAcceptedAnnotationsAsyncResolver: AsyncDependenciesResolver, AcceptedAnnotationsCheck {
+    @AcceptedAnnotations(TestAnno1::class, TestAnno3::class)
+    override suspend fun resolveAsync(scriptContents: ScriptContents, environment: Environment): ResolveResult {
+        return checkHasAnno1Annotation(scriptContents)
+    }
+}
+
+class TestAcceptedAnnotationsLegacyResolver: ScriptDependenciesResolver, AcceptedAnnotationsCheck {
+    @AcceptedAnnotations(TestAnno1::class, TestAnno3::class)
+    override fun resolve(
+            script: ScriptContents,
+            environment: Environment?,
+            report: (ScriptDependenciesResolver.ReportSeverity, String, ScriptContents.Position?) -> Unit,
+            previousDependencies: KotlinScriptExternalDependencies?
+    ): Future<KotlinScriptExternalDependencies?> {
+        checkHasAnno1Annotation(script)
         return object : KotlinScriptExternalDependencies {
-            override val classpath: Iterable<File> = classpathFromClassloader() + cp
-            override val imports: Iterable<String> = listOf("org.jetbrains.kotlin.scripts.DependsOn", "org.jetbrains.kotlin.scripts.DependsOnTwo")
+            override val classpath: Iterable<File>
+                get() = classpathFromClassloader()
+
+            override val imports: Iterable<String>
+                get() = annotationFqNames
         }.asFuture()
+    }
+}
+
+class SeveralConstructorsResolver(val c: Int): TestKotlinScriptDependenciesResolver() {
+    constructor(): this(0)
+
+}
+class DefaultArgsConstructorResolver(val c: Int = 0): TestKotlinScriptDependenciesResolver()
+
+class ThrowingResolver: DependenciesResolver {
+    override fun resolve(scriptContents: ScriptContents, environment: Environment): ResolveResult {
+        throw IllegalStateException("Exception from resolver")
     }
 }
 
@@ -387,6 +555,12 @@ abstract class ScriptWithoutParams(num: Int)
         resolver = TestKotlinScriptDependenciesResolver::class)
 abstract class ScriptBaseClassWithOverriddenProperty(override val num: Int) : TestClassWithOverridableProperty(num)
 
+@ScriptTemplateDefinition(
+        scriptFilePattern = ".*\\.custom\\.kts",
+        resolver = TestKotlinScriptDependenciesResolver::class
+)
+abstract class ScriptWithDifferentFileNamePattern
+
 @ScriptTemplateDefinition(resolver = TestKotlinScriptDependenciesResolver::class)
 abstract class ScriptWithArrayParam(val myArgs: Array<String>)
 
@@ -401,6 +575,30 @@ abstract class ScriptWithNullableProjection(val param: Array<String?>)
 
 @ScriptTemplateDefinition(resolver = TestKotlinScriptDependenciesResolver::class)
 abstract class ScriptWithArray2DParam(val param: Array<Array<in String>>)
+
+@ScriptTemplateDefinition(resolver = ErrorReportingResolver::class)
+abstract class ScriptReportingErrors(val num: Int)
+
+@ScriptTemplateDefinition(resolver = TestAsyncResolver::class)
+abstract class ScriptWithAsyncResolver(val num: Int)
+
+@ScriptTemplateDefinition(resolver = TestAcceptedAnnotationsSyncResolver::class)
+abstract class ScriptWithAcceptedAnnotationsSyncResolver
+
+@ScriptTemplateDefinition(resolver = TestAcceptedAnnotationsAsyncResolver::class)
+abstract class ScriptWithAcceptedAnnotationsAsyncResolver
+
+@ScriptTemplateDefinition(resolver = TestAcceptedAnnotationsLegacyResolver::class)
+abstract class ScriptWithAcceptedAnnotationsLegacyResolver
+
+@ScriptTemplateDefinition(resolver = SeveralConstructorsResolver::class)
+abstract class ScriptWithSeveralConstructorsResolver(val num: Int)
+
+@ScriptTemplateDefinition(resolver = DefaultArgsConstructorResolver::class)
+abstract class ScriptWithDefaultArgsResolver(val num: Int)
+
+@ScriptTemplateDefinition(resolver = ThrowingResolver::class)
+abstract class ScriptWithThrowingResolver(val num: Int)
 
 @Target(AnnotationTarget.FILE)
 @Retention(AnnotationRetention.RUNTIME)

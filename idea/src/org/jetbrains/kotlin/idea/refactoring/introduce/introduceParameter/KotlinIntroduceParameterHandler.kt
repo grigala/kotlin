@@ -35,7 +35,7 @@ import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.CodeInsightUtils
 import org.jetbrains.kotlin.idea.core.*
 import org.jetbrains.kotlin.idea.refactoring.KotlinRefactoringBundle
@@ -282,7 +282,7 @@ open class KotlinIntroduceParameterHandler(
                             is KtExpression -> matchedElement
                             is KtStringTemplateEntryWithExpression -> matchedElement.expression
                             else -> null
-                        } as? KtExpression
+                        }
                         matchedExpr?.toRange()
                     }
         }
@@ -451,14 +451,14 @@ interface KotlinIntroduceLambdaParameterHelper: KotlinIntroduceParameterHelper {
 open class KotlinIntroduceLambdaParameterHandler(
         helper: KotlinIntroduceLambdaParameterHelper = KotlinIntroduceLambdaParameterHelper.Default
 ): KotlinIntroduceParameterHandler(helper) {
-    val extractLambdaHelper = object: ExtractionEngineHelper(INTRODUCE_LAMBDA_PARAMETER) {
+    private val extractLambdaHelper = object: ExtractionEngineHelper(INTRODUCE_LAMBDA_PARAMETER) {
         private fun createDialog(
                 project: Project,
                 editor: Editor,
                 lambdaExtractionDescriptor: ExtractableCodeDescriptor
         ): KotlinIntroduceParameterDialog? {
             val callable = lambdaExtractionDescriptor.extractionData.targetSibling as KtNamedDeclaration
-            val descriptor = callable.resolveToDescriptor()
+            val descriptor = callable.unsafeResolveToDescriptor()
             val callableDescriptor = descriptor.toFunctionDescriptor(callable)
             val originalRange = lambdaExtractionDescriptor.extractionData.originalRange
             val parametersUsages = findInternalUsagesOfParametersAndReceiver(callable, callableDescriptor) ?: return null

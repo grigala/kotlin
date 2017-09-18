@@ -16,17 +16,16 @@
 
 package org.jetbrains.kotlin.cli.metadata
 
-import org.jetbrains.kotlin.analyzer.AnalysisResult
-import org.jetbrains.kotlin.analyzer.common.DefaultAnalyzerFacade
+import org.jetbrains.kotlin.analyzer.common.CommonAnalyzerFacade
 import org.jetbrains.kotlin.builtins.BuiltInsBinaryVersion
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
 import org.jetbrains.kotlin.cli.common.messages.AnalyzerWithCompilerReport
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
-import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.codegen.JvmCodegenUtil
 import org.jetbrains.kotlin.codegen.serializeToByteArray
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
+import org.jetbrains.kotlin.config.languageVersionSettings
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
@@ -64,11 +63,11 @@ open class MetadataSerializer(private val dependOnOldBuiltIns: Boolean) {
         }
 
         val analyzer = AnalyzerWithCompilerReport(messageCollector)
-        analyzer.analyzeAndReport(files, object : AnalyzerWithCompilerReport.Analyzer {
-            override fun analyze(): AnalysisResult = DefaultAnalyzerFacade.analyzeFiles(files, moduleName, dependOnOldBuiltIns) {
-                _, content -> JvmPackagePartProvider(environment, content.moduleContentScope)
+        analyzer.analyzeAndReport(files) {
+            CommonAnalyzerFacade.analyzeFiles(files, moduleName, dependOnOldBuiltIns, configuration.languageVersionSettings) { _, content ->
+                environment.createPackagePartProvider(content.moduleContentScope)
             }
-        })
+        }
 
         if (analyzer.hasErrors()) return
 

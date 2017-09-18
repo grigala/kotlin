@@ -26,12 +26,18 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.resolve.calls.callUtil.getCall
+import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 
 fun provideArgumentNameHints(element: KtCallExpression): List<InlayInfo> {
+    if (element.valueArguments.none { it.getArgumentExpression()?.isUnclearExpression() == true }) return emptyList()
     val ctx = element.analyze(BodyResolveMode.PARTIAL)
     val call = element.getCall(ctx) ?: return emptyList()
+    val resolvedCall = call.getResolvedCall(ctx)
+    if (resolvedCall != null) {
+        return getParameterInfoForCallCandidate(resolvedCall)
+    }
     val candidates = call.resolveCandidates(ctx, element.getResolutionFacade())
     if (candidates.isEmpty()) return emptyList()
     candidates.singleOrNull()?.let { return getParameterInfoForCallCandidate(it) }

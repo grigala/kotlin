@@ -19,10 +19,10 @@ package org.jetbrains.kotlin.daemon.client
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.daemon.common.*
+import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.load.kotlin.incremental.components.IncrementalCompilationComponents
 import org.jetbrains.kotlin.progress.CompilationCanceledStatus
 import java.io.File
-import java.io.IOException
 import java.io.OutputStream
 import java.io.PrintStream
 import java.net.SocketException
@@ -36,6 +36,7 @@ import kotlin.concurrent.thread
 
 class CompilationServices(
         val incrementalCompilationComponents: IncrementalCompilationComponents? = null,
+        val lookupTracker: LookupTracker? = null,
         val compilationCanceledStatus: CompilationCanceledStatus? = null
 )
 
@@ -47,15 +48,6 @@ object KotlinCompilerClient {
     val DAEMON_CONNECT_CYCLE_ATTEMPTS = 3
 
     val verboseReporting = System.getProperty(COMPILE_DAEMON_VERBOSE_REPORT_PROPERTY) != null
-
-    val java9RestrictionsWorkaroundOptions =
-            if (System.getProperty("java.specification.version") == "9") listOf(
-                    "--add-opens", "java.base/java.lang=ALL-UNNAMED",
-                    "--add-opens", "java.base/java.util=ALL-UNNAMED",
-                    "--add-opens", "java.base/java.util.concurrent.atomic=ALL-UNNAMED",
-                    "--add-opens", "java.base/jdk.internal.misc=ALL-UNNAMED"
-            )
-            else emptyList()
 
     fun getOrCreateClientFlagFile(daemonOptions: DaemonOptions): File =
             // for jps property is passed from IDEA to JPS in KotlinBuildProcessParametersProvider
@@ -103,22 +95,26 @@ object KotlinCompilerClient {
                         leaseSession: Boolean,
                         sessionAliveFlagFile: File? = null
     ): CompileServiceSession? = connectLoop(reportingTargets, autostart) { isLastAttempt ->
+
+        fun CompileService.leaseImpl(): CompileServiceSession? {
+            // the newJVMOptions could be checked here for additional parameters, if needed
+            registerClient(clientAliveFlagFile.absolutePath)
+            reportingTargets.report(DaemonReportCategory.DEBUG, "connected to the daemon")
+
+            if (!leaseSession) return CompileServiceSession(this, CompileService.NO_SESSION)
+
+            return leaseCompileSession(sessionAliveFlagFile?.absolutePath).takeUnless { it is CompileService.CallResult.Dying }?.let {
+                CompileServiceSession(this, it.get())
+            }
+        }
+
         ensureServerHostnameIsSetUp()
         val (service, newJVMOptions) = tryFindSuitableDaemonOrNewOpts(File(daemonOptions.runFilesPath), compilerId, daemonJVMOptions, { cat, msg -> reportingTargets.report(cat, msg) })
+
         if (service != null) {
-            // the newJVMOptions could be checked here for additional parameters, if needed
-            service.registerClient(clientAliveFlagFile.absolutePath)
-            reportingTargets.report(DaemonReportCategory.DEBUG, "connected to the daemon")
-            if (!leaseSession) CompileServiceSession(service, CompileService.NO_SESSION)
-            else {
-                val sessionId = service.leaseCompileSession(sessionAliveFlagFile?.absolutePath)
-                if (sessionId is CompileService.CallResult.Dying)
-                    null
-                else
-                    CompileServiceSession(service, sessionId.get())
-            }
-        } else {
-            reportingTargets.report(DaemonReportCategory.DEBUG, "no suitable daemon found")
+            service.leaseImpl()
+        }
+        else {
             if (!isLastAttempt && autostart) {
                 startDaemon(compilerId, newJVMOptions, daemonOptions, reportingTargets)
                 reportingTargets.report(DaemonReportCategory.DEBUG, "new daemon started, trying to find it")
@@ -176,6 +172,7 @@ object KotlinCompilerClient {
                     targetPlatform,
                     args,
                     CompilerCallbackServicesFacadeServer(incrementalCompilationComponents = callbackServices.incrementalCompilationComponents,
+                                                         lookupTracker = callbackServices.lookupTracker,
                                                          compilationCanceledStatus = callbackServices.compilationCanceledStatus,
                                                          port = port),
                     RemoteOutputStreamServer(compilerOut, port),
@@ -325,9 +322,11 @@ object KotlinCompilerClient {
 
                 if (res != null) return res
 
-                reportingTargets.report(DaemonReportCategory.INFO,
-                                        (if (attempts >= DAEMON_CONNECT_CYCLE_ATTEMPTS || !autostart) "no more retries on: " else "retrying($attempts) on: ")
-                                        + err?.toString())
+                if (err != null) {
+                    reportingTargets.report(DaemonReportCategory.INFO,
+                                            (if (attempts >= DAEMON_CONNECT_CYCLE_ATTEMPTS || !autostart) "no more retries on: " else "retrying($attempts) on: ")
+                                            + err.toString())
+                }
 
                 if (attempts++ > DAEMON_CONNECT_CYCLE_ATTEMPTS || !autostart) {
                     return null
@@ -372,7 +371,6 @@ object KotlinCompilerClient {
                    javaExecutable.absolutePath, "-cp", compilerId.compilerClasspath.joinToString(File.pathSeparator)) +
                    platformSpecificOptions +
                    daemonJVMOptions.mappers.flatMap { it.toArgs("-") } +
-                   java9RestrictionsWorkaroundOptions +
                    COMPILER_DAEMON_CLASS_FQN +
                    daemonOptions.mappers.flatMap { it.toArgs(COMPILE_DAEMON_CMDLINE_OPTIONS_PREFIX) } +
                    compilerId.mappers.flatMap { it.toArgs(COMPILE_DAEMON_CMDLINE_OPTIONS_PREFIX) }

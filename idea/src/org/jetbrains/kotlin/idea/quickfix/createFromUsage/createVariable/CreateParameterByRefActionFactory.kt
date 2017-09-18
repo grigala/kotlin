@@ -114,7 +114,6 @@ object CreateParameterByRefActionFactory : CreateParameterFromUsageFactory<KtSim
         if (paramType.hasTypeParametersToAdd(functionDescriptor, context)) return null
 
         return CreateParameterData(
-                context,
                 KotlinParameterInfo(callableDescriptor = functionDescriptor,
                                     name = element.getReferencedName(),
                                     originalTypeInfo = KotlinTypeInfo(false, paramType),
@@ -137,12 +136,10 @@ fun KotlinType.hasTypeParametersToAdd(functionDescriptor: FunctionDescriptor, co
                     (functionDescriptor.containingDeclaration as? ClassDescriptorWithResolutionScopes)?.scopeForClassHeaderResolution
                 }
 
-                is FunctionDescriptor -> {
+                else -> {
                     val function = functionDescriptor.source.getPsi() as? KtFunction
                     function?.bodyExpression?.getResolutionScope(context, function.getResolutionFacade())
                 }
-
-                else -> null
             } ?: return true
 
     return typeParametersToAdd.any { scope.findClassifier(it.name, NoLookupLocation.FROM_IDE) != it }

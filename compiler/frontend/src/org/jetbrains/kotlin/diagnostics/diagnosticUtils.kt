@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,16 @@
 
 package org.jetbrains.kotlin.diagnostics
 
+import com.intellij.mock.MockApplication
+import com.intellij.openapi.application.Application
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.builtins.isFunctionType
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
+import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages
+import org.jetbrains.kotlin.diagnostics.rendering.DiagnosticRenderer
 import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtLambdaExpression
@@ -53,7 +58,7 @@ fun ResolutionContext<*>.reportTypeMismatchDueToTypeProjection(
         is CallPosition.ValueArgumentPosition -> Pair(
                 callPosition.resolvedCall, {
                     f: CallableDescriptor ->
-                    getEffectiveExpectedType(f.valueParameters[callPosition.valueParameter.index], callPosition.valueArgument)
+                    getEffectiveExpectedType(f.valueParameters[callPosition.valueParameter.index], callPosition.valueArgument, this)
                 })
         is CallPosition.ExtensionReceiverPosition -> Pair(
                 callPosition.resolvedCall, {
@@ -110,7 +115,7 @@ fun ResolutionContext<*>.reportTypeMismatchDueToTypeProjection(
     return true
 }
 
-private fun BindingTrace.reportDiagnosticOnce(diagnostic: Diagnostic) {
+fun BindingTrace.reportDiagnosticOnce(diagnostic: Diagnostic) {
     if (bindingContext.diagnostics.forElement(diagnostic.psiElement).any { it.factory == diagnostic.factory }) return
 
     report(diagnostic)
@@ -159,4 +164,22 @@ inline fun <reified T : KtDeclaration> reportOnDeclarationAs(trace: BindingTrace
             trace.report(what(it))
         } ?: throw AssertionError("Declaration for $descriptor is expected to be ${T::class.simpleName}, actual declaration: $psiElement")
     } ?: throw AssertionError("No declaration for $descriptor")
+}
+
+fun <D : Diagnostic> DiagnosticSink.reportFromPlugin(diagnostic: D, ext: DefaultErrorMessages.Extension) {
+    if (ApplicationManager.getApplication() !is MockApplication) {
+        return this.report(diagnostic)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    val renderer = ext.map[diagnostic.factory] as? DiagnosticRenderer<D>
+                   ?: error("Renderer not found for diagnostic ${diagnostic.factory.name}")
+
+    val text = renderer.render(diagnostic)
+
+    when (diagnostic.severity) {
+        Severity.ERROR -> report(Errors.PLUGIN_ERROR.on(diagnostic.psiElement, diagnostic.factory.name, text))
+        Severity.WARNING -> report(Errors.PLUGIN_WARNING.on(diagnostic.psiElement, diagnostic.factory.name, text))
+        Severity.INFO -> report(Errors.PLUGIN_INFO.on(diagnostic.psiElement, diagnostic.factory.name, text))
+    }
 }

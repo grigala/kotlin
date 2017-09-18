@@ -55,7 +55,7 @@ abstract class LambdaInfo(@JvmField val isCrossInline: Boolean) : LabelOwner {
 
     lateinit var node: SMAPAndMethodNode
 
-    abstract fun generateLambdaBody(codegen: ExpressionCodegen, reifiedTypeInliner: ReifiedTypeInliner)
+    abstract fun generateLambdaBody(sourceCompiler: SourceCompilerForInline, reifiedTypeInliner: ReifiedTypeInliner)
 
     fun addAllParameters(remapper: FieldRemapper): Parameters {
         val builder = ParametersBuilder.initializeBuilderFrom(AsmTypes.OBJECT_TYPE, invokeMethod.descriptor, this)
@@ -84,7 +84,7 @@ abstract class LambdaInfo(@JvmField val isCrossInline: Boolean) : LabelOwner {
 
 class DefaultLambda(
         override val lambdaClassType: Type,
-        val capturedArgs: Array<Type>,
+        private val capturedArgs: Array<Type>,
         val parameterDescriptor: ValueParameterDescriptor,
         val offset: Int,
         val needReification: Boolean
@@ -105,11 +105,14 @@ class DefaultLambda(
 
     override fun isMyLabel(name: String): Boolean = false
 
-    override fun generateLambdaBody(codegen: ExpressionCodegen, reifiedTypeInliner: ReifiedTypeInliner) {
-        val classReader = InlineCodegenUtil.buildClassReaderByInternalName(codegen.state, lambdaClassType.internalName)
+    var originalBoundReceiverType: Type? = null
+        private set
+
+    override fun generateLambdaBody(sourceCompiler: SourceCompilerForInline, reifiedTypeInliner: ReifiedTypeInliner) {
+        val classReader = buildClassReaderByInternalName(sourceCompiler.state, lambdaClassType.internalName)
         var isPropertyReference = false
         var isFunctionReference = false
-        classReader.accept(object: ClassVisitor(InlineCodegenUtil.API){
+        classReader.accept(object: ClassVisitor(API){
             override fun visit(version: Int, access: Int, name: String, signature: String?, superName: String?, interfaces: Array<out String>?) {
                 isPropertyReference = superName?.startsWith("kotlin/jvm/internal/PropertyReference") ?: false
                 isFunctionReference = "kotlin/jvm/internal/FunctionReference" == superName
@@ -128,11 +131,11 @@ class DefaultLambda(
                         }
 
         val descriptor = Type.getMethodDescriptor(Type.VOID_TYPE, *capturedArgs)
-        val constructor = InlineCodegenUtil.getMethodNode(
+        val constructor = getMethodNode(
                 classReader.b,
                 "<init>",
                 descriptor,
-                lambdaClassType.internalName)?.node
+                lambdaClassType)?.node
 
         assert(constructor != null || capturedArgs.isEmpty()) {
             "Can't find non-default constructor <init>$descriptor for default lambda $lambdaClassType"
@@ -141,7 +144,8 @@ class DefaultLambda(
         capturedVars =
                 if (isFunctionReference || isPropertyReference)
                     constructor?.desc?.let { Type.getArgumentTypes(it) }?.singleOrNull()?.let {
-                        listOf(capturedParamDesc(AsmUtil.RECEIVER_NAME, it))
+                        originalBoundReceiverType = it
+                        listOf(capturedParamDesc(AsmUtil.RECEIVER_NAME, it.boxReceiverForBoundReference()))
                     } ?: emptyList()
                 else
                     constructor?.findCapturedFieldAssignmentInstructions()?.map {
@@ -153,14 +157,14 @@ class DefaultLambda(
 
         invokeMethod = Method(
                 (if (isPropertyReference) OperatorNameConventions.GET else OperatorNameConventions.INVOKE).asString(),
-                codegen.state.typeMapper.mapSignatureSkipGeneric(invokeMethodDescriptor).asmMethod.descriptor
+                sourceCompiler.state.typeMapper.mapSignatureSkipGeneric(invokeMethodDescriptor).asmMethod.descriptor
         )
 
-        node = InlineCodegenUtil.getMethodNode(
+        node = getMethodNode(
                 classReader.b,
                 invokeMethod.name,
                 invokeMethod.descriptor,
-                lambdaClassType.internalName)!!
+                lambdaClassType)!!
 
         if (needReification) {
             //nested classes could also require reification
@@ -168,6 +172,9 @@ class DefaultLambda(
         }
     }
 }
+
+fun Type.boxReceiverForBoundReference() = AsmUtil.boxType(this)
+
 
 class ExpressionLambda(
         expression: KtExpression,
@@ -237,7 +244,9 @@ class ExpressionLambda(
             }
 
             if (closure.captureReceiverType != null) {
-                val type = typeMapper.mapType(closure.captureReceiverType!!)
+                val type = typeMapper.mapType(closure.captureReceiverType!!).let {
+                    if (isBoundCallableReference) it.boxReceiverForBoundReference() else it
+                }
                 val descriptor = EnclosedValueDescriptor(
                         AsmUtil.CAPTURED_RECEIVER_FIELD, null,
                         StackValue.field(type, lambdaClassType, AsmUtil.CAPTURED_RECEIVER_FIELD, false, StackValue.LOCAL_0),
@@ -260,24 +269,17 @@ class ExpressionLambda(
     val isPropertyReference: Boolean
         get() = propertyReferenceInfo != null
 
-    override fun generateLambdaBody(codegen: ExpressionCodegen, reifiedTypeInliner: ReifiedTypeInliner) {
-        val closureContext =
-                if (isPropertyReference)
-                    codegen.getContext().intoAnonymousClass(classDescriptor, codegen, OwnerKind.IMPLEMENTATION)
-                else
-                    codegen.getContext().intoClosure(invokeMethodDescriptor, codegen, typeMapper)
-        val context = closureContext.intoInlinedLambda(invokeMethodDescriptor, isCrossInline, isPropertyReference)
-
+    override fun generateLambdaBody(sourceCompiler: SourceCompilerForInline, reifiedTypeInliner: ReifiedTypeInliner) {
         val jvmMethodSignature = typeMapper.mapSignatureSkipGeneric(invokeMethodDescriptor)
         val asmMethod = jvmMethodSignature.asmMethod
         val methodNode = MethodNode(
-                InlineCodegenUtil.API, AsmUtil.getMethodAsmFlags(invokeMethodDescriptor, context.contextKind, codegen.state),
+                API, AsmUtil.getMethodAsmFlags(invokeMethodDescriptor, OwnerKind.IMPLEMENTATION, sourceCompiler.state),
                 asmMethod.name, asmMethod.descriptor, null, null
         )
 
-        node = InlineCodegenUtil.wrapWithMaxLocalCalc(methodNode).let { adapter ->
-            val smap = InlineCodegen.generateMethodBody(
-                    adapter, invokeMethodDescriptor, context, functionWithBodyOrCallableReference, jvmMethodSignature, codegen, this
+        node = wrapWithMaxLocalCalc(methodNode).let { adapter ->
+            val smap = sourceCompiler.generateLambdaBody(
+                    adapter, jvmMethodSignature, this
             )
             adapter.visitMaxs(-1, -1)
             SMAPAndMethodNode(methodNode, smap)

@@ -27,8 +27,8 @@ import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.resolve.frontendService
 import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
-import org.jetbrains.kotlin.load.java.descriptors.SamAdapterDescriptor
-import org.jetbrains.kotlin.load.java.descriptors.SamConstructorDescriptor
+import org.jetbrains.kotlin.load.java.sam.SamAdapterDescriptor
+import org.jetbrains.kotlin.load.java.sam.SamConstructorDescriptor
 import org.jetbrains.kotlin.load.java.sam.SingleAbstractMethodUtils
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
@@ -98,7 +98,7 @@ class RedundantSamConstructorInspection : AbstractKotlinInspection() {
                             createProblemDescriptor(expression.valueArgumentList!!,
                                                     "Redundant SAM-constructors",
                                                     createQuickFix(samConstructorCalls),
-                                                    ProblemHighlightType.WEAK_WARNING,
+                                                    ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
                                                     isOnTheFly)
 
                     holder.registerProblem(problemDescriptor)
@@ -232,10 +232,7 @@ class RedundantSamConstructorInspection : AbstractKotlinInspection() {
             val samAdapterOriginalFunction = SamCodegenUtil.getOriginalIfSamAdapter(samAdapter)?.original
             if (samAdapterOriginalFunction != originalFunction) return false
 
-            val parametersWithSamTypeCount = originalFunction.valueParameters.count {
-                SingleAbstractMethodUtils.getFunctionTypeForSamType(it.type) != null
-            }
-
+            val parametersWithSamTypeCount = originalFunction.valueParameters.count { SingleAbstractMethodUtils.isSamType(it.type) }
             return parametersWithSamTypeCount == samConstructorsCount
         }
 

@@ -31,11 +31,11 @@ import org.jetbrains.kotlin.codegen.binding.CodegenBinding;
 import org.jetbrains.kotlin.codegen.binding.MutableClosure;
 import org.jetbrains.kotlin.codegen.context.*;
 import org.jetbrains.kotlin.codegen.extensions.ExpressionCodegenExtension;
-import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil;
 import org.jetbrains.kotlin.codegen.signature.BothSignatureWriter;
 import org.jetbrains.kotlin.codegen.signature.JvmSignatureWriter;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
+import org.jetbrains.kotlin.config.LanguageFeature;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation;
 import org.jetbrains.kotlin.lexer.KtTokens;
@@ -65,10 +65,7 @@ import org.jetbrains.kotlin.resolve.scopes.receivers.ExtensionReceiver;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
 import org.jetbrains.kotlin.types.KotlinType;
-import org.jetbrains.org.objectweb.asm.FieldVisitor;
-import org.jetbrains.org.objectweb.asm.Label;
-import org.jetbrains.org.objectweb.asm.MethodVisitor;
-import org.jetbrains.org.objectweb.asm.Type;
+import org.jetbrains.org.objectweb.asm.*;
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter;
 import org.jetbrains.org.objectweb.asm.commons.Method;
 
@@ -79,6 +76,7 @@ import static org.jetbrains.kotlin.codegen.CodegenUtilKt.isGenericToArray;
 import static org.jetbrains.kotlin.codegen.CodegenUtilKt.isNonGenericToArray;
 import static org.jetbrains.kotlin.codegen.JvmCodegenUtil.*;
 import static org.jetbrains.kotlin.codegen.binding.CodegenBinding.enumEntryNeedSubclass;
+import static org.jetbrains.kotlin.codegen.inline.InlineCodegenUtils2Kt.initDefaultSourceMappingIfNeeded;
 import static org.jetbrains.kotlin.resolve.BindingContextUtils.getDelegationConstructorCall;
 import static org.jetbrains.kotlin.resolve.BindingContextUtils.getNotNull;
 import static org.jetbrains.kotlin.resolve.DescriptorToSourceUtils.descriptorToDeclaration;
@@ -217,7 +215,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
         v.visitSource(myClass.getContainingKtFile().getName(), null);
 
-        InlineCodegenUtil.initDefaultSourceMappingIfNeeded(context, this, state);
+        initDefaultSourceMappingIfNeeded(context, this, state);
 
         writeEnclosingMethod();
 
@@ -348,9 +346,12 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
     }
 
     @Override
-    protected void generateSyntheticParts() {
+    protected void generateSyntheticPartsBeforeBody() {
         generatePropertyMetadataArrayFieldIfNeeded(classAsmType);
+    }
 
+    @Override
+    protected void generateSyntheticPartsAfterBody() {
         generateFieldForSingleton();
 
         generateCompanionObjectBackingFieldCopies();
@@ -573,7 +574,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
                     iv.ifnull(ifNull);
                 }
 
-                genHashCode(mv, iv, asmType);
+                genHashCode(mv, iv, asmType, state.getTarget());
 
                 if (ifNull != null) {
                     Label end = new Label();
@@ -678,7 +679,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         ) {
             Type thisDescriptorType = typeMapper.mapType(descriptor);
 
-            functionCodegen.generateMethod(JvmDeclarationOriginKt.OtherOrigin(myClass, function), function, new FunctionGenerationStrategy() {
+            functionCodegen.generateMethod(JvmDeclarationOriginKt.OtherOriginFromPure(myClass, function), function, new FunctionGenerationStrategy() {
                 @Override
                 public void generateBody(
                         @NotNull MethodVisitor mv,
@@ -778,7 +779,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         FunctionDescriptor valuesFunction =
                 CollectionsKt.single(descriptor.getStaticScope().getContributedFunctions(ENUM_VALUES, NoLookupLocation.FROM_BACKEND));
         MethodVisitor mv = v.newMethod(
-                JvmDeclarationOriginKt.OtherOrigin(myClass, valuesFunction), ACC_PUBLIC | ACC_STATIC, ENUM_VALUES.asString(),
+                JvmDeclarationOriginKt.OtherOriginFromPure(myClass, valuesFunction), ACC_PUBLIC | ACC_STATIC, ENUM_VALUES.asString(),
                 "()" + type.getDescriptor(), null, null
         );
         if (!state.getClassBuilderMode().generateBodies) return;
@@ -796,7 +797,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
                 CollectionsKt.single(descriptor.getStaticScope().getContributedFunctions(ENUM_VALUE_OF, NoLookupLocation.FROM_BACKEND),
                                      DescriptorUtilsKt::isEnumValueOfMethod);
         MethodVisitor mv =
-                v.newMethod(JvmDeclarationOriginKt.OtherOrigin(myClass, valueOfFunction), ACC_PUBLIC | ACC_STATIC, ENUM_VALUE_OF.asString(),
+                v.newMethod(JvmDeclarationOriginKt.OtherOriginFromPure(myClass, valueOfFunction), ACC_PUBLIC | ACC_STATIC, ENUM_VALUE_OF.asString(),
                             "(Ljava/lang/String;)" + classAsmType.getDescriptor(), null, null);
         if (!state.getClassBuilderMode().generateBodies) return;
 
@@ -814,7 +815,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
         if (isNonCompanionObject(descriptor)) {
             StackValue.Field field = StackValue.singletonViaInstance(descriptor, typeMapper);
-            v.newField(JvmDeclarationOriginKt.OtherOrigin(myClass),
+            v.newField(JvmDeclarationOriginKt.OtherOriginFromPure(myClass),
                        ACC_PUBLIC | ACC_STATIC | ACC_FINAL,
                        field.name, field.type.getDescriptor(), null, null);
 
@@ -835,9 +836,21 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
         @Nullable KtObjectDeclaration companionObject = CollectionsKt.firstOrNull(myClass.getCompanionObjects());
 
+        int properFieldVisibilityFlag = getVisibilityAccessFlag(companionObjectDescriptor);
+        boolean fieldShouldBeDeprecated =
+                state.getLanguageVersionSettings().supportsFeature(LanguageFeature.DeprecatedFieldForInvisibleCompanionObject) &&
+                (properFieldVisibilityFlag & (ACC_PRIVATE | ACC_PROTECTED)) != 0;
+        // TODO generate field with proper visibility in language version 1.3
+        int fieldAccessFlags = ACC_PUBLIC | ACC_STATIC | ACC_FINAL;
+        if (fieldShouldBeDeprecated) {
+            fieldAccessFlags |= ACC_DEPRECATED;
+        }
         StackValue.Field field = StackValue.singleton(companionObjectDescriptor, typeMapper);
-        v.newField(JvmDeclarationOriginKt.OtherOrigin(companionObject == null ? myClass.getPsiOrParent() : companionObject),
-                   ACC_PUBLIC | ACC_STATIC | ACC_FINAL, field.name, field.type.getDescriptor(), null, null);
+        FieldVisitor fv = v.newField(JvmDeclarationOriginKt.OtherOrigin(companionObject == null ? myClass.getPsiOrParent() : companionObject),
+                                     fieldAccessFlags, field.name, field.type.getDescriptor(), null, null);
+        if (fieldShouldBeDeprecated) {
+            AnnotationCodegen.forField(fv, this, typeMapper).visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+        }
     }
 
     private void generateCompanionObjectBackingFieldCopies() {
@@ -1234,9 +1247,8 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
                 }
             }
 
-
             private void lookupInContext(@NotNull DeclarationDescriptor toLookup) {
-                ExpressionCodegen.lookupValuaAndLocalVariableMetadata(toLookup, StackValue.LOCAL_0, state, true, context, null);
+                context.lookupInContext(toLookup, StackValue.LOCAL_0, state, true);
             }
 
             @Override
@@ -1392,7 +1404,8 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         }
         else {
             argumentGenerator =
-                    generateSuperCallImplicitArguments(iv, codegen, constructorDescriptor, delegateConstructor, delegateConstructorCallable,
+                    generateSuperCallImplicitArguments(iv, codegen, constructorDescriptor, delegateConstructor, delegationConstructorCall,
+                                                       delegateConstructorCallable,
                                                        delegatingParameters,
                                                        parameters);
         }
@@ -1411,6 +1424,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
             @NotNull ExpressionCodegen codegen,
             @NotNull ConstructorDescriptor constructorDescriptor,
             @NotNull ConstructorDescriptor superConstructor,
+            @NotNull ResolvedCall<ConstructorDescriptor> superConstructorCall,
             @NotNull CallableMethod superCallable,
             @NotNull List<JvmMethodParameterSignature> superParameters,
             @NotNull List<JvmMethodParameterSignature> parameters
@@ -1453,7 +1467,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
 
         if (isAnonymousObject(descriptor)) {
             List<JvmMethodParameterSignature> superValues = superParameters.subList(superIndex, superParameters.size());
-            return new ObjectSuperCallArgumentGenerator(superValues, iv, offset);
+            return new ObjectSuperCallArgumentGenerator(superValues, iv, offset, superConstructorCall);
         }
         else {
             return new CallBasedArgumentGenerator(codegen, codegen.defaultCallGenerator, superConstructor.getValueParameters(),
@@ -1494,49 +1508,6 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
                                               delegatingCallable.getValueParameterTypes());
     }
 
-    private static class ObjectSuperCallArgumentGenerator extends ArgumentGenerator {
-        private final List<JvmMethodParameterSignature> parameters;
-        private final InstructionAdapter iv;
-        private int offset;
-
-        public ObjectSuperCallArgumentGenerator(
-                @NotNull List<JvmMethodParameterSignature> superParameters,
-                @NotNull InstructionAdapter iv,
-                int firstValueParamOffset
-        ) {
-            this.parameters = superParameters;
-            this.iv = iv;
-            this.offset = firstValueParamOffset;
-        }
-
-        @Override
-        public void generateExpression(int i, @NotNull ExpressionValueArgument argument) {
-            generateSuperCallArgument(i);
-        }
-
-        @Override
-        public void generateDefault(int i, @NotNull DefaultValueArgument argument) {
-            Type type = parameters.get(i).getAsmType();
-            pushDefaultValueOnStack(type, iv);
-        }
-
-        @Override
-        public void generateVararg(int i, @NotNull VarargValueArgument argument) {
-            generateSuperCallArgument(i);
-        }
-
-        private void generateSuperCallArgument(int i) {
-            Type type = parameters.get(i).getAsmType();
-            iv.load(offset, type);
-            offset += type.getSize();
-        }
-
-        @Override
-        protected void reorderArgumentsIfNeeded(@NotNull List<ArgumentAndDeclIndex> args) {
-
-        }
-    }
-
     private void generateEnumEntries() {
         if (descriptor.getKind() != ClassKind.ENUM_CLASS) return;
 
@@ -1560,7 +1531,7 @@ public class ImplementationBodyCodegen extends ClassBodyCodegen {
         InstructionAdapter iv = codegen.v;
 
         Type arrayAsmType = typeMapper.mapType(DescriptorUtilsKt.getBuiltIns(descriptor).getArrayType(INVARIANT, descriptor.getDefaultType()));
-        v.newField(JvmDeclarationOriginKt.OtherOrigin(myClass), ACC_PRIVATE | ACC_STATIC | ACC_FINAL | ACC_SYNTHETIC, ENUM_VALUES_FIELD_NAME,
+        v.newField(JvmDeclarationOriginKt.OtherOriginFromPure(myClass), ACC_PRIVATE | ACC_STATIC | ACC_FINAL | ACC_SYNTHETIC, ENUM_VALUES_FIELD_NAME,
                    arrayAsmType.getDescriptor(), null, null);
 
         iv.iconst(enumEntries.size());

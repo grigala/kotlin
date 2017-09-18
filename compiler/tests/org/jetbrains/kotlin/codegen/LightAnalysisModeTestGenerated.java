@@ -206,6 +206,18 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/argumentOrder"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
         }
 
+        @TestMetadata("argumentOrderInObjectSuperCall.kt")
+        public void testArgumentOrderInObjectSuperCall() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/argumentOrder/argumentOrderInObjectSuperCall.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("argumentOrderInSuperCall.kt")
+        public void testArgumentOrderInSuperCall() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/argumentOrder/argumentOrderInSuperCall.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("arguments.kt")
         public void testArguments() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/argumentOrder/arguments.kt");
@@ -950,9 +962,45 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("kClassEquals.kt")
+        public void testKClassEquals() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/boxingOptimization/kClassEquals.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("kt15871.kt")
         public void testKt15871() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/boxingOptimization/kt15871.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt17748.kt")
+        public void testKt17748() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/boxingOptimization/kt17748.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt19767.kt")
+        public void testKt19767() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/boxingOptimization/kt19767.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt19767_2.kt")
+        public void testKt19767_2() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/boxingOptimization/kt19767_2.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt19767_3.kt")
+        public void testKt19767_3() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/boxingOptimization/kt19767_3.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt19767_chain.kt")
+        public void testKt19767_chain() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/boxingOptimization/kt19767_chain.kt");
             doTest(fileName);
         }
 
@@ -1621,6 +1669,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("emptyLHS.kt")
+            public void testEmptyLHS() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/callableReference/bound/emptyLHS.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("enumEntryMember.kt")
             public void testEnumEntryMember() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/callableReference/bound/enumEntryMember.kt");
@@ -1909,6 +1963,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("getArityViaFunctionImpl.kt")
             public void testGetArityViaFunctionImpl() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/callableReference/function/getArityViaFunctionImpl.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("innerClassConstructorWithTwoReceivers.kt")
+            public void testInnerClassConstructorWithTwoReceivers() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/callableReference/function/innerClassConstructorWithTwoReceivers.kt");
                 doTest(fileName);
             }
 
@@ -2709,6 +2769,27 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         }
     }
 
+    @TestMetadata("compiler/testData/codegen/box/checkcastOptimization")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class CheckcastOptimization extends AbstractLightAnalysisModeTest {
+        public void testAllFilesPresentInCheckcastOptimization() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/checkcastOptimization"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+        }
+
+        @TestMetadata("kt19128.kt")
+        public void testKt19128() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/checkcastOptimization/kt19128.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt19246.kt")
+        public void testKt19246() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/checkcastOptimization/kt19246.kt");
+            doTest(fileName);
+        }
+    }
+
     @TestMetadata("compiler/testData/codegen/box/classLiteral")
     @TestDataPath("$PROJECT_ROOT")
     @RunWith(JUnit3RunnerWithInners.class)
@@ -2897,6 +2978,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("classObjectsWithParentClasses.kt")
         public void testClassObjectsWithParentClasses() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/classes/classObjectsWithParentClasses.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("comanionObjectFieldVsClassField.kt")
+        public void testComanionObjectFieldVsClassField() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/classes/comanionObjectFieldVsClassField.kt");
             doTest(fileName);
         }
 
@@ -3473,6 +3560,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("propertyInInitializer.kt")
         public void testPropertyInInitializer() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/classes/propertyInInitializer.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("quotedClassName.kt")
+        public void testQuotedClassName() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/classes/quotedClassName.kt");
             doTest(fileName);
         }
 
@@ -4157,6 +4250,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("kt9532_lv10.kt")
+        public void testKt9532_lv10() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/constants/kt9532_lv10.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("long.kt")
         public void testLong() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/constants/long.kt");
@@ -4598,6 +4697,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("parameterWithNameForFunctionType.kt")
+        public void testParameterWithNameForFunctionType() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/controlStructures/parameterWithNameForFunctionType.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("quicksort.kt")
         public void testQuicksort() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/controlStructures/quicksort.kt");
@@ -4930,6 +5035,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("tryCatchAfterWhileTrue.kt")
+            public void testTryCatchAfterWhileTrue() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/controlStructures/tryCatchInExpressions/tryCatchAfterWhileTrue.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("tryInsideCatch.kt")
             public void testTryInsideCatch() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/controlStructures/tryCatchInExpressions/tryInsideCatch.kt");
@@ -4976,6 +5087,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("asyncIteratorNullMerge.kt")
+        public void testAsyncIteratorNullMerge() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/asyncIteratorNullMerge.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("asyncIteratorToList.kt")
         public void testAsyncIteratorToList() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/asyncIteratorToList.kt");
@@ -5009,6 +5126,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("controllerAccessFromInnerLambda.kt")
         public void testControllerAccessFromInnerLambda() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/controllerAccessFromInnerLambda.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("coroutineToString.kt")
+        public void testCoroutineToString() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/coroutineToString.kt");
             doTest(fileName);
         }
 
@@ -5081,6 +5204,18 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("illegalState.kt")
         public void testIllegalState() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/illegalState.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("inlineFunInGenericClass.kt")
+        public void testInlineFunInGenericClass() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/inlineFunInGenericClass.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("inlineGenericFunCalledFromSubclass.kt")
+        public void testInlineGenericFunCalledFromSubclass() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/inlineGenericFunCalledFromSubclass.kt");
             doTest(fileName);
         }
 
@@ -5404,6 +5539,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("forWithStep.kt")
+            public void testForWithStep() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/controlFlow/forWithStep.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("ifStatement.kt")
             public void testIfStatement() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/controlFlow/ifStatement.kt");
@@ -5698,6 +5839,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("openFunWithJava.kt")
+            public void testOpenFunWithJava() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/suspendFunctionAsCoroutine/openFunWithJava.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("operators.kt")
             public void testOperators() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/suspendFunctionAsCoroutine/operators.kt");
@@ -5879,6 +6026,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         public static class VarSpilling extends AbstractLightAnalysisModeTest {
             public void testAllFilesPresentInVarSpilling() throws Exception {
                 KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/coroutines/varSpilling"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+            }
+
+            @TestMetadata("kt19475.kt")
+            public void testKt19475() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/coroutines/varSpilling/kt19475.kt");
+                doTest(fileName);
             }
 
             @TestMetadata("nullSpilling.kt")
@@ -6619,6 +6772,18 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
     @TestDataPath("$PROJECT_ROOT")
     @RunWith(JUnit3RunnerWithInners.class)
     public static class DelegatedProperty extends AbstractLightAnalysisModeTest {
+        @TestMetadata("genericDelegateUncheckedCast2.kt")
+        public void ignoreGenericDelegateUncheckedCast2() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/delegatedProperty/genericDelegateUncheckedCast2.kt");
+            try {
+                doTest(fileName);
+            }
+            catch (Throwable ignore) {
+                return;
+            }
+            throw new AssertionError("Looks like this test can be unmuted. Remove IGNORE_BACKEND directive for that.");
+        }
+
         @TestMetadata("accessTopLevelDelegatedPropertyInClinit.kt")
         public void testAccessTopLevelDelegatedPropertyInClinit() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/delegatedProperty/accessTopLevelDelegatedPropertyInClinit.kt");
@@ -6704,6 +6869,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("genericDelegate.kt")
         public void testGenericDelegate() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/delegatedProperty/genericDelegate.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("genericDelegateUncheckedCast1.kt")
+        public void testGenericDelegateUncheckedCast1() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/delegatedProperty/genericDelegateUncheckedCast1.kt");
             doTest(fileName);
         }
 
@@ -6913,6 +7084,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("kt19690.kt")
+            public void testKt19690() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/delegatedProperty/local/kt19690.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("localVal.kt")
             public void testLocalVal() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/delegatedProperty/local/localVal.kt");
@@ -7009,6 +7186,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("kt16441.kt")
             public void testKt16441() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/delegatedProperty/provideDelegate/kt16441.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt18902.kt")
+            public void testKt18902() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/delegatedProperty/provideDelegate/kt18902.kt");
                 doTest(fileName);
             }
 
@@ -7574,6 +7757,18 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("deepInnerClassInEnumEntryClass.kt")
+        public void testDeepInnerClassInEnumEntryClass() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/deepInnerClassInEnumEntryClass.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("deepInnerClassInEnumEntryClass2.kt")
+        public void testDeepInnerClassInEnumEntryClass2() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/deepInnerClassInEnumEntryClass2.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("emptyConstructor.kt")
         public void testEmptyConstructor() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/emptyConstructor.kt");
@@ -7628,6 +7823,24 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("innerClassInEnumEntryClass.kt")
+        public void testInnerClassInEnumEntryClass() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/innerClassInEnumEntryClass.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("innerClassMethodInEnumEntryClass.kt")
+        public void testInnerClassMethodInEnumEntryClass() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/innerClassMethodInEnumEntryClass.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("innerClassMethodInEnumEntryClass2.kt")
+        public void testInnerClassMethodInEnumEntryClass2() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/innerClassMethodInEnumEntryClass2.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("innerWithExistingClassObject.kt")
         public void testInnerWithExistingClassObject() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/innerWithExistingClassObject.kt");
@@ -7643,6 +7856,66 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("kt2350.kt")
         public void testKt2350() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt2350.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257.kt")
+        public void testKt7257() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257_anonObjectInit.kt")
+        public void testKt7257_anonObjectInit() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257_anonObjectInit.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257_anonObjectMethod.kt")
+        public void testKt7257_anonObjectMethod() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257_anonObjectMethod.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257_boundReference1.kt")
+        public void testKt7257_boundReference1() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257_boundReference1.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257_boundReference2.kt")
+        public void testKt7257_boundReference2() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257_boundReference2.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257_boundReferenceWithImplicitReceiver.kt")
+        public void testKt7257_boundReferenceWithImplicitReceiver() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257_boundReferenceWithImplicitReceiver.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257_explicitReceiver.kt")
+        public void testKt7257_explicitReceiver() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257_explicitReceiver.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257_fullyQualifiedReceiver.kt")
+        public void testKt7257_fullyQualifiedReceiver() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257_fullyQualifiedReceiver.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257_namedLocalFun.kt")
+        public void testKt7257_namedLocalFun() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257_namedLocalFun.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt7257_notInline.kt")
+        public void testKt7257_notInline() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/enum/kt7257_notInline.kt");
             doTest(fileName);
         }
 
@@ -8285,12 +8558,6 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("charBuffer.kt")
         public void testCharBuffer() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/fullJdk/charBuffer.kt");
-            doTest(fileName);
-        }
-
-        @TestMetadata("classpath.kt")
-        public void testClasspath() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/fullJdk/classpath.kt");
             doTest(fileName);
         }
 
@@ -11451,6 +11718,81 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         }
     }
 
+    @TestMetadata("compiler/testData/codegen/box/nullabilityAssertions")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class NullabilityAssertions extends AbstractLightAnalysisModeTest {
+        public void testAllFilesPresentInNullabilityAssertions() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/nullabilityAssertions"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+        }
+
+        @TestMetadata("destructuringAssignmentWithNullabilityAssertionOnExtensionReceiver_lv12.kt")
+        public void testDestructuringAssignmentWithNullabilityAssertionOnExtensionReceiver_lv12() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/destructuringAssignmentWithNullabilityAssertionOnExtensionReceiver_lv12.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("incWithNullabilityAssertionOnExtensionReceiverInPrivateOperator_lv11.kt")
+        public void testIncWithNullabilityAssertionOnExtensionReceiverInPrivateOperator_lv11() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/incWithNullabilityAssertionOnExtensionReceiverInPrivateOperator_lv11.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("incWithNullabilityAssertionOnExtensionReceiverInPrivateOperator_lv12.kt")
+        public void testIncWithNullabilityAssertionOnExtensionReceiverInPrivateOperator_lv12() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/incWithNullabilityAssertionOnExtensionReceiverInPrivateOperator_lv12.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("incWithNullabilityAssertionOnExtensionReceiver_lv11.kt")
+        public void testIncWithNullabilityAssertionOnExtensionReceiver_lv11() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/incWithNullabilityAssertionOnExtensionReceiver_lv11.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("incWithNullabilityAssertionOnExtensionReceiver_lv12.kt")
+        public void testIncWithNullabilityAssertionOnExtensionReceiver_lv12() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/incWithNullabilityAssertionOnExtensionReceiver_lv12.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nullabilityAssertionOnExtensionReceiver_lv11.kt")
+        public void testNullabilityAssertionOnExtensionReceiver_lv11() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/nullabilityAssertionOnExtensionReceiver_lv11.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nullabilityAssertionOnExtensionReceiver_lv12.kt")
+        public void testNullabilityAssertionOnExtensionReceiver_lv12() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/nullabilityAssertionOnExtensionReceiver_lv12.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nullabilityAssertionOnInlineFunExtensionReceiver_lv11.kt")
+        public void testNullabilityAssertionOnInlineFunExtensionReceiver_lv11() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/nullabilityAssertionOnInlineFunExtensionReceiver_lv11.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nullabilityAssertionOnInlineFunExtensionReceiver_lv12.kt")
+        public void testNullabilityAssertionOnInlineFunExtensionReceiver_lv12() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/nullabilityAssertionOnInlineFunExtensionReceiver_lv12.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nullabilityAssertionOnMemberExtensionReceiver_lv12.kt")
+        public void testNullabilityAssertionOnMemberExtensionReceiver_lv12() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/nullabilityAssertionOnMemberExtensionReceiver_lv12.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nullabilityAssertionOnPrivateMemberExtensionReceiver_lv12.kt")
+        public void testNullabilityAssertionOnPrivateMemberExtensionReceiver_lv12() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/nullabilityAssertions/nullabilityAssertionOnPrivateMemberExtensionReceiver_lv12.kt");
+            doTest(fileName);
+        }
+    }
+
     @TestMetadata("compiler/testData/codegen/box/objectIntrinsics")
     @TestDataPath("$PROJECT_ROOT")
     @RunWith(JUnit3RunnerWithInners.class)
@@ -11504,6 +11846,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("interfaceCompanionObjectReference.kt")
+        public void testInterfaceCompanionObjectReference() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/objects/interfaceCompanionObjectReference.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("kt1047.kt")
         public void testKt1047() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/objects/kt1047.kt");
@@ -11537,6 +11885,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("kt1737.kt")
         public void testKt1737() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/objects/kt1737.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt18982.kt")
+        public void testKt18982() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/objects/kt18982.kt");
             doTest(fileName);
         }
 
@@ -12040,6 +12394,24 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("equalsNull_lv11.kt")
+            public void testEqualsNull_lv11() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/platformTypes/primitives/equalsNull_lv11.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("equalsNull_lv12.kt")
+            public void testEqualsNull_lv12() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/platformTypes/primitives/equalsNull_lv12.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("equalsNull_withExplicitFlag.kt")
+            public void testEqualsNull_withExplicitFlag() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/platformTypes/primitives/equalsNull_withExplicitFlag.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("hashCode.kt")
             public void testHashCode() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/platformTypes/primitives/hashCode.kt");
@@ -12456,6 +12828,156 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         public void testUnboxComparable() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/unboxComparable.kt");
             doTest(fileName);
+        }
+
+        @TestMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject")
+        @TestDataPath("$PROJECT_ROOT")
+        @RunWith(JUnit3RunnerWithInners.class)
+        public static class EqualityWithObject extends AbstractLightAnalysisModeTest {
+            public void testAllFilesPresentInEqualityWithObject() throws Exception {
+                KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/primitiveTypes/equalityWithObject"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+            }
+
+            @TestMetadata("boxedEqPrimitiveEvaluationOrder.kt")
+            public void testBoxedEqPrimitiveEvaluationOrder() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/boxedEqPrimitiveEvaluationOrder.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("boxedLongEqualsLong.kt")
+            public void testBoxedLongEqualsLong() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/boxedLongEqualsLong.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("objectWithAsymmetricEqualsEqPrimitive.kt")
+            public void testObjectWithAsymmetricEqualsEqPrimitive() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/objectWithAsymmetricEqualsEqPrimitive.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("whenNullableBoxed.kt")
+            public void testWhenNullableBoxed() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/whenNullableBoxed.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated")
+            @TestDataPath("$PROJECT_ROOT")
+            @RunWith(JUnit3RunnerWithInners.class)
+            public static class Generated extends AbstractLightAnalysisModeTest {
+                public void testAllFilesPresentInGenerated() throws Exception {
+                    KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+                }
+
+                @TestMetadata("boxedEqPrimitiveBoolean.kt")
+                public void testBoxedEqPrimitiveBoolean() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/boxedEqPrimitiveBoolean.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("boxedEqPrimitiveByte.kt")
+                public void testBoxedEqPrimitiveByte() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/boxedEqPrimitiveByte.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("boxedEqPrimitiveChar.kt")
+                public void testBoxedEqPrimitiveChar() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/boxedEqPrimitiveChar.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("boxedEqPrimitiveInt.kt")
+                public void testBoxedEqPrimitiveInt() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/boxedEqPrimitiveInt.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("boxedEqPrimitiveLong.kt")
+                public void testBoxedEqPrimitiveLong() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/boxedEqPrimitiveLong.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("boxedEqPrimitiveShort.kt")
+                public void testBoxedEqPrimitiveShort() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/boxedEqPrimitiveShort.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqBoxedBoolean.kt")
+                public void testPrimitiveEqBoxedBoolean() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqBoxedBoolean.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqBoxedByte.kt")
+                public void testPrimitiveEqBoxedByte() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqBoxedByte.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqBoxedChar.kt")
+                public void testPrimitiveEqBoxedChar() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqBoxedChar.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqBoxedInt.kt")
+                public void testPrimitiveEqBoxedInt() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqBoxedInt.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqBoxedLong.kt")
+                public void testPrimitiveEqBoxedLong() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqBoxedLong.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqBoxedShort.kt")
+                public void testPrimitiveEqBoxedShort() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqBoxedShort.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqObjectBoolean.kt")
+                public void testPrimitiveEqObjectBoolean() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqObjectBoolean.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqObjectByte.kt")
+                public void testPrimitiveEqObjectByte() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqObjectByte.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqObjectChar.kt")
+                public void testPrimitiveEqObjectChar() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqObjectChar.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqObjectInt.kt")
+                public void testPrimitiveEqObjectInt() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqObjectInt.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqObjectLong.kt")
+                public void testPrimitiveEqObjectLong() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqObjectLong.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("primitiveEqObjectShort.kt")
+                public void testPrimitiveEqObjectShort() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/primitiveTypes/equalityWithObject/generated/primitiveEqObjectShort.kt");
+                    doTest(fileName);
+                }
+            }
         }
     }
 
@@ -13066,6 +13588,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("privateSetterViaSubclass.kt")
+            public void testPrivateSetterViaSubclass() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/privateSetterViaSubclass.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("simpleVar.kt")
             public void testSimpleVar() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/simpleVar.kt");
@@ -13076,6 +13604,90 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             public void testVisibility() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/visibility.kt");
                 doTest(fileName);
+            }
+
+            @TestMetadata("compiler/testData/codegen/box/properties/lateinit/local")
+            @TestDataPath("$PROJECT_ROOT")
+            @RunWith(JUnit3RunnerWithInners.class)
+            public static class Local extends AbstractLightAnalysisModeTest {
+                public void testAllFilesPresentInLocal() throws Exception {
+                    KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/properties/lateinit/local"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+                }
+
+                @TestMetadata("capturedLocalLateinit.kt")
+                public void testCapturedLocalLateinit() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/local/capturedLocalLateinit.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("localLateinit.kt")
+                public void testLocalLateinit() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/local/localLateinit.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("uninitializedCapturedMemberAccess.kt")
+                public void testUninitializedCapturedMemberAccess() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/local/uninitializedCapturedMemberAccess.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("uninitializedCapturedRead.kt")
+                public void testUninitializedCapturedRead() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/local/uninitializedCapturedRead.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("uninitializedMemberAccess.kt")
+                public void testUninitializedMemberAccess() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/local/uninitializedMemberAccess.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("uninitializedRead.kt")
+                public void testUninitializedRead() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/local/uninitializedRead.kt");
+                    doTest(fileName);
+                }
+            }
+
+            @TestMetadata("compiler/testData/codegen/box/properties/lateinit/topLevel")
+            @TestDataPath("$PROJECT_ROOT")
+            @RunWith(JUnit3RunnerWithInners.class)
+            public static class TopLevel extends AbstractLightAnalysisModeTest {
+                @TestMetadata("accessorException.kt")
+                public void testAccessorException() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/topLevel/accessorException.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("accessorForTopLevelLateinit.kt")
+                public void testAccessorForTopLevelLateinit() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/topLevel/accessorForTopLevelLateinit.kt");
+                    doTest(fileName);
+                }
+
+                public void testAllFilesPresentInTopLevel() throws Exception {
+                    KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/properties/lateinit/topLevel"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+                }
+
+                @TestMetadata("topLevelLateinit.kt")
+                public void testTopLevelLateinit() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/topLevel/topLevelLateinit.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("uninitializedMemberAccess.kt")
+                public void testUninitializedMemberAccess() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/topLevel/uninitializedMemberAccess.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("uninitializedRead.kt")
+                public void testUninitializedRead() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/properties/lateinit/topLevel/uninitializedRead.kt");
+                    doTest(fileName);
+                }
             }
         }
     }
@@ -13121,6 +13733,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("forInRangeToConstWithOverflow.kt")
+        public void testForInRangeToConstWithOverflow() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/forInRangeToConstWithOverflow.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("forInRangeWithImplicitReceiver.kt")
         public void testForInRangeWithImplicitReceiver() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/forInRangeWithImplicitReceiver.kt");
@@ -13159,9 +13777,57 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/ranges/contains"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
             }
 
+            @TestMetadata("evaluationOrderForCollection.kt")
+            public void testEvaluationOrderForCollection() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/evaluationOrderForCollection.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("evaluationOrderForComparableRange.kt")
+            public void testEvaluationOrderForComparableRange() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/evaluationOrderForComparableRange.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("evaluationOrderForDownTo.kt")
+            public void testEvaluationOrderForDownTo() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/evaluationOrderForDownTo.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("evaluationOrderForRangeLiteral.kt")
+            public void testEvaluationOrderForRangeLiteral() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/evaluationOrderForRangeLiteral.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("inArray.kt")
+            public void testInArray() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inArray.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("inCharSequence.kt")
+            public void testInCharSequence() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inCharSequence.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("inComparableRange.kt")
             public void testInComparableRange() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inComparableRange.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("inCustomObjectRange.kt")
+            public void testInCustomObjectRange() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inCustomObjectRange.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("inDoubleRangeLiteralVsComparableRangeLiteral.kt")
+            public void testInDoubleRangeLiteralVsComparableRangeLiteral() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inDoubleRangeLiteralVsComparableRangeLiteral.kt");
                 doTest(fileName);
             }
 
@@ -13174,6 +13840,18 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("inIntRange.kt")
             public void testInIntRange() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inIntRange.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("inIterable.kt")
+            public void testInIterable() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inIterable.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("inNonMatchingRange.kt")
+            public void testInNonMatchingRange() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inNonMatchingRange.kt");
                 doTest(fileName);
             }
 
@@ -13201,6 +13879,24 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("inPrimitiveProgression.kt")
+            public void testInPrimitiveProgression() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inPrimitiveProgression.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("inPrimitiveRange.kt")
+            public void testInPrimitiveRange() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inPrimitiveRange.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("inRangeLiteralComposition.kt")
+            public void testInRangeLiteralComposition() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inRangeLiteralComposition.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("inRangeWithCustomContains.kt")
             public void testInRangeWithCustomContains() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inRangeWithCustomContains.kt");
@@ -13225,10 +13921,121 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("inUntil.kt")
+            public void testInUntil() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/inUntil.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt20106.kt")
+            public void testKt20106() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/kt20106.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("nullableInPrimitiveRange.kt")
+            public void testNullableInPrimitiveRange() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/nullableInPrimitiveRange.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("rangeContainsString.kt")
             public void testRangeContainsString() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/rangeContainsString.kt");
                 doTest(fileName);
+            }
+
+            @TestMetadata("compiler/testData/codegen/box/ranges/contains/generated")
+            @TestDataPath("$PROJECT_ROOT")
+            @RunWith(JUnit3RunnerWithInners.class)
+            public static class Generated extends AbstractLightAnalysisModeTest {
+                public void testAllFilesPresentInGenerated() throws Exception {
+                    KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/ranges/contains/generated"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+                }
+
+                @TestMetadata("arrayIndices.kt")
+                public void testArrayIndices() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/arrayIndices.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("charDownTo.kt")
+                public void testCharDownTo() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/charDownTo.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("charRangeLiteral.kt")
+                public void testCharRangeLiteral() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/charRangeLiteral.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("charSequenceIndices.kt")
+                public void testCharSequenceIndices() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/charSequenceIndices.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("charUntil.kt")
+                public void testCharUntil() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/charUntil.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("collectionIndices.kt")
+                public void testCollectionIndices() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/collectionIndices.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("doubleRangeLiteral.kt")
+                public void testDoubleRangeLiteral() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/doubleRangeLiteral.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("floatRangeLiteral.kt")
+                public void testFloatRangeLiteral() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/floatRangeLiteral.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("intDownTo.kt")
+                public void testIntDownTo() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/intDownTo.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("intRangeLiteral.kt")
+                public void testIntRangeLiteral() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/intRangeLiteral.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("intUntil.kt")
+                public void testIntUntil() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/intUntil.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("longDownTo.kt")
+                public void testLongDownTo() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/longDownTo.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("longRangeLiteral.kt")
+                public void testLongRangeLiteral() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/longRangeLiteral.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("longUntil.kt")
+                public void testLongUntil() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/contains/generated/longUntil.kt");
+                    doTest(fileName);
+                }
             }
         }
 
@@ -13495,6 +14302,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("forNullableIntInCollectionIndices.kt")
             public void testForNullableIntInCollectionIndices() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/forInIndices/forNullableIntInCollectionIndices.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("indexOfLast.kt")
+            public void testIndexOfLast() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/ranges/forInIndices/indexOfLast.kt");
                 doTest(fileName);
             }
 
@@ -13843,6 +14656,18 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                 doTest(fileName);
             }
 
+            @TestMetadata("openSuspendFun.kt")
+            public void testOpenSuspendFun() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/annotations/openSuspendFun.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("privateAnnotation.kt")
+            public void testPrivateAnnotation() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/annotations/privateAnnotation.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("propertyAccessors.kt")
             public void testPropertyAccessors() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/annotations/propertyAccessors.kt");
@@ -14005,6 +14830,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("propertyGetterAndGetFunctionDifferentReturnType.kt")
             public void testPropertyGetterAndGetFunctionDifferentReturnType() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/call/propertyGetterAndGetFunctionDifferentReturnType.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("protectedMembers.kt")
+            public void testProtectedMembers() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/call/protectedMembers.kt");
                 doTest(fileName);
             }
 
@@ -14173,6 +15004,18 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("jvmStaticInObject.kt")
             public void testJvmStaticInObject() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/callBy/jvmStaticInObject.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("manyArgumentsNoneDefaultConstructor.kt")
+            public void testManyArgumentsNoneDefaultConstructor() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/callBy/manyArgumentsNoneDefaultConstructor.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("manyArgumentsNoneDefaultFunction.kt")
+            public void testManyArgumentsNoneDefaultFunction() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/callBy/manyArgumentsNoneDefaultFunction.kt");
                 doTest(fileName);
             }
 
@@ -14944,6 +15787,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("memberProperty.kt")
             public void testMemberProperty() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/mapping/memberProperty.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("openSuspendFun.kt")
+            public void testOpenSuspendFun() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/mapping/openSuspendFun.kt");
                 doTest(fileName);
             }
 
@@ -15792,6 +16641,45 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
                     doTest(fileName);
                 }
             }
+
+            @TestMetadata("compiler/testData/codegen/box/reflection/properties/localDelegated")
+            @TestDataPath("$PROJECT_ROOT")
+            @RunWith(JUnit3RunnerWithInners.class)
+            public static class LocalDelegated extends AbstractLightAnalysisModeTest {
+                public void testAllFilesPresentInLocalDelegated() throws Exception {
+                    KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/reflection/properties/localDelegated"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+                }
+
+                @TestMetadata("defaultImpls.kt")
+                public void testDefaultImpls() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/properties/localDelegated/defaultImpls.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("inlineFun.kt")
+                public void testInlineFun() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/properties/localDelegated/inlineFun.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("localDelegatedProperty.kt")
+                public void testLocalDelegatedProperty() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/properties/localDelegated/localDelegatedProperty.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("multiFileClass.kt")
+                public void testMultiFileClass() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/properties/localDelegated/multiFileClass.kt");
+                    doTest(fileName);
+                }
+
+                @TestMetadata("variableOfGenericType.kt")
+                public void testVariableOfGenericType() throws Exception {
+                    String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/reflection/properties/localDelegated/variableOfGenericType.kt");
+                    doTest(fileName);
+                }
+            }
         }
 
         @TestMetadata("compiler/testData/codegen/box/reflection/specialBuiltIns")
@@ -16037,6 +16925,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/regressions"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
         }
 
+        @TestMetadata("approximateIntersectionType.kt")
+        public void testApproximateIntersectionType() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/approximateIntersectionType.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("arrayLengthNPE.kt")
         public void testArrayLengthNPE() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/arrayLengthNPE.kt");
@@ -16061,6 +16955,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("dontCaptureTypesWithTypeVariables.kt")
+        public void testDontCaptureTypesWithTypeVariables() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/dontCaptureTypesWithTypeVariables.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("doubleMerge.kt")
         public void testDoubleMerge() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/doubleMerge.kt");
@@ -16070,6 +16970,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("floatMerge.kt")
         public void testFloatMerge() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/floatMerge.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("functionLiteralAsLastExpressionInBlock.kt")
+        public void testFunctionLiteralAsLastExpressionInBlock() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/functionLiteralAsLastExpressionInBlock.kt");
             doTest(fileName);
         }
 
@@ -16094,6 +17000,18 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("internalTopLevelOtherPackage.kt")
         public void testInternalTopLevelOtherPackage() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/internalTopLevelOtherPackage.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("intersectionAsLastLambda.kt")
+        public void testIntersectionAsLastLambda() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/intersectionAsLastLambda.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("intersectionOfEqualTypes.kt")
+        public void testIntersectionOfEqualTypes() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/intersectionOfEqualTypes.kt");
             doTest(fileName);
         }
 
@@ -16190,6 +17108,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("kt1845.kt")
         public void testKt1845() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/kt1845.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt18779.kt")
+        public void testKt18779() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/kt18779.kt");
             doTest(fileName);
         }
 
@@ -16433,9 +17357,51 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("lambdaAsLastExpressionInLambda.kt")
+        public void testLambdaAsLastExpressionInLambda() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/lambdaAsLastExpressionInLambda.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("lambdaPostponeConstruction.kt")
+        public void testLambdaPostponeConstruction() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/lambdaPostponeConstruction.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("lambdaWrongReturnType.kt")
+        public void testLambdaWrongReturnType() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/lambdaWrongReturnType.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("nestedIntersection.kt")
         public void testNestedIntersection() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/nestedIntersection.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("noCapturingForTypesWithTypeVariables.kt")
+        public void testNoCapturingForTypesWithTypeVariables() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/noCapturingForTypesWithTypeVariables.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("noResolutionRecursion.kt")
+        public void testNoResolutionRecursion() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/noResolutionRecursion.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nullabilityForCommonCapturedSupertypes.kt")
+        public void testNullabilityForCommonCapturedSupertypes() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/nullabilityForCommonCapturedSupertypes.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nullableAfterExclExcl.kt")
+        public void testNullableAfterExclExcl() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/nullableAfterExclExcl.kt");
             doTest(fileName);
         }
 
@@ -16445,9 +17411,27 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("objectInsideDelegation.kt")
+        public void testObjectInsideDelegation() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/objectInsideDelegation.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("referenceToSelfInLocal.kt")
         public void testReferenceToSelfInLocal() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/referenceToSelfInLocal.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("resolvedCallForGetOperator.kt")
+        public void testResolvedCallForGetOperator() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/resolvedCallForGetOperator.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("supertypeDepth.kt")
+        public void testSupertypeDepth() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/regressions/supertypeDepth.kt");
             doTest(fileName);
         }
 
@@ -16798,6 +17782,18 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             @TestMetadata("filenameFilter.kt")
             public void testFilenameFilter() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/sam/constructors/filenameFilter.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt19251.kt")
+            public void testKt19251() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/sam/constructors/kt19251.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt19251_child.kt")
+            public void testKt19251_child() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/sam/constructors/kt19251_child.kt");
                 doTest(fileName);
             }
 
@@ -17162,6 +18158,24 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             doTest(fileName);
         }
 
+        @TestMetadata("kt17725.kt")
+        public void testKt17725() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/smartCasts/kt17725.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt19058.kt")
+        public void testKt19058() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/smartCasts/kt19058.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt19100.kt")
+        public void testKt19100() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/smartCasts/kt19100.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("lambdaArgumentWithoutType.kt")
         public void testLambdaArgumentWithoutType() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/smartCasts/lambdaArgumentWithoutType.kt");
@@ -17300,6 +18314,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("removeAtTwoSpecialBridges.kt")
         public void testRemoveAtTwoSpecialBridges() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/specialBuiltins/removeAtTwoSpecialBridges.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("removeSetInt.kt")
+        public void testRemoveSetInt() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/specialBuiltins/removeSetInt.kt");
             doTest(fileName);
         }
 
@@ -17486,6 +18506,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/strings"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
         }
 
+        @TestMetadata("constInStringTemplate.kt")
+        public void testConstInStringTemplate() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/strings/constInStringTemplate.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("ea35743.kt")
         public void testEa35743() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/strings/ea35743.kt");
@@ -17555,6 +18581,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("multilineStringsWithTemplates.kt")
         public void testMultilineStringsWithTemplates() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/strings/multilineStringsWithTemplates.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nestedConcat.kt")
+        public void testNestedConcat() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/strings/nestedConcat.kt");
             doTest(fileName);
         }
 
@@ -17758,6 +18790,51 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/super/unqualifiedSuperWithMethodsOfAny.kt");
             doTest(fileName);
         }
+
+        @TestMetadata("compiler/testData/codegen/box/super/superConstructor")
+        @TestDataPath("$PROJECT_ROOT")
+        @RunWith(JUnit3RunnerWithInners.class)
+        public static class SuperConstructor extends AbstractLightAnalysisModeTest {
+            public void testAllFilesPresentInSuperConstructor() throws Exception {
+                KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/super/superConstructor"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+            }
+
+            @TestMetadata("kt17464_arrayOf.kt")
+            public void testKt17464_arrayOf() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/super/superConstructor/kt17464_arrayOf.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt17464_linkedMapOf.kt")
+            public void testKt17464_linkedMapOf() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/super/superConstructor/kt17464_linkedMapOf.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt18356.kt")
+            public void testKt18356() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/super/superConstructor/kt18356.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("kt18356_2.kt")
+            public void testKt18356_2() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/super/superConstructor/kt18356_2.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("objectExtendsInner.kt")
+            public void testObjectExtendsInner() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/super/superConstructor/objectExtendsInner.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("objectExtendsLocalInner.kt")
+            public void testObjectExtendsLocalInner() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/super/superConstructor/objectExtendsLocalInner.kt");
+                doTest(fileName);
+            }
+        }
     }
 
     @TestMetadata("compiler/testData/codegen/box/synchronized")
@@ -17853,6 +18930,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
 
         public void testAllFilesPresentInSyntheticAccessors() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/syntheticAccessors"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
+        }
+
+        @TestMetadata("jvmNameForAccessors.kt")
+        public void testJvmNameForAccessors() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/syntheticAccessors/jvmNameForAccessors.kt");
+            doTest(fileName);
         }
 
         @TestMetadata("kt10047.kt")
@@ -18548,6 +19631,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/vararg"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.JVM, true);
         }
 
+        @TestMetadata("assigningArrayToVarargInAnnotation.kt")
+        public void testAssigningArrayToVarargInAnnotation() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/vararg/assigningArrayToVarargInAnnotation.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("kt1978.kt")
         public void testKt1978() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/vararg/kt1978.kt");
@@ -18800,6 +19889,12 @@ public class LightAnalysisModeTestGenerated extends AbstractLightAnalysisModeTes
         @TestMetadata("whenArgumentIsEvaluatedOnlyOnce.kt")
         public void testWhenArgumentIsEvaluatedOnlyOnce() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/when/whenArgumentIsEvaluatedOnlyOnce.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("whenSafeCallSubjectEvaluatedOnce.kt")
+        public void testWhenSafeCallSubjectEvaluatedOnce() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/when/whenSafeCallSubjectEvaluatedOnce.kt");
             doTest(fileName);
         }
 

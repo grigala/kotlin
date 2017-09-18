@@ -16,9 +16,9 @@
 
 package org.jetbrains.kotlin.config
 
-import org.jetbrains.kotlin.config.LanguageVersion.KOTLIN_1_1
-import org.jetbrains.kotlin.config.LanguageVersion.KOTLIN_1_2
+import org.jetbrains.kotlin.config.LanguageVersion.*
 import org.jetbrains.kotlin.utils.DescriptionAware
+import java.util.*
 
 enum class LanguageFeature(
         val sinceVersion: LanguageVersion?,
@@ -52,6 +52,23 @@ enum class LanguageFeature(
     ArrayLiteralsInAnnotations(KOTLIN_1_2),
     InlineDefaultFunctionalParameters(KOTLIN_1_2),
     SoundSmartCastsAfterTry(KOTLIN_1_2),
+    DeprecatedFieldForInvisibleCompanionObject(KOTLIN_1_2),
+    NullabilityAssertionOnExtensionReceiver(KOTLIN_1_2),
+    SafeCastCheckBoundSmartCasts(KOTLIN_1_2),
+    BooleanElvisBoundSmartCasts(KOTLIN_1_2),
+    CapturedInClosureSmartCasts(KOTLIN_1_2),
+    LateinitTopLevelProperties(KOTLIN_1_2),
+    LateinitLocalVariables(KOTLIN_1_2),
+    InnerClassInEnumEntryClass(KOTLIN_1_2),
+    CallableReferencesToClassMembersWithEmptyLHS(KOTLIN_1_2),
+    ThrowNpeOnExplicitEqualsForBoxedNull(KOTLIN_1_2),
+    JvmPackageName(KOTLIN_1_2),
+    AssigningArraysToVarargsInNamedFormInAnnotations(KOTLIN_1_2),
+
+    RestrictionOfValReassignmentViaBackingField(KOTLIN_1_3),
+    NestedClassesInEnumEntryShouldBeInner(KOTLIN_1_3),
+    ProhibitDataClassesOverridingCopy(KOTLIN_1_3),
+    RestrictionOfWrongAnnotationsWithUseSiteTargetsOnTypes(KOTLIN_1_3),
 
     // Experimental features
 
@@ -83,7 +100,8 @@ enum class LanguageFeature(
 enum class LanguageVersion(val major: Int, val minor: Int) : DescriptionAware {
     KOTLIN_1_0(1, 0),
     KOTLIN_1_1(1, 1),
-    KOTLIN_1_2(1, 2);
+    KOTLIN_1_2(1, 2),
+    KOTLIN_1_3(1, 3);
 
     val isStable: Boolean
         get() = this <= LATEST_STABLE
@@ -114,7 +132,7 @@ interface LanguageVersionSettings {
     fun supportsFeature(feature: LanguageFeature): Boolean =
             getFeatureSupport(feature).let { it == LanguageFeature.State.ENABLED || it == LanguageFeature.State.ENABLED_WITH_WARNING }
 
-    fun isFlagEnabled(flag: AnalysisFlag): Boolean
+    fun <T> getFlag(flag: AnalysisFlag<T>): T
 
     val apiVersion: ApiVersion
 
@@ -125,20 +143,14 @@ interface LanguageVersionSettings {
 class LanguageVersionSettingsImpl @JvmOverloads constructor(
         override val languageVersion: LanguageVersion,
         override val apiVersion: ApiVersion,
-        private val specificFeatures: Map<LanguageFeature, LanguageFeature.State> = emptyMap()
+        analysisFlags: Map<AnalysisFlag<*>, Any?> = emptyMap(),
+        specificFeatures: Map<LanguageFeature, LanguageFeature.State> = emptyMap()
 ) : LanguageVersionSettings {
-    private val enabledFlags = hashSetOf<AnalysisFlag>()
+    private val analysisFlags: Map<AnalysisFlag<*>, *> = Collections.unmodifiableMap(analysisFlags)
+    private val specificFeatures: Map<LanguageFeature, LanguageFeature.State> = Collections.unmodifiableMap(specificFeatures)
 
-    override fun isFlagEnabled(flag: AnalysisFlag): Boolean = flag in enabledFlags
-
-    fun switchFlag(flag: AnalysisFlag, enable: Boolean) {
-        if (enable) {
-            enabledFlags.add(flag)
-        }
-        else {
-            enabledFlags.remove(flag)
-        }
-    }
+    @Suppress("UNCHECKED_CAST")
+    override fun <T> getFlag(flag: AnalysisFlag<T>): T = analysisFlags[flag] as T? ?: flag.defaultValue
 
     override fun getFeatureSupport(feature: LanguageFeature): LanguageFeature.State {
         specificFeatures[feature]?.let { return it }

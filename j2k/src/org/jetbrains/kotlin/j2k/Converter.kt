@@ -162,7 +162,7 @@ class Converter private constructor(
         }
 
         val annotations = convertAnnotations(psiClass)
-        var modifiers = convertModifiers(psiClass, false)
+        var modifiers = convertModifiers(psiClass, false, false)
         val typeParameters = convertTypeParameterList(psiClass.typeParameterList)
         val extendsTypes = convertToNotNullableTypes(psiClass.extendsList)
         val implementsTypes = convertToNotNullableTypes(psiClass.implementsList)
@@ -222,7 +222,7 @@ class Converter private constructor(
             settings.openByDefault || referenceSearcher.hasInheritors(psiClass)
     }
 
-    private fun shouldConvertIntoObject(psiClass: PsiClass): Boolean {
+    fun shouldConvertIntoObject(psiClass: PsiClass): Boolean {
         val methods = psiClass.methods
         val fields = psiClass.fields
         val classes = psiClass.innerClasses
@@ -295,7 +295,7 @@ class Converter private constructor(
 
         return Class(psiClass.declarationIdentifier(),
                      convertAnnotations(psiClass),
-                     convertModifiers(psiClass, false).with(Modifier.ANNOTATION).without(Modifier.ABSTRACT),
+                     convertModifiers(psiClass, false, false).with(Modifier.ANNOTATION).without(Modifier.ABSTRACT),
                      TypeParameterList.Empty,
                      listOf(),
                      null,
@@ -305,7 +305,7 @@ class Converter private constructor(
 
     fun convertInitializer(initializer: PsiClassInitializer): Initializer {
         return Initializer(deferredElement { codeConverter -> codeConverter.convertBlock(initializer.body) },
-                           convertModifiers(initializer, false)).assignPrototype(initializer)
+                           convertModifiers(initializer, false, false)).assignPrototype(initializer)
     }
 
     fun convertProperty(propertyInfo: PropertyInfo, classKind: ClassKind): Member {
@@ -365,10 +365,10 @@ class Converter private constructor(
             if (propertyInfo.needExplicitGetter) {
                 if (getMethod != null) {
                     val method = convertMethod(getMethod, null, null, null, classKind)!!
-                    if (method.modifiers.contains(Modifier.EXTERNAL))
-                        getter = PropertyAccessor(AccessorKind.GETTER, method.annotations, Modifiers(listOf(Modifier.EXTERNAL)).assignNoPrototype(), null, null)
+                    getter = if (method.modifiers.contains(Modifier.EXTERNAL))
+                        PropertyAccessor(AccessorKind.GETTER, method.annotations, Modifiers(listOf(Modifier.EXTERNAL)).assignNoPrototype(), null, null)
                     else
-                        getter = PropertyAccessor(AccessorKind.GETTER, method.annotations, Modifiers.Empty, method.parameterList, method.body)
+                        PropertyAccessor(AccessorKind.GETTER, method.annotations, Modifiers.Empty, method.parameterList, method.body)
                     getter.assignPrototype(getMethod, CommentsAndSpacesInheritance.NO_SPACES)
                 }
                 else if (propertyInfo.modifiers.contains(Modifier.OVERRIDE) && !(propertyInfo.superInfo?.isAbstract() ?: false)) {
@@ -391,8 +391,8 @@ class Converter private constructor(
                 val accessorModifiers = Modifiers(listOfNotNull(propertyInfo.specialSetterAccess)).assignNoPrototype()
                 if (setMethod != null && !propertyInfo.isSetMethodBodyFieldAccess) {
                     val method = convertMethod(setMethod, null, null, null, classKind)!!
-                    if (method.modifiers.contains(Modifier.EXTERNAL))
-                        setter = PropertyAccessor(AccessorKind.SETTER, method.annotations, accessorModifiers.with(Modifier.EXTERNAL), null, null)
+                    setter = if (method.modifiers.contains(Modifier.EXTERNAL))
+                        PropertyAccessor(AccessorKind.SETTER, method.annotations, accessorModifiers.with(Modifier.EXTERNAL), null, null)
                     else {
                         val convertedParameter = method.parameterList!!.parameters.single() as FunctionParameter
                         val parameterAnnotations = convertedParameter.annotations
@@ -404,7 +404,7 @@ class Converter private constructor(
                         else {
                             null
                         }
-                        setter = PropertyAccessor(AccessorKind.SETTER, method.annotations, accessorModifiers, parameterList, method.body)
+                        PropertyAccessor(AccessorKind.SETTER, method.annotations, accessorModifiers, parameterList, method.body)
                     }
                     setter.assignPrototype(setMethod, CommentsAndSpacesInheritance.NO_SPACES)
                 }
@@ -544,7 +544,7 @@ class Converter private constructor(
 
         val annotations = convertAnnotations(method) + convertThrows(method)
 
-        var modifiers = convertModifiers(method, classKind.isOpen())
+        var modifiers = convertModifiers(method, classKind.isOpen(), classKind == ClassKind.OBJECT)
 
         val statementsToInsert = ArrayList<Statement>()
         for (parameter in method.parameterList.parameters) {
@@ -648,13 +648,13 @@ class Converter private constructor(
     private fun needOpenModifier(method: PsiMethod, isInOpenClass: Boolean, modifiers: Modifiers): Boolean {
         if (!isInOpenClass) return false
         if (modifiers.contains(Modifier.OVERRIDE) || modifiers.contains(Modifier.ABSTRACT)) return false
-        if (settings.openByDefault) {
-            return !method.hasModifierProperty(PsiModifier.FINAL)
-                   && !method.hasModifierProperty(PsiModifier.PRIVATE)
-                   && !method.hasModifierProperty(PsiModifier.STATIC)
+        return if (settings.openByDefault) {
+            !method.hasModifierProperty(PsiModifier.FINAL)
+            && !method.hasModifierProperty(PsiModifier.PRIVATE)
+            && !method.hasModifierProperty(PsiModifier.STATIC)
         }
         else {
-            return referenceSearcher.hasOverrides(method)
+            referenceSearcher.hasOverrides(method)
         }
     }
 
@@ -667,7 +667,7 @@ class Converter private constructor(
                     ?.let { return ReferenceElement(it, typeArgs).assignNoPrototype() }
         }
 
-        if (element.isQualified) {
+        return if (element.isQualified) {
             var result = Identifier.toKotlin(element.referenceName!!)
             var qualifier = element.qualifier
             while (qualifier != null) {
@@ -675,7 +675,7 @@ class Converter private constructor(
                 result = Identifier.toKotlin(codeRefElement.referenceName!!) + "." + result
                 qualifier = codeRefElement.qualifier
             }
-            return ReferenceElement(Identifier.withNoPrototype(result), typeArgs).assignPrototype(element, CommentsAndSpacesInheritance.NO_SPACES)
+            ReferenceElement(Identifier.withNoPrototype(result), typeArgs).assignPrototype(element, CommentsAndSpacesInheritance.NO_SPACES)
         }
         else {
             if (!hasExternalQualifier) {
@@ -688,7 +688,7 @@ class Converter private constructor(
                 }
             }
 
-            return ReferenceElement(Identifier.withNoPrototype(element.referenceName!!), typeArgs).assignPrototype(element, CommentsAndSpacesInheritance.NO_SPACES)
+            ReferenceElement(Identifier.withNoPrototype(element.referenceName!!), typeArgs).assignPrototype(element, CommentsAndSpacesInheritance.NO_SPACES)
         }
     }
 
@@ -735,7 +735,7 @@ class Converter private constructor(
         return Identifier(identifier.text!!).assignPrototype(identifier)
     }
 
-    fun convertModifiers(owner: PsiModifierListOwner, isMethodInOpenClass: Boolean): Modifiers {
+    fun convertModifiers(owner: PsiModifierListOwner, isMethodInOpenClass: Boolean, isInObject: Boolean): Modifiers {
         var modifiers = Modifiers(MODIFIERS_MAP.filter { owner.hasModifierProperty(it.first) }.map { it.second })
                 .assignPrototype(owner.modifierList, CommentsAndSpacesInheritance.NO_SPACES)
 
@@ -752,10 +752,14 @@ class Converter private constructor(
             if (owner.hasModifierProperty(PsiModifier.NATIVE))
                 modifiers = modifiers.with(Modifier.EXTERNAL)
 
-            modifiers = modifiers.adaptForContainingClassVisibility(owner.containingClass).adaptProtectedVisibility(owner)
+            modifiers = modifiers.adaptForObject(isInObject)
+                    .adaptForContainingClassVisibility(owner.containingClass)
+                    .adaptProtectedVisibility(owner)
         }
         else if (owner is PsiField) {
-            modifiers = modifiers.adaptForContainingClassVisibility(owner.containingClass).adaptProtectedVisibility(owner)
+            modifiers = modifiers.adaptForObject(isInObject)
+                    .adaptForContainingClassVisibility(owner.containingClass)
+                    .adaptProtectedVisibility(owner)
         }
         else if (owner is PsiClass && owner.scope is PsiMethod) {
             // Local class should not have visibility modifiers
@@ -763,6 +767,12 @@ class Converter private constructor(
         }
 
         return modifiers
+    }
+
+    private fun Modifiers.adaptForObject(isInObject: Boolean): Modifiers {
+        if (!isInObject) return this
+        if (!modifiers.contains(Modifier.PROTECTED)) return this
+        return without(Modifier.PROTECTED).with(Modifier.INTERNAL)
     }
 
     // to convert package local members in package local class into public member (when it's not override, open or abstract)

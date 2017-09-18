@@ -38,10 +38,10 @@ class BinaryJavaClass(
         override var access: Int = 0,
         override val outerClass: JavaClass?,
         classContent: ByteArray? = null
-) : ClassVisitor(ASM_API_VERSION_FOR_CLASS_READING), VirtualFileBoundJavaClass, BinaryJavaModifierListOwner, BinaryJavaAnnotationOwner {
-    lateinit var myInternalName: String
+) : ClassVisitor(ASM_API_VERSION_FOR_CLASS_READING), VirtualFileBoundJavaClass, BinaryJavaModifierListOwner, MapBasedJavaAnnotationOwner {
+    private lateinit var myInternalName: String
 
-    override val annotations: MutableCollection<JavaAnnotation> = mutableListOf()
+    override val annotations: MutableCollection<JavaAnnotation> = ContainerUtil.newSmartList()
     override lateinit var typeParameters: List<JavaTypeParameter>
     override lateinit var supertypes: Collection<JavaClassifierType>
     override val methods = arrayListOf<JavaMethod>()

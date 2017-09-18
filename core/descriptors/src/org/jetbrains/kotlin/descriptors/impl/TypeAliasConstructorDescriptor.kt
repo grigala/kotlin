@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,8 @@ import org.jetbrains.kotlin.storage.StorageManager
 import org.jetbrains.kotlin.storage.getValue
 import org.jetbrains.kotlin.types.*
 
-interface TypeAliasConstructorDescriptor : ConstructorDescriptor {
+interface TypeAliasConstructorDescriptor : ConstructorDescriptor, DescriptorDerivedFromTypeAlias {
     val underlyingConstructorDescriptor: ClassConstructorDescriptor
-    val typeAliasDescriptor: TypeAliasDescriptor
 
     override fun getContainingDeclaration(): TypeAliasDescriptor
 
@@ -179,7 +178,8 @@ class TypeAliasConstructorDescriptorImpl private constructor(
 
             val valueParameters =
                     FunctionDescriptorImpl.getSubstitutedValueParameters(
-                            typeAliasConstructor, constructor.valueParameters, substitutorForUnderlyingClass, false, false
+                            typeAliasConstructor, constructor.valueParameters, substitutorForUnderlyingClass, false, false,
+                            null
                     ) ?: return null
 
             val returnType = run {

@@ -23,7 +23,6 @@ import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.resolve.descriptorUtil.classValueType
 import org.jetbrains.kotlin.types.ErrorUtils
 import org.jetbrains.kotlin.types.KotlinType
-import org.jetbrains.kotlin.utils.sure
 
 abstract class ConstantValue<out T>(open val value: T) {
     abstract val type: KotlinType
@@ -101,16 +100,14 @@ class CharValue(
 
     override fun toString() = "\\u%04X ('%s')".format(value.toInt(), getPrintablePart(value))
 
-    private fun getPrintablePart(c: Char): String {
-        when (c) {
-            '\b' -> return "\\b"
-            '\t' -> return "\\t"
-            '\n' -> return "\\n"
-        //TODO: KT-8507
-            12.toChar() -> return "\\f"
-            '\r' -> return "\\r"
-            else -> return if (isPrintableUnicode(c)) Character.toString(c) else "?"
-        }
+    private fun getPrintablePart(c: Char): String = when (c) {
+        '\b' -> "\\b"
+        '\t' -> "\\t"
+        '\n' -> "\\n"
+    //TODO: KT-8507
+        12.toChar() -> "\\f"
+        '\r' -> "\\r"
+        else -> if (isPrintableUnicode(c)) Character.toString(c) else "?"
     }
 
     private fun isPrintableUnicode(c: Char): Boolean {
@@ -141,7 +138,7 @@ class EnumValue(
 ) : ConstantValue<ClassDescriptor>(value) {
 
     override val type: KotlinType
-        get() = value.classValueType.sure { "Enum entry must have a class object type: " + value }
+        get() = value.classValueType ?: ErrorUtils.createErrorType("Containing class for error-class based enum entry $value")
 
     override fun <R, D> accept(visitor: AnnotationArgumentVisitor<R, D>, data: D) = visitor.visitEnumValue(this, data)
 

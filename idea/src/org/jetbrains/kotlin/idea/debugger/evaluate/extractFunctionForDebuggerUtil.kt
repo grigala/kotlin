@@ -30,7 +30,7 @@ import org.jetbrains.kotlin.idea.core.replaced
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.*
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.AnalysisResult.ErrorMessage
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.AnalysisResult.Status
-import org.jetbrains.kotlin.idea.runInReadActionWithWriteActionPriority
+import org.jetbrains.kotlin.idea.runInReadActionWithWriteActionPriorityWithPCE
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.idea.util.attachment.attachmentByPsiFile
 import org.jetbrains.kotlin.idea.util.attachment.mergeAttachments
@@ -55,13 +55,13 @@ fun getFunctionForExtractedFragment(
                                       attachmentByPsiFile(codeFragment),
                                       Attachment("breakpoint.info", "line: $breakpointLine"),
                                       Attachment("context.info", codeFragment.context?.text ?: "null"),
-                                      Attachment("errors.info", analysisResult.messages.map { "$it: ${it.renderMessage()}" }.joinToString("\n")))
+                                      Attachment("errors.info", analysisResult.messages.joinToString("\n") { "$it: ${it.renderMessage()}" }))
             LOG.error(LogMessageEx.createEvent(
                     "Internal error during evaluate expression",
                     ExceptionUtil.getThrowableText(Throwable("Extract function fails with ${analysisResult.messages.joinToString { it.name }}")),
                     mergeAttachments(*attachments)))
         }
-        return analysisResult.messages.map { errorMessage ->
+        return analysisResult.messages.joinToString(", ") { errorMessage ->
             val message = when(errorMessage) {
                 ErrorMessage.NO_EXPRESSION -> "Cannot perform an action without an expression"
                 ErrorMessage.NO_CONTAINER -> "Cannot perform an action at this breakpoint ${breakpointFile.name}:$breakpointLine"
@@ -76,7 +76,7 @@ fun getFunctionForExtractedFragment(
                 ErrorMessage.MULTIPLE_OUTPUT -> throw AssertionError("Unexpected error: $errorMessage")
             }
             errorMessage.additionalInfo?.let { "$message: ${it.joinToString(", ")}" } ?: message
-        }.joinToString(", ")
+        }
     }
 
     fun generateFunction(): ExtractionResult? {
@@ -104,7 +104,7 @@ fun getFunctionForExtractedFragment(
 
         val validationResult = analysisResult.descriptor!!.validate()
         if (!validationResult.conflicts.isEmpty) {
-            throw EvaluateExceptionUtil.createEvaluateException("Following declarations are unavailable in debug scope: ${validationResult.conflicts.keySet().map { it.text }.joinToString(",")}")
+            throw EvaluateExceptionUtil.createEvaluateException("Following declarations are unavailable in debug scope: ${validationResult.conflicts.keySet().joinToString(",") { it.text }}")
         }
 
         val generatorOptions = ExtractionGeneratorOptions(inTempFile = true,
@@ -154,7 +154,7 @@ private fun KtFile.findContextElement(): KtElement? {
 private var PsiElement.DEBUG_SMART_CAST: PsiElement? by CopyableUserDataProperty(Key.create("DEBUG_SMART_CAST"))
 
 private fun KtCodeFragment.markSmartCasts() {
-    val bindingContext = runInReadActionWithWriteActionPriority { analyzeFully() }
+    val bindingContext = runInReadActionWithWriteActionPriorityWithPCE { analyzeFully() }
     val factory = KtPsiFactory(project)
 
     getContentElement()?.forEachDescendantOfType<KtExpression> { expression ->
@@ -206,7 +206,7 @@ private fun getExpressionToAddDebugExpressionBefore(tmpFile: KtFile, contextElem
 
         val elementAtOffset = tmpFile.findElementAt(lineStart) ?: return null
 
-        return CodeInsightUtils.getTopmostElementAtOffset(elementAtOffset, lineStart) ?: elementAtOffset
+        return CodeInsightUtils.getTopmostElementAtOffset(elementAtOffset, lineStart)
     }
 
     fun shouldStop(el: PsiElement?, p: PsiElement?) = p is KtBlockExpression || el is KtDeclaration || el is KtFile

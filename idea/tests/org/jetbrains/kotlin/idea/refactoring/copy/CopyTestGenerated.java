@@ -72,6 +72,12 @@ public class CopyTestGenerated extends AbstractCopyTest {
         doTest(fileName);
     }
 
+    @TestMetadata("copyFunCallQualificationWithParentheses/copyFunCallQualificationWithParentheses.test")
+    public void testCopyFunCallQualificationWithParentheses_CopyFunCallQualificationWithParentheses() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/refactoring/copy/copyFunCallQualificationWithParentheses/copyFunCallQualificationWithParentheses.test");
+        doTest(fileName);
+    }
+
     @TestMetadata("copyLocalClass/copyLocalClass.test")
     public void testCopyLocalClass_CopyLocalClass() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("idea/testData/refactoring/copy/copyLocalClass/copyLocalClass.test");
@@ -165,6 +171,12 @@ public class CopyTestGenerated extends AbstractCopyTest {
     @TestMetadata("copyTopLevelPropertyWithRename/copyTopLevelPropertyWithRename.test")
     public void testCopyTopLevelPropertyWithRename_CopyTopLevelPropertyWithRename() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("idea/testData/refactoring/copy/copyTopLevelPropertyWithRename/copyTopLevelPropertyWithRename.test");
+        doTest(fileName);
+    }
+
+    @TestMetadata("kt18149/kt18149.test")
+    public void testKt18149_Kt18149() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/refactoring/copy/kt18149/kt18149.test");
         doTest(fileName);
     }
 

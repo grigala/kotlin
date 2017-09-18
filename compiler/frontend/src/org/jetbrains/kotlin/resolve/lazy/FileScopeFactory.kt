@@ -26,10 +26,7 @@ import org.jetbrains.kotlin.platform.PlatformToKotlinClassMap
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtImportDirective
 import org.jetbrains.kotlin.psi.KtImportsFactory
-import org.jetbrains.kotlin.resolve.BindingTrace
-import org.jetbrains.kotlin.resolve.ImportPath
-import org.jetbrains.kotlin.resolve.QualifiedExpressionResolver
-import org.jetbrains.kotlin.resolve.TemporaryBindingTrace
+import org.jetbrains.kotlin.resolve.*
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 import org.jetbrains.kotlin.resolve.scopes.ImportingScope
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope
@@ -51,7 +48,8 @@ class FileScopeFactory(
         private val ktImportsFactory: KtImportsFactory,
         private val platformToKotlinClassMap: PlatformToKotlinClassMap,
         private val defaultImportProvider: DefaultImportProvider,
-        private val languageVersionSettings: LanguageVersionSettings
+        private val languageVersionSettings: LanguageVersionSettings,
+        private val deprecationResolver: DeprecationResolver
 ) {
     /* avoid constructing psi for default imports prematurely (time consuming in some scenarios) */
     private val defaultImports by storageManager.createLazyValue {
@@ -112,7 +110,8 @@ class FileScopeFactory(
         fun createImportResolver(indexedImports: IndexedImports, trace: BindingTrace, excludedImports: List<FqName>? = null) =
                 LazyImportResolver(
                         storageManager, qualifiedExpressionResolver, moduleDescriptor, platformToKotlinClassMap, languageVersionSettings,
-                        indexedImports, aliasImportNames concat excludedImports, trace, packageFragment
+                        indexedImports, aliasImportNames concat excludedImports, trace, packageFragment,
+                        deprecationResolver
                 )
 
 
@@ -208,7 +207,11 @@ class FileScopeFactory(
                 return scope.getContributedFunctions(name, location)
             }
 
-            override fun getContributedDescriptors(kindFilter: DescriptorKindFilter, nameFilter: (Name) -> Boolean): Collection<DeclarationDescriptor> {
+            override fun getContributedDescriptors(
+                    kindFilter: DescriptorKindFilter,
+                    nameFilter: (Name) -> Boolean,
+                    changeNamesForAliased: Boolean
+            ): Collection<DeclarationDescriptor> {
                 // we do not perform any filtering by visibility here because all descriptors from both visible/invisible filter scopes are to be added anyway
                 if (filteringKind == FilteringKind.INVISIBLE_CLASSES) return listOf()
                 return scope.getContributedDescriptors(

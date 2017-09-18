@@ -18,12 +18,11 @@ package org.jetbrains.kotlin.codegen
 
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes
 import org.jetbrains.org.objectweb.asm.Type
-import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter
 import java.util.*
 
 class DefaultCallArgs(val size: Int) {
 
-    val bits: BitSet = BitSet(size)
+    private val bits: BitSet = BitSet(size)
 
     fun mark(index: Int) {
         assert (index < size) {
@@ -32,7 +31,7 @@ class DefaultCallArgs(val size: Int) {
         bits.set(index)
     }
 
-    private fun toInts(): List<Int> {
+    fun toInts(): List<Int> {
         if (bits.isEmpty || size == 0) {
             return emptyList()
         }
@@ -40,7 +39,7 @@ class DefaultCallArgs(val size: Int) {
         val masks = ArrayList<Int>(1)
 
         var mask = 0
-        for (i in 0..size - 1) {
+        for (i in 0 until size) {
             if (i != 0 && i % Integer.SIZE == 0) {
                 masks.add(mask)
                 mask = 0
@@ -61,19 +60,6 @@ class DefaultCallArgs(val size: Int) {
 
             val parameterType = if (isConstructor) AsmTypes.DEFAULT_CONSTRUCTOR_MARKER else AsmTypes.OBJECT_TYPE
             callGenerator.putValueIfNeeded(parameterType, StackValue.constant(null, parameterType), ValueKind.METHOD_HANDLE_IN_DEFAULT)
-        }
-        return toInts.isNotEmpty()
-    }
-
-    fun generateOnStackIfNeeded(iv: InstructionAdapter, isConstructor: Boolean): Boolean {
-        val toInts = toInts()
-        if (!toInts.isEmpty()) {
-            for (mask in toInts) {
-                iv.iconst(mask)
-            }
-
-            val parameterType = if (isConstructor) AsmTypes.DEFAULT_CONSTRUCTOR_MARKER else AsmTypes.OBJECT_TYPE
-            iv.aconst(null)
         }
         return toInts.isNotEmpty()
     }

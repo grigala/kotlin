@@ -16,10 +16,21 @@
 
 package org.jetbrains.kotlin.idea.caches.resolve
 
+import com.intellij.openapi.roots.CompilerModuleExtension
+import com.intellij.openapi.roots.ModuleRootModificationUtil
 import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.config.TargetPlatformKind
+import org.jetbrains.kotlin.idea.test.PluginTestCaseBase
 
-class MultiModuleLineMarkerTest : AbstractMultiModuleLineMarkerTest() {
+class MultiModuleLineMarkerTest : AbstractMultiModuleHighlightingTest() {
+
+    override fun getTestDataPath() = PluginTestCaseBase.getTestDataPathBase() + "/multiModuleLineMarker/"
+
+    override val shouldCheckLineMarkers = true
+
+    override val shouldCheckResult = false
+
+    override fun doTestLineMarkers() = true
 
     fun testFromCommonToJvmHeader() {
         doMultiPlatformTest(TargetPlatformKind.Jvm[JvmTarget.JVM_1_6])
@@ -35,5 +46,21 @@ class MultiModuleLineMarkerTest : AbstractMultiModuleLineMarkerTest() {
 
     fun testWithOverloads() {
         doMultiPlatformTest(TargetPlatformKind.Jvm[JvmTarget.JVM_1_6])
+    }
+
+    fun testSuspendImplInPlatformModules() {
+        doMultiPlatformTest(TargetPlatformKind.Jvm[JvmTarget.JVM_1_6], TargetPlatformKind.JavaScript)
+    }
+
+    fun testKotlinTestAnnotations() {
+        doMultiPlatformTest(TargetPlatformKind.JavaScript,
+                            configureModule = { module, _ ->
+                                ModuleRootModificationUtil.updateModel(module) {
+                                    with(it.getModuleExtension(CompilerModuleExtension::class.java)!!) {
+                                        inheritCompilerOutputPath(false)
+                                        setCompilerOutputPathForTests("js_out")
+                                    }
+                                }
+                            })
     }
 }

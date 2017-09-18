@@ -47,7 +47,7 @@ class MemberDeserializer(private val c: DeserializationContext) {
                 Flags.IS_CONST.get(flags),
                 Flags.IS_EXTERNAL_PROPERTY.get(flags),
                 Flags.IS_DELEGATED.get(flags),
-                Flags.IS_HEADER_PROPERTY.get(flags),
+                Flags.IS_EXPECT_PROPERTY.get(flags),
                 proto,
                 c.nameResolver,
                 c.typeTable,
@@ -175,7 +175,7 @@ class MemberDeserializer(private val c: DeserializationContext) {
         function.isInline = Flags.IS_INLINE.get(flags)
         function.isTailrec = Flags.IS_TAILREC.get(flags)
         function.isSuspend = Flags.IS_SUSPEND.get(flags)
-        function.isHeader = Flags.IS_HEADER_FUNCTION.get(flags)
+        function.isExpect = Flags.IS_EXPECT_FUNCTION.get(flags)
         return function
     }
 
@@ -222,9 +222,9 @@ class MemberDeserializer(private val c: DeserializationContext) {
         if (!Flags.HAS_ANNOTATIONS.get(flags)) {
             return Annotations.EMPTY
         }
-        return DeserializedAnnotationsWithPossibleTargets(c.storageManager) {
+        return NonEmptyDeserializedAnnotationsWithPossibleTargets(c.storageManager) {
             c.containingDeclaration.asProtoContainer()?.let {
-                c.components.annotationAndConstantLoader.loadCallableAnnotations(it, proto, kind)
+                c.components.annotationAndConstantLoader.loadCallableAnnotations(it, proto, kind).toList()
             }.orEmpty()
         }
     }
@@ -239,6 +239,7 @@ class MemberDeserializer(private val c: DeserializationContext) {
                 c.components.annotationAndConstantLoader
                         .loadExtensionReceiverParameterAnnotations(it, proto, receiverTargetedKind)
                         .map { AnnotationWithTarget(it, AnnotationUseSiteTarget.RECEIVER) }
+                        .toList()
             }.orEmpty()
         }
     }
@@ -253,13 +254,17 @@ class MemberDeserializer(private val c: DeserializationContext) {
 
         return valueParameters.mapIndexed { i, proto ->
             val flags = if (proto.hasFlags()) proto.flags else 0
+            val annotations = if (containerOfCallable != null && Flags.HAS_ANNOTATIONS.get(flags)) {
+                NonEmptyDeserializedAnnotations(c.storageManager) {
+                    c.components.annotationAndConstantLoader
+                            .loadValueParameterAnnotations(containerOfCallable, callable, kind, i, proto)
+                            .toList()
+                }
+            }
+            else Annotations.EMPTY
             ValueParameterDescriptorImpl(
                     callableDescriptor, null, i,
-                    containerOfCallable?.let { container ->
-                        DeserializedAnnotations(c.storageManager) {
-                            c.components.annotationAndConstantLoader.loadValueParameterAnnotations(container, callable, kind, i, proto)
-                        }
-                    } ?: Annotations.EMPTY,
+                    annotations,
                     c.nameResolver.getName(proto.name),
                     c.typeDeserializer.type(proto.type(c.typeTable)),
                     Flags.DECLARES_DEFAULT_VALUE.get(flags),

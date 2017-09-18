@@ -19,36 +19,49 @@ package org.jetbrains.kotlin.gradle
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.tooling.ModelBuilder
 import org.jetbrains.plugins.gradle.tooling.ErrorMessageBuilder
 import org.jetbrains.plugins.gradle.tooling.ModelBuilderService
+import java.io.File
 import java.io.Serializable
 import java.lang.Exception
 import java.lang.reflect.InvocationTargetException
-import java.lang.reflect.Method
 import java.util.*
 import kotlin.collections.HashSet
 
-typealias CompilerArgumentsBySourceSet = Map<String, List<String>>
+interface ArgsInfo : Serializable {
+    val currentArguments: List<String>
+    val defaultArguments: List<String>
+    val dependencyClasspath: List<String>
+}
+
+class ArgsInfoImpl(
+        override val currentArguments: List<String>,
+        override val defaultArguments: List<String>,
+        override val dependencyClasspath: List<String>
+) : ArgsInfo
+
+typealias CompilerArgumentsBySourceSet = Map<String, ArgsInfo>
 
 interface KotlinGradleModel : Serializable {
     val hasKotlinPlugin: Boolean
-    val currentCompilerArgumentsBySourceSet: CompilerArgumentsBySourceSet
-    val defaultCompilerArgumentsBySourceSet: CompilerArgumentsBySourceSet
+    val compilerArgumentsBySourceSet: CompilerArgumentsBySourceSet
     val coroutines: String?
     val platformPluginId: String?
+    val implements: String?
     val transitiveCommonDependencies: Set<String>
 }
 
 class KotlinGradleModelImpl(
         override val hasKotlinPlugin: Boolean,
-        override val currentCompilerArgumentsBySourceSet: CompilerArgumentsBySourceSet,
-        override val defaultCompilerArgumentsBySourceSet: CompilerArgumentsBySourceSet,
+        override val compilerArgumentsBySourceSet: CompilerArgumentsBySourceSet,
         override val coroutines: String?,
         override val platformPluginId: String?,
+        override val implements: String?,
         override val transitiveCommonDependencies: Set<String>
 ) : KotlinGradleModel
 
-class KotlinGradleModelBuilder : ModelBuilderService {
+abstract class AbstractKotlinGradleModelBuilder : ModelBuilderService {
     companion object {
         val kotlinCompileTaskClasses = listOf("org.jetbrains.kotlin.gradle.tasks.KotlinCompile_Decorated",
                                               "org.jetbrains.kotlin.gradle.tasks.Kotlin2JsCompile_Decorated")
@@ -58,9 +71,20 @@ class KotlinGradleModelBuilder : ModelBuilderService {
                 "kotlin2js" to "kotlin-platform-js"
         )
         val kotlinPluginIds = listOf("kotlin", "kotlin2js", "kotlin-android")
-        private val kotlinPlatformCommonPluginId = "kotlin-platform-common"
-    }
+        val kotlinPlatformCommonPluginId = "kotlin-platform-common"
+        val ABSTRACT_KOTLIN_COMPILE_CLASS = "org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile"
 
+        fun Task.getSourceSetName(): String {
+            return try {
+                javaClass.methods.firstOrNull { it.name.startsWith("getSourceSetName") && it.parameterTypes.isEmpty() }?.invoke(this) as? String
+            } catch (e : InvocationTargetException) {
+                null // can be thrown if property is not initialized yet
+            } ?: "main"
+        }
+    }
+}
+
+class KotlinGradleModelBuilder : AbstractKotlinGradleModelBuilder() {
     override fun getErrorMessageBuilder(project: Project, e: Exception): ErrorMessageBuilder {
         return ErrorMessageBuilder.create(project, e, "Gradle import errors").withDescription("Unable to build Kotlin project configuration")
     }
@@ -78,7 +102,7 @@ class KotlinGradleModelBuilder : ModelBuilderService {
         toProcess.add(startingProject)
         val processed = HashSet<String>()
         val result = HashSet<String>()
-        result.add(startingProject.path)
+        result.add(startingProject.pathOrName())
 
         while (toProcess.isNotEmpty()) {
             val project = toProcess.pollFirst()
@@ -86,7 +110,7 @@ class KotlinGradleModelBuilder : ModelBuilderService {
 
             if (!project.plugins.hasPlugin(kotlinPlatformCommonPluginId)) continue
 
-            result.add(project.path)
+            result.add(project.pathOrName())
 
             val compileConfiguration = project.configurations.findByName("compile") ?: continue
             val dependencies = compileConfiguration
@@ -104,36 +128,38 @@ class KotlinGradleModelBuilder : ModelBuilderService {
         return result
     }
 
-    private fun Class<*>.findGetterMethod(name: String): Method? {
-        generateSequence(this) { it.superclass }.forEach {
-            try {
-                return it.getDeclaredMethod(name)
-            }
-            catch(e: Exception) {
-                // Check next super class
-            }
-        }
-        return null
-    }
+    // see GradleProjectResolverUtil.getModuleId() in IDEA codebase
+    private fun Project.pathOrName() = if (path == ":") name else path
 
     @Suppress("UNCHECKED_CAST")
-    private fun collectCompilerArguments(
-            compileTask: Task,
-            methodName: String,
-            argumentsBySourceSet: MutableMap<String, List<String>>
-    ) {
-        val taskClass = compileTask::class.java
-        val sourceSetName = try {
-            taskClass.findGetterMethod("getSourceSetName\$kotlin_gradle_plugin")?.invoke(compileTask) as? String
-        } catch (e : InvocationTargetException) {
-            null // can be thrown if property is not initialized yet
-        } ?: "main"
-        try {
-            argumentsBySourceSet[sourceSetName] = taskClass.getDeclaredMethod(methodName).invoke(compileTask) as List<String>
+    private fun Task.getCompilerArguments(methodName: String): List<String> {
+        return try {
+            javaClass.getDeclaredMethod(methodName).invoke(this) as List<String>
         }
         catch (e : NoSuchMethodException) {
             // No argument accessor method is available
+            emptyList()
         }
+    }
+
+    private fun Task.getDependencyClasspath(): List<String> {
+        try {
+            val abstractKotlinCompileClass = javaClass.classLoader.loadClass(ABSTRACT_KOTLIN_COMPILE_CLASS)
+            val getCompileClasspath = abstractKotlinCompileClass.getDeclaredMethod("getCompileClasspath").apply { isAccessible = true }
+            @Suppress("UNCHECKED_CAST")
+            return (getCompileClasspath.invoke(this) as Collection<File>).map { it.path }
+        }
+        catch(e: ClassNotFoundException) {
+            // Leave arguments unchanged
+        }
+        catch (e: NoSuchMethodException) {
+            // Leave arguments unchanged
+        }
+        catch (e: InvocationTargetException) {
+            // We can safely ignore this exception here as getCompileClasspath() gets called again at a later time
+            // Leave arguments unchanged
+        }
+        return emptyList()
     }
 
     private fun getCoroutines(project: Project): String? {
@@ -157,25 +183,28 @@ class KotlinGradleModelBuilder : ModelBuilderService {
         val kotlinPluginId = kotlinPluginIds.singleOrNull { project.plugins.findPlugin(it) != null }
         val platformPluginId = platformPluginIds.singleOrNull { project.plugins.findPlugin(it) != null }
 
-        val currentCompilerArgumentsBySourceSet = LinkedHashMap<String, List<String>>()
-        val defaultCompilerArgumentsBySourceSet = LinkedHashMap<String, List<String>>()
+        val compilerArgumentsBySourceSet = LinkedHashMap<String, ArgsInfo>()
 
         project.getAllTasks(false)[project]?.forEach { compileTask ->
             if (compileTask.javaClass.name !in kotlinCompileTaskClasses) return@forEach
 
-            collectCompilerArguments(compileTask, "getSerializedCompilerArguments", currentCompilerArgumentsBySourceSet)
-            collectCompilerArguments(compileTask, "getDefaultSerializedCompilerArguments", defaultCompilerArgumentsBySourceSet)
+            val sourceSetName = compileTask.getSourceSetName()
+            val currentArguments = compileTask.getCompilerArguments("getSerializedCompilerArguments")
+            val defaultArguments = compileTask.getCompilerArguments("getDefaultSerializedCompilerArguments")
+            val dependencyClasspath = compileTask.getDependencyClasspath()
+            compilerArgumentsBySourceSet[sourceSetName] = ArgsInfoImpl(currentArguments, defaultArguments, dependencyClasspath)
         }
 
         val platform = platformPluginId ?: pluginToPlatform.entries.singleOrNull { project.plugins.findPlugin(it.key) != null }?.value
-        val transitiveCommon = getImplements(project)?.let { transitiveCommonDependencies(it) } ?: emptySet()
+        val implementedProject = getImplements(project)
+        val transitiveCommon = implementedProject?.let { transitiveCommonDependencies(it) } ?: emptySet()
 
         return KotlinGradleModelImpl(
                 kotlinPluginId != null || platformPluginId != null,
-                currentCompilerArgumentsBySourceSet,
-                defaultCompilerArgumentsBySourceSet,
+                compilerArgumentsBySourceSet,
                 getCoroutines(project),
                 platform,
+                implementedProject?.pathOrName(),
                 transitiveCommon
         )
     }

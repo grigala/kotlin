@@ -51,7 +51,6 @@ import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowValueFactory
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
 import org.jetbrains.kotlin.types.*
 import org.jetbrains.kotlin.types.TypeUtils.DONT_CARE
-import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.kotlin.types.expressions.ControlStructureTypingUtils.ResolveConstruct
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils
 
@@ -167,7 +166,7 @@ class GenericCandidateResolver(
         })
     }
 
-    fun addConstraintForValueArgument(
+    private fun addConstraintForValueArgument(
             valueArgument: ValueArgument,
             valueParameterDescriptor: ValueParameterDescriptor,
             substitutor: TypeSubstitutor,
@@ -175,7 +174,7 @@ class GenericCandidateResolver(
             context: CallCandidateResolutionContext<*>,
             resolveFunctionArgumentBodies: ResolveArgumentsMode
     ) {
-        val effectiveExpectedType = getEffectiveExpectedType(valueParameterDescriptor, valueArgument)
+        val effectiveExpectedType = getEffectiveExpectedType(valueParameterDescriptor, valueArgument, context)
         val argumentExpression = valueArgument.getArgumentExpression()
 
         val expectedType = substitutor.substitute(effectiveExpectedType, Variance.INVARIANT)
@@ -255,7 +254,7 @@ class GenericCandidateResolver(
         val possibleTypes = context.dataFlowInfo.getCollectedTypes(dataFlowValue)
         if (possibleTypes.isEmpty()) return type
 
-        return TypeIntersector.intersectTypes(KotlinTypeChecker.DEFAULT, possibleTypes + type)
+        return TypeIntersector.intersectTypes(possibleTypes + type)
     }
 
     fun <D : CallableDescriptor> completeTypeInferenceDependentOnFunctionArgumentsForCall(context: CallCandidateResolutionContext<D>) {
@@ -337,7 +336,7 @@ class GenericCandidateResolver(
     ) {
         val argumentExpression = valueArgument.getArgumentExpression() ?: return
 
-        val effectiveExpectedType = getEffectiveExpectedType(valueParameterDescriptor, valueArgument)
+        val effectiveExpectedType = getEffectiveExpectedType(valueParameterDescriptor, valueArgument, context)
 
         if (isCoroutineCallWithAdditionalInference(valueParameterDescriptor, valueArgument)) {
             coroutineInferenceSupport.analyzeCoroutine(functionLiteral, valueArgument, constraintSystem, context, effectiveExpectedType)
@@ -399,7 +398,7 @@ class GenericCandidateResolver(
             constraintSystem: ConstraintSystem.Builder,
             context: CallCandidateResolutionContext<D>
     ) {
-        val effectiveExpectedType = getEffectiveExpectedType(valueParameterDescriptor, valueArgument)
+        val effectiveExpectedType = getEffectiveExpectedType(valueParameterDescriptor, valueArgument, context)
         val expectedType = getExpectedTypeForCallableReference(callableReference, constraintSystem, context, effectiveExpectedType)
                            ?: return
         if (!ReflectionTypes.isCallableType(expectedType)) return

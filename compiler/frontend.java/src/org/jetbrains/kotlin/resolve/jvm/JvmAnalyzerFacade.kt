@@ -43,15 +43,16 @@ class JvmPlatformParameters(
 ) : PlatformAnalysisParameters
 
 
-object JvmAnalyzerFacade : AnalyzerFacade<JvmPlatformParameters>() {
+object JvmAnalyzerFacade : AnalyzerFacade() {
     override fun <M : ModuleInfo> createResolverForModule(
             moduleInfo: M,
             moduleDescriptor: ModuleDescriptorImpl,
             moduleContext: ModuleContext,
             moduleContent: ModuleContent,
-            platformParameters: JvmPlatformParameters,
+            platformParameters: PlatformAnalysisParameters,
             targetEnvironment: TargetEnvironment,
             resolverForProject: ResolverForProject<M>,
+            languageSettingsProvider: LanguageSettingsProvider,
             packagePartProvider: PackagePartProvider
     ): ResolverForModule {
         val (syntheticFiles, moduleContentScope) = moduleContent
@@ -63,7 +64,7 @@ object JvmAnalyzerFacade : AnalyzerFacade<JvmPlatformParameters>() {
         )
 
         val moduleClassResolver = ModuleClassResolverImpl { javaClass ->
-            val referencedClassModule = platformParameters.moduleByJavaClass(javaClass)
+            val referencedClassModule = (platformParameters as JvmPlatformParameters).moduleByJavaClass(javaClass)
             // We don't have full control over idea resolve api so we allow for a situation which should not happen in Kotlin.
             // For example, type in a java library can reference a class declared in a source root (is valid but rare case)
             // Providing a fallback strategy in this case can hide future problems, so we should at least log to be able to diagnose those
@@ -80,7 +81,6 @@ object JvmAnalyzerFacade : AnalyzerFacade<JvmPlatformParameters>() {
             resolverForModule.componentProvider.get<JavaDescriptorResolver>()
         }
 
-        val languageSettingsProvider = LanguageSettingsProvider.getInstance(project)
         val jvmTarget = languageSettingsProvider.getTargetPlatform(moduleInfo) as? JvmTarget ?: JvmTarget.JVM_1_6
         val languageVersionSettings = languageSettingsProvider.getLanguageVersionSettings(moduleInfo, project)
 
@@ -99,8 +99,6 @@ object JvmAnalyzerFacade : AnalyzerFacade<JvmPlatformParameters>() {
                 languageVersionSettings,
                 useBuiltInsProvider = false // TODO: load built-ins from module dependencies in IDE
         )
-
-        StorageComponentContainerContributor.getInstances(project).forEach { it.onContainerComposed(container, moduleInfo) }
 
         val resolveSession = container.get<ResolveSession>()
         val javaDescriptorResolver = container.get<JavaDescriptorResolver>()

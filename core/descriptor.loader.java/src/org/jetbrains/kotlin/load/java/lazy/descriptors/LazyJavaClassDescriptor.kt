@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import org.jetbrains.kotlin.load.java.components.JavaResolverCache
 import org.jetbrains.kotlin.load.java.components.TypeUsage
 import org.jetbrains.kotlin.load.java.descriptors.JavaClassDescriptor
 import org.jetbrains.kotlin.load.java.lazy.LazyJavaResolverContext
-import org.jetbrains.kotlin.load.java.lazy.child
+import org.jetbrains.kotlin.load.java.lazy.childForClassOrPackage
 import org.jetbrains.kotlin.load.java.lazy.replaceComponents
 import org.jetbrains.kotlin.load.java.lazy.resolveAnnotations
 import org.jetbrains.kotlin.load.java.lazy.types.toAttributes
@@ -44,14 +44,13 @@ import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameUnsafe
 import org.jetbrains.kotlin.resolve.descriptorUtil.resolveTopLevelClass
 import org.jetbrains.kotlin.resolve.scopes.InnerClassesScopeWrapper
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
-import org.jetbrains.kotlin.storage.getValue
 import org.jetbrains.kotlin.types.*
 import org.jetbrains.kotlin.utils.addIfNotNull
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import java.util.*
 
 class LazyJavaClassDescriptor(
-        val outerContext: LazyJavaResolverContext,
+        outerContext: LazyJavaResolverContext,
         containingDeclaration: DeclarationDescriptor,
         private val jClass: JavaClass,
         private val additionalSupertypeClassDescriptor: ClassDescriptor? = null
@@ -64,7 +63,7 @@ class LazyJavaClassDescriptor(
         private val PUBLIC_METHOD_NAMES_IN_OBJECT = setOf("equals", "hashCode", "getClass", "wait", "notify", "notifyAll", "toString")
     }
 
-    private val c: LazyJavaResolverContext = outerContext.child(this, jClass)
+    private val c: LazyJavaResolverContext = outerContext.childForClassOrPackage(this, jClass)
 
     init {
         c.components.javaResolverCache.recordClass(jClass, this)
@@ -103,11 +102,11 @@ class LazyJavaClassDescriptor(
     override fun isInner() = isInner
     override fun isData() = false
     override fun isCompanionObject() = false
-    override fun isHeader() = false
-    override fun isImpl() = false
+    override fun isExpect() = false
+    override fun isActual() = false
 
-    private val typeConstructor = c.storageManager.createLazyValue { LazyJavaClassTypeConstructor() }
-    override fun getTypeConstructor(): TypeConstructor = typeConstructor()
+    private val typeConstructor = LazyJavaClassTypeConstructor()
+    override fun getTypeConstructor(): TypeConstructor = typeConstructor
 
     private val unsubstitutedMemberScope = LazyJavaClassMemberScope(c, this, jClass)
     override fun getUnsubstitutedMemberScope() = unsubstitutedMemberScope
@@ -124,7 +123,7 @@ class LazyJavaClassDescriptor(
 
     override fun getConstructors() = unsubstitutedMemberScope.constructors()
 
-    override val annotations by c.storageManager.createLazyValue { c.resolveAnnotations(jClass) }
+    override val annotations = c.resolveAnnotations(jClass)
 
     private val declaredParameters = c.storageManager.createLazyValue {
         jClass.typeParameters.map {
@@ -136,7 +135,7 @@ class LazyJavaClassDescriptor(
 
     override fun getDeclaredTypeParameters() = declaredParameters()
 
-    override fun getFunctionTypeForSamInterface(): SimpleType? = c.components.samConversionResolver.resolveFunctionTypeIfSamInterface(this)
+    override fun getDefaultFunctionTypeForSamInterface(): SimpleType? = c.components.samConversionResolver.resolveFunctionTypeIfSamInterface(this)
 
     override fun isDefinitelyNotSamInterface(): Boolean {
         if (kind != ClassKind.INTERFACE) return true
@@ -152,7 +151,7 @@ class LazyJavaClassDescriptor(
         if (candidates.count { it.name.identifier !in PUBLIC_METHOD_NAMES_IN_OBJECT } > 1) return true
 
         // Check if any of the super-interfaces contain too many methods to be a SAM
-        return typeConstructor().supertypes.any {
+        return typeConstructor.supertypes.any {
             it.constructor.declarationDescriptor.safeAs<LazyJavaClassDescriptor>()?.isDefinitelyNotSamInterface == true
         }
     }
@@ -210,8 +209,8 @@ class LazyJavaClassDescriptor(
         }
 
         private fun getPurelyImplementedSupertype(): KotlinType? {
-            val annotatedPurelyImplementedFqName = getPurelyImplementsFqNameFromAnnotation()?.takeIf {
-                !it.isRoot && it.toUnsafe().startsWith(KotlinBuiltIns.BUILT_INS_PACKAGE_NAME)
+            val annotatedPurelyImplementedFqName = getPurelyImplementsFqNameFromAnnotation()?.takeIf { fqName ->
+                !fqName.isRoot && fqName.startsWith(KotlinBuiltIns.BUILT_INS_PACKAGE_NAME)
             }
 
             val purelyImplementedFqName =

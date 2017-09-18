@@ -14,22 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * Copyright 2010-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.jetbrains.kotlin.js.parser.sourcemaps
 
 import org.json.JSONArray
@@ -38,6 +22,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import java.io.IOException
 import java.io.Reader
+import java.io.StringReader
 
 object SourceMapParser {
     @Throws(IOException::class)
@@ -72,6 +57,20 @@ object SourceMapParser {
             emptyList()
         }
 
+        val sourcesContent: List<String?> = if (jsonObject.has("sourcesContent")) {
+            val sourcesContentProperty = jsonObject.get("sourcesContent") as? JSONArray ?:
+                                         return SourceMapError("'sourcesContent' property is not of array type")
+            if (sourcesContentProperty.any { it != JSONObject.NULL && it !is String? }) {
+                return SourceMapError("'sources' array must contain strings")
+            }
+            sourcesContentProperty.map { if (it == JSONObject.NULL) null else it as String? }
+        }
+        else {
+            emptyList()
+        }
+
+        val sourcePathToContent = sources.zip(sourcesContent).associate { it }
+
         if (!jsonObject.has("mappings")) return SourceMapError("'mappings' property not found")
         val mappings = jsonObject.get("mappings") as? String ?: return SourceMapError("'mappings' property is not of string type")
 
@@ -80,7 +79,7 @@ object SourceMapParser {
         var sourceColumn = 0
         var sourceIndex = 0
         val stream = MappingStream(mappings)
-        val sourceMap = SourceMap()
+        val sourceMap = SourceMap { sourcePathToContent[it]?.let { StringReader(it) } }
         var currentGroup = SourceMapGroup().also { sourceMap.groups += it }
 
         while (!stream.isEof) {
@@ -100,13 +99,15 @@ object SourceMapParser {
                 if (stream.isEncodedInt) {
                     stream.readInt() ?: return stream.createError("VLQ-encoded name index expected")
                 }
-            }
 
-            if (sourceIndex !in sources.indices) {
-                return stream.createError("Source index $sourceIndex is out of bounds ${sources.indices}")
+                if (sourceIndex !in sources.indices) {
+                    return stream.createError("Source index $sourceIndex is out of bounds ${sources.indices}")
+                }
+                currentGroup.segments += SourceMapSegment(jsColumn, sourceRoot + sources[sourceIndex], sourceLine, sourceColumn)
             }
-
-            currentGroup.segments += SourceMapSegment(jsColumn, sourceRoot + sources[sourceIndex], sourceLine, sourceColumn)
+            else {
+                currentGroup.segments += SourceMapSegment(jsColumn, null, -1, -1)
+            }
 
             when {
                 stream.isEof -> return stream.createError("Unexpected EOF, ',' or ';' expected")

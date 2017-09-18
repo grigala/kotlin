@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.gradle
 
+import org.jetbrains.kotlin.gradle.tasks.USING_INCREMENTAL_COMPILATION_MESSAGE
 import org.jetbrains.kotlin.gradle.util.*
 import org.junit.Test
 import java.io.File
@@ -116,6 +117,16 @@ open class Kapt3IT : Kapt3BaseIT() {
     }
 
     @Test
+    fun testDisableIcForGenerateStubs() {
+        val project = Project("simple", GRADLE_VERSION, directoryPrefix = "kapt2")
+        project.build("build", options = defaultBuildOptions().copy(incremental = false)) {
+            assertSuccessful()
+            assertContains(":kaptGenerateStubsKotlin")
+            assertNotContains(USING_INCREMENTAL_COMPILATION_MESSAGE)
+        }
+    }
+
+    @Test
     fun testArguments() {
         Project("arguments", GRADLE_VERSION, directoryPrefix = "kapt2").build("build") {
             assertSuccessful()
@@ -209,6 +220,25 @@ open class Kapt3IT : Kapt3BaseIT() {
             val allMainKotlinSrc = File(project.projectDir, "src/main").allKotlinFiles()
             assertCompiledKotlinSources(project.relativize(allMainKotlinSrc))
             assertNoSuchFile("build/generated/source/kapt/main/foo/InternalDummyGenerated.java")
+        }
+    }
+
+    @Test
+    fun testKt18799() {
+        val project = Project("kt18799", GRADLE_VERSION, directoryPrefix = "kapt2")
+
+        project.build("kaptKotlin") {
+            assertSuccessful()
+        }
+
+        project.projectDir.getFileByName("com.b.A.kt").modify {
+            val line = "@Factory(factoryClass = CLASS_NAME, something = arrayOf(Test()))"
+            assert(line in it)
+            it.replace(line, "@Factory(factoryClass = CLASS_NAME)")
+        }
+
+        project.build("kaptKotlin") {
+            assertSuccessful()
         }
     }
 

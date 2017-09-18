@@ -229,8 +229,6 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
         for (reference in findReferences(functionPsi)) {
             val element = reference.element
 
-            if (functionPsi is KtClass && reference.resolve() !== functionPsi) continue
-
             if (element is KtReferenceExpression) {
                 var parent = element.parent
 
@@ -290,7 +288,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
             }
         }
 
-        if (isDataClass) {
+        if (isDataClass && !changeInfo.hasAppendedParametersOnly()) {
             (functionPsi as KtPrimaryConstructor).valueParameters.firstOrNull()?.let {
                 ReferencesSearch.search(it).mapNotNullTo(result) {
                     val destructuringEntry = it.element as? KtDestructuringDeclarationEntry ?: return@mapNotNullTo null
@@ -401,7 +399,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
         if (method.containingClass == null) return
 
         val containingDescriptor = method.getJavaMethodDescriptor()?.containingDeclaration as? JavaClassDescriptor ?: return
-        if (containingDescriptor.functionTypeForSamInterface == null) return
+        if (containingDescriptor.defaultFunctionTypeForSamInterface == null) return
         val samClass = method.containingClass ?: return
 
         for (ref in ReferencesSearch.search(samClass)) {
@@ -513,8 +511,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
 
         val parameterNames = HashSet<String>()
         val function = info.method
-        val element = function
-        val bindingContext = (element as KtElement).analyze(BodyResolveMode.FULL)
+        val bindingContext = (function as KtElement).analyze(BodyResolveMode.FULL)
         val oldDescriptor = ktChangeInfo.originalBaseFunctionDescriptor
         val containingDeclaration = oldDescriptor.containingDeclaration
 
@@ -557,7 +554,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
             val parameterName = parameter.name
 
             if (!parameterNames.add(parameterName)) {
-                result.putValue(element, "Duplicating parameter '$parameterName'")
+                result.putValue(function, "Duplicating parameter '$parameterName'")
             }
 
             if (parametersScope != null) {
@@ -926,7 +923,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
                     baseFunction = baseFunction.createPrimaryConstructorIfAbsent()
                 }
                 val resolutionFacade = baseFunction.getResolutionFacade()
-                val baseFunctionDescriptor = baseFunction.resolveToDescriptor() as FunctionDescriptor
+                val baseFunctionDescriptor = baseFunction.unsafeResolveToDescriptor() as FunctionDescriptor
                 val methodDescriptor = KotlinChangeSignatureData(baseFunctionDescriptor, baseFunction, listOf(baseFunctionDescriptor))
 
                 val dummyClass = JavaPsiFacade.getElementFactory(method.project).createClass("Dummy")

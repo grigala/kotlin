@@ -18,9 +18,12 @@ package org.jetbrains.kotlin.idea.configuration
 
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationsManager
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.module.Module
+import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.idea.configuration.ui.notifications.ConfigureKotlinNotification
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.reflect.KClass
 
 object ConfigureKotlinNotificationManager: KotlinSingleNotificationManager<ConfigureKotlinNotification> {
@@ -64,3 +67,23 @@ interface KotlinSingleNotificationManager<in T: Notification> {
     }
 }
 
+private val checkInProgress = AtomicBoolean(false)
+
+fun checkHideNonConfiguredNotifications(project: Project) {
+    if (checkInProgress.get() || ConfigureKotlinNotificationManager.getVisibleNotifications(project).isEmpty()) return
+
+    ApplicationManager.getApplication().executeOnPooledThread {
+        if (!checkInProgress.compareAndSet(false, true)) return@executeOnPooledThread
+
+        DumbService.getInstance(project).waitForSmartMode()
+        if (getConfigurableModulesWithKotlinFiles(project).all(::isModuleConfigured)) {
+            ApplicationManager.getApplication().invokeLater {
+                ConfigureKotlinNotificationManager.expireOldNotifications(project)
+                checkInProgress.set(false)
+            }
+        }
+        else {
+            checkInProgress.set(false)
+        }
+    }
+}

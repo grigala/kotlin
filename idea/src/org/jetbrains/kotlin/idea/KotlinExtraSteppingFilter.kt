@@ -23,6 +23,8 @@ import com.intellij.debugger.settings.DebuggerSettings
 import com.sun.jdi.Location
 import com.sun.jdi.request.StepRequest
 import org.jetbrains.kotlin.idea.debugger.KotlinPositionManager
+import org.jetbrains.kotlin.idea.debugger.isOnSuspendReturnOrReenter
+import org.jetbrains.kotlin.idea.debugger.isOneLineMethod
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 
 class KotlinExtraSteppingFilter : ExtraSteppingFilter {
@@ -54,9 +56,13 @@ class KotlinExtraSteppingFilter : ExtraSteppingFilter {
                     return false
                 } ?: return false
 
+        if (isOnSuspendReturnOrReenter(location) && !isOneLineMethod(location)) {
+            return true
+        }
+
         val settings = DebuggerSettings.getInstance()
         if (settings.TRACING_FILTERS_ENABLED) {
-            val classNames = positionManager.originalClassNameForPosition(sourcePosition).map { it.replace('/', '.') }
+            val classNames = positionManager.originalClassNamesForPosition(sourcePosition).map { it.replace('/', '.') }
             if (classNames.isEmpty()) {
                 return false
             }

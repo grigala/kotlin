@@ -28,7 +28,7 @@ import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.diagnostics.Errors
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.runSynchronouslyWithProgress
 import org.jetbrains.kotlin.idea.search.declarationsSearch.HierarchySearchRequest
@@ -86,7 +86,7 @@ class ChangeSuspendInHierarchyFix(
         val progressIndicator = ProgressManager.getInstance().progressIndicator
 
         val function = element ?: return emptySet()
-        val functionDescriptor = function.resolveToDescriptor() as FunctionDescriptor
+        val functionDescriptor = function.unsafeResolveToDescriptor() as FunctionDescriptor
 
         val baseFunctionDescriptors = functionDescriptor.findTopMostOverriddables()
         baseFunctionDescriptors.forEach { baseFunctionDescriptor ->
@@ -98,7 +98,7 @@ class ChangeSuspendInHierarchyFix(
             val classes = listOf(baseClass) + HierarchySearchRequest(baseClass, baseClass.useScope).searchInheritors()
             classes.mapNotNullTo(result) {
                 val subClass = it.unwrapped as? KtClassOrObject ?: return@mapNotNullTo null
-                val classDescriptor = subClass.resolveToDescriptor() as ClassDescriptor
+                val classDescriptor = subClass.unsafeResolveToDescriptor() as ClassDescriptor
                 val substitutor = getTypeSubstitutor(baseClassDescriptor.defaultType, classDescriptor.defaultType)
                                   ?: return@mapNotNullTo null
                 val signatureInSubClass = baseFunctionDescriptor.substitute(substitutor) as FunctionDescriptor
@@ -150,7 +150,7 @@ class ChangeSuspendInHierarchyFix(
 
             return DFS.dfs(
                     listOf(this),
-                    { (it as? FunctionDescriptor)?.getOverridables() ?: emptyList() },
+                    { it?.getOverridables() ?: emptyList() },
                     object : DFS.CollectingNodeHandler<FunctionDescriptor, FunctionDescriptor, ArrayList<FunctionDescriptor>>(ArrayList()) {
                         override fun afterChildren(current: FunctionDescriptor) {
                             if (current.getOverridables().isEmpty()) {
@@ -173,7 +173,7 @@ class ChangeSuspendInHierarchyFix(
                         containingClassDescriptor.defaultType,
                         currentClassDescriptor.defaultType
                 ) ?: return@filter false
-                val signatureInCurrentClass = it.substitute(substitutor) as? FunctionDescriptor ?: return@filter false
+                val signatureInCurrentClass = it.substitute(substitutor) ?: return@filter false
                 OverridingUtil.DEFAULT.isOverridableBy(signatureInCurrentClass, currentDescriptor, null).result ==
                         OverridingUtil.OverrideCompatibilityInfo.Result.CONFLICT
             }
@@ -181,7 +181,7 @@ class ChangeSuspendInHierarchyFix(
 
         override fun doCreateActions(diagnostic: Diagnostic): List<IntentionAction> {
             val currentFunction = diagnostic.psiElement as? KtNamedFunction ?: return emptyList()
-            val currentDescriptor = currentFunction.resolveToDescriptor() as FunctionDescriptor
+            val currentDescriptor = currentFunction.unsafeResolveToDescriptor() as FunctionDescriptor
             Errors.CONFLICTING_OVERLOADS.cast(diagnostic).a.getOverridables(currentDescriptor).ifEmpty { return emptyList() }
 
             return listOf(

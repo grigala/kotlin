@@ -31,16 +31,16 @@ import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor;
 import org.jetbrains.kotlin.js.backend.ast.*;
 import org.jetbrains.kotlin.js.backend.ast.metadata.MetadataProperties;
 import org.jetbrains.kotlin.js.backend.ast.metadata.SideEffectKind;
+import org.jetbrains.kotlin.js.backend.ast.metadata.SpecialFunction;
 import org.jetbrains.kotlin.js.config.JsConfig;
 import org.jetbrains.kotlin.js.naming.NameSuggestion;
+import org.jetbrains.kotlin.js.naming.NameSuggestionKt;
 import org.jetbrains.kotlin.js.naming.SuggestedName;
 import org.jetbrains.kotlin.js.translate.context.generator.Generator;
 import org.jetbrains.kotlin.js.translate.context.generator.Rule;
 import org.jetbrains.kotlin.js.translate.declaration.ClassModelGenerator;
 import org.jetbrains.kotlin.js.translate.intrinsic.Intrinsics;
-import org.jetbrains.kotlin.js.translate.utils.AnnotationsUtils;
-import org.jetbrains.kotlin.js.translate.utils.JsAstUtils;
-import org.jetbrains.kotlin.js.translate.utils.SignatureUtilsKt;
+import org.jetbrains.kotlin.js.translate.utils.*;
 import org.jetbrains.kotlin.name.ClassId;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.resolve.BindingContext;
@@ -48,14 +48,12 @@ import org.jetbrains.kotlin.resolve.BindingTrace;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.calls.tasks.DynamicCallsKt;
 import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
+import org.jetbrains.kotlin.resolve.source.KotlinSourceElementKt;
 import org.jetbrains.kotlin.serialization.js.ModuleKind;
 import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.typeUtil.TypeUtilsKt;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static org.jetbrains.kotlin.js.config.JsConfig.UNKNOWN_EXTERNAL_MODULE_NAME;
 import static org.jetbrains.kotlin.js.translate.utils.AnnotationsUtils.isLibraryObject;
@@ -115,7 +113,7 @@ public final class StaticContext {
     private final Map<DeclarationDescriptor, JsName> nameCache = new HashMap<>();
 
     @NotNull
-    private final Map<PropertyDescriptor, JsName> backingFieldNameCache = new HashMap<>();
+    private final Map<VariableDescriptorWithAccessors, JsName> backingFieldNameCache = new HashMap<>();
 
     @NotNull
     private final Map<DeclarationDescriptor, JsExpression> fqnCache = new HashMap<>();
@@ -140,6 +138,10 @@ public final class StaticContext {
     @Nullable
     private JsName nameForImportsForInline;
 
+    private final Map<String, JsExpression> modulesImportedForInline = new HashMap<>();
+
+    private final Map<SpecialFunction, JsName> specialFunctions = new EnumMap<>(SpecialFunction.class);
+
     public StaticContext(
             @NotNull BindingTrace bindingTrace,
             @NotNull JsConfig config,
@@ -160,7 +162,7 @@ public final class StaticContext {
         JsName kotlinName = rootScope.declareName(Namer.KOTLIN_NAME);
         createImportedModule(new JsImportedModuleKey(Namer.KOTLIN_LOWER_NAME, null), Namer.KOTLIN_LOWER_NAME, kotlinName, null);
 
-        classModelGenerator = new ClassModelGenerator(this);
+        classModelGenerator = new ClassModelGenerator(TranslationContext.rootContext(this));
     }
 
     @NotNull
@@ -270,7 +272,7 @@ public final class StaticContext {
             else if (FunctionTypesKt.isBuiltinFunctionalType(type)) {
                 return pureFqn("Function", null);
             }
-            else if (TypeUtilsKt.isThrowable(classDescriptor.getDefaultType())) {
+            else if (TypeUtilsKt.isNotNullThrowable(classDescriptor.getDefaultType())) {
                 return pureFqn("Error", null);
             }
         }
@@ -348,7 +350,7 @@ public final class StaticContext {
     }
 
     @NotNull
-    public JsName getNameForBackingField(@NotNull PropertyDescriptor property) {
+    public JsName getNameForBackingField(@NotNull VariableDescriptorWithAccessors property) {
         JsName name = backingFieldNameCache.get(property);
 
         if (name == null) {
@@ -532,6 +534,9 @@ public final class StaticContext {
     private final class InnerNameGenerator extends Generator<JsName> {
         public InnerNameGenerator() {
             addRule(descriptor -> {
+                if (descriptor instanceof PackageFragmentDescriptor && DescriptorUtils.getContainingModule(descriptor) == currentModule) {
+                    return exporter.getLocalPackageName(((PackageFragmentDescriptor) descriptor).getFqName());
+                }
                 if (descriptor instanceof FunctionDescriptor) {
                     FunctionDescriptor initialDescriptor = ((FunctionDescriptor) descriptor).getInitialSignatureDescriptor();
                     if (initialDescriptor != null) {
@@ -667,6 +672,7 @@ public final class StaticContext {
                 JsFunction correspondingFunction = JsAstUtils.createFunctionWithEmptyBody(fragment.getScope());
                 assert (!scopeToFunction.containsKey(correspondingFunction.getScope())) : "Scope to function value overridden for " + descriptor;
                 scopeToFunction.put(correspondingFunction.getScope(), correspondingFunction);
+                correspondingFunction.setSource(KotlinSourceElementKt.getPsi(((CallableDescriptor) descriptor).getSource()));
                 return correspondingFunction.getScope();
             };
             Rule<JsScope> scopeForPackage = descriptor -> {
@@ -704,7 +710,7 @@ public final class StaticContext {
     }
 
     @NotNull
-    public static String suggestModuleName(@NotNull ModuleDescriptor module) {
+    private static String suggestModuleName(@NotNull ModuleDescriptor module) {
         if (module == module.getBuiltIns().getBuiltInsModule()) {
             return Namer.KOTLIN_LOWER_NAME;
         }
@@ -796,12 +802,17 @@ public final class StaticContext {
     }
 
     public void addInlineCall(@NotNull CallableDescriptor descriptor) {
+        descriptor = (CallableDescriptor) JsDescriptorUtils.findRealInlineDeclaration(descriptor);
         String tag = Namer.getFunctionTag(descriptor, config);
-        fragment.getInlineModuleMap().put(tag, getModuleExpressionFor(descriptor));
+        JsExpression moduleExpression = exportModuleForInline(DescriptorUtils.getContainingModule(descriptor));
+        if (moduleExpression == null) {
+            moduleExpression = getModuleExpressionFor(descriptor);
+        }
+        fragment.getInlineModuleMap().put(tag, moduleExpression);
     }
 
     @NotNull
-    public JsName getNameForImportsForInline() {
+    private JsName getNameForImportsForInline() {
         if (nameForImportsForInline == null) {
             JsName name = JsScope.declareTemporaryName(Namer.IMPORTS_FOR_INLINE_PROPERTY);
             fragment.getNameBindings().add(new JsNameBinding(Namer.IMPORTS_FOR_INLINE_PROPERTY, name));
@@ -811,5 +822,53 @@ public final class StaticContext {
         else {
             return nameForImportsForInline;
         }
+    }
+
+    @Nullable
+    public JsExpression exportModuleForInline(@NotNull ModuleDescriptor declaration) {
+        if (getCurrentModule().getBuiltIns().getBuiltInsModule() == declaration) return null;
+
+        String moduleName = suggestModuleName(declaration);
+        if (moduleName.equals(Namer.KOTLIN_LOWER_NAME)) return null;
+
+        return exportModuleForInline(moduleName, getInnerNameForDescriptor(declaration));
+    }
+
+    @NotNull
+    public JsExpression exportModuleForInline(@NotNull String moduleId, @NotNull JsName moduleName) {
+        return modulesImportedForInline.computeIfAbsent(moduleId, k -> {
+            JsExpression currentModuleRef = pureFqn(getInnerNameForDescriptor(getCurrentModule()), null);
+            JsExpression importsRef = pureFqn(Namer.IMPORTS_FOR_INLINE_PROPERTY, currentModuleRef);
+            JsExpression currentImports = pureFqn(getNameForImportsForInline(), null);
+
+            JsExpression moduleRef;
+            JsExpression lhsModuleRef;
+            if (NameSuggestionKt.isValidES5Identifier(moduleId)) {
+                moduleRef = pureFqn(moduleId, importsRef);
+                lhsModuleRef = pureFqn(moduleId, currentImports);
+            }
+            else {
+                moduleRef = new JsArrayAccess(importsRef, new JsStringLiteral(moduleId));
+                MetadataProperties.setSideEffects(moduleRef, SideEffectKind.PURE);
+                lhsModuleRef = new JsArrayAccess(currentImports, new JsStringLiteral(moduleId));
+            }
+            MetadataProperties.setLocalAlias(moduleRef, moduleName);
+
+            JsExpressionStatement importStmt = new JsExpressionStatement(JsAstUtils.assignment(lhsModuleRef, moduleName.makeRef()));
+            MetadataProperties.setExportedTag(importStmt, "imports:" + moduleId);
+            getFragment().getExportBlock().getStatements().add(importStmt);
+
+            return moduleRef;
+        }).deepCopy();
+    }
+
+    @NotNull
+    public JsName getNameForSpecialFunction(@NotNull SpecialFunction specialFunction) {
+        return specialFunctions.computeIfAbsent(specialFunction, f -> {
+            JsExpression expression = Namer.createSpecialFunction(specialFunction);
+            JsName name = importDeclaration(f.getSuggestedName(), TranslationUtils.getTagForSpecialFunction(f), expression);
+            MetadataProperties.setSpecialFunction(name, f);
+            return name;
+        });
     }
 }

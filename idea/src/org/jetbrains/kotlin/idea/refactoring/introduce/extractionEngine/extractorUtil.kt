@@ -25,7 +25,7 @@ import com.intellij.refactoring.BaseRefactoringProcessor
 import org.jetbrains.kotlin.builtins.isFunctionType
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.idea.core.*
-import org.jetbrains.kotlin.idea.intentions.ConvertToExpressionBodyIntention
+import org.jetbrains.kotlin.idea.inspections.UseExpressionBodyInspection
 import org.jetbrains.kotlin.idea.intentions.InfixCallToOrdinaryIntention
 import org.jetbrains.kotlin.idea.intentions.OperatorToFunctionIntention
 import org.jetbrains.kotlin.idea.intentions.RemoveExplicitTypeArgumentsIntention
@@ -94,7 +94,7 @@ private fun buildSignature(config: ExtractionGeneratorConfiguration, renderer: D
 
         config.descriptor.parameters.forEach { parameter ->
             param(parameter.name,
-                       parameter.getParameterType(config.descriptor.extractionData.options.allowSpecialClassNames).typeAsString())
+                  parameter.getParameterType(config.descriptor.extractionData.options.allowSpecialClassNames).typeAsString())
         }
 
         with(config.descriptor.returnType) {
@@ -353,16 +353,12 @@ private fun makeCall(
                 )
 
             is Jump -> {
-                if (outputValue.elementToInsertAfterCall == null) {
-                    Collections.singletonList(psiFactory.createExpression(callText))
-                }
-                else if (outputValue.conditional) {
-                    Collections.singletonList(
+                when {
+                    outputValue.elementToInsertAfterCall == null -> Collections.singletonList(psiFactory.createExpression(callText))
+                    outputValue.conditional -> Collections.singletonList(
                             psiFactory.createExpression("if ($callText) ${outputValue.elementToInsertAfterCall.text}")
                     )
-                }
-                else {
-                    listOf(
+                    else -> listOf(
                             psiFactory.createExpression(callText),
                             newLine,
                             psiFactory.createExpression(outputValue.elementToInsertAfterCall.text!!)
@@ -552,11 +548,11 @@ fun ExtractionGeneratorConfiguration.generateDeclaration(
         }
 
         if (generatorOptions.allowExpressionBody) {
-            val convertToExpressionBody = ConvertToExpressionBodyIntention()
             val bodyExpression = body.statements.singleOrNull()
             val bodyOwner = body.parent as KtDeclarationWithBody
-            if (bodyExpression != null && !bodyExpression.isMultiLine() && convertToExpressionBody.isApplicableTo(bodyOwner)) {
-                convertToExpressionBody.applyTo(bodyOwner, !descriptor.returnType.isFlexible())
+            val useExpressionBodyInspection = UseExpressionBodyInspection()
+            if (bodyExpression != null && !bodyExpression.isMultiLine() && useExpressionBodyInspection.isActiveFor(bodyOwner)) {
+                useExpressionBodyInspection.simplify(bodyOwner, !descriptor.returnType.isFlexible())
             }
         }
     }

@@ -34,6 +34,7 @@ import org.jetbrains.kotlin.lexer.KtToken;
 import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.psi.KtBinaryExpression;
 import org.jetbrains.kotlin.psi.KtExpression;
+import org.jetbrains.kotlin.psi.KtPsiUtil;
 import org.jetbrains.kotlin.resolve.bindingContextUtil.BindingContextUtilsKt;
 import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
@@ -47,7 +48,8 @@ import static org.jetbrains.kotlin.js.translate.operation.AssignmentTranslator.i
 import static org.jetbrains.kotlin.js.translate.operation.CompareToTranslator.isCompareToCall;
 import static org.jetbrains.kotlin.js.translate.utils.BindingUtils.getCallableDescriptorForOperationExpression;
 import static org.jetbrains.kotlin.js.translate.utils.JsAstUtils.not;
-import static org.jetbrains.kotlin.js.translate.utils.PsiUtils.*;
+import static org.jetbrains.kotlin.js.translate.utils.PsiUtils.getOperationToken;
+import static org.jetbrains.kotlin.js.translate.utils.PsiUtils.isNegatedOperation;
 
 public final class BinaryOperationTranslator extends AbstractTranslator {
 
@@ -124,16 +126,14 @@ public final class BinaryOperationTranslator extends AbstractTranslator {
     @NotNull
     private JsExpression translateElvis() {
         KotlinType expressionType = context().bindingContext().getType(expression);
+        assert expressionType != null;
 
-        JsExpression leftExpression = TranslationUtils.boxCastIfNeeded(Translation.translateAsExpression(leftKtExpression, context()),
-                                                                       context().bindingContext().getType(leftKtExpression),
-                                                                       expressionType);
+        JsExpression leftExpression = TranslationUtils.coerce(
+                context(), Translation.translateAsExpression(leftKtExpression, context()), expressionType);
 
         JsBlock rightBlock = new JsBlock();
-        JsExpression rightExpression =
-                TranslationUtils.boxCastIfNeeded(Translation.translateAsExpression(rightKtExpression, context(), rightBlock),
-                                                 context().bindingContext().getType(rightKtExpression),
-                                                 expressionType);
+        JsExpression rightExpression = TranslationUtils.coerce(
+                context(), Translation.translateAsExpression(rightKtExpression, context(), rightBlock), expressionType);
 
         if (rightBlock.isEmpty()) {
             return TranslationUtils.notNullConditional(leftExpression, rightExpression, context());
@@ -152,6 +152,7 @@ public final class BinaryOperationTranslator extends AbstractTranslator {
             JsExpression testExpression = TranslationUtils.isNullCheck(leftExpression);
             ifStatement = JsAstUtils.newJsIf(testExpression, rightBlock);
         }
+        ifStatement.setSource(expression);
         context().addStatementToCurrentBlock(ifStatement);
         return result;
     }
@@ -210,7 +211,7 @@ public final class BinaryOperationTranslator extends AbstractTranslator {
             if (rightExpression instanceof JsNameRef) {
                 result = rightExpression; // Reuse tmp variable
             } else {
-                result = context().declareTemporary(null).reference();
+                result = context().declareTemporary(null, rightKtExpression).reference();
                 JsExpression rightAssignment = JsAstUtils.assignment(result.deepCopy(), rightExpression).source(rightKtExpression);
                 rightBlock.getStatements().add(JsAstUtils.asSyntheticStatement(rightAssignment));
             }
@@ -260,7 +261,7 @@ public final class BinaryOperationTranslator extends AbstractTranslator {
 
     @NotNull
     private JsExpression getReceiver() {
-        if (isInOrNotInOperation(expression)) {
+        if (KtPsiUtil.isInOrNotInOperation(expression)) {
             return Translation.translateAsExpression(rightKtExpression, context());
         } else {
             return Translation.translateAsExpression(leftKtExpression, context());

@@ -1,6 +1,5 @@
 // "Move annotation to receiver type" "false"
-// ERROR: '@receiver:' annotations could be applied only to extension function or extension property declarations
-// ACTION: Convert to expression body
+// ERROR: This annotation is not applicable to target 'top level function' and use site target '@receiver'
 // ACTION: Make internal
 // ACTION: Make private
 

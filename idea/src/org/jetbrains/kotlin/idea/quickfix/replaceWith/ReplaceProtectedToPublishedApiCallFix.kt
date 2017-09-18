@@ -73,7 +73,7 @@ class ReplaceProtectedToPublishedApiCallFix(
                         KtPsiFactory(classOwner).createFunction(
                                 "@kotlin.PublishedApi\n" +
                                 "internal " + newSignature +
-                                " = $originalName(${paramNames.keys.map { it }.joinToString(", ")})"
+                                " = $originalName(${paramNames.keys.joinToString(", ") { it }})"
                         )
                     }
 
@@ -83,7 +83,7 @@ class ReplaceProtectedToPublishedApiCallFix(
     }
 
     companion object : KotlinSingleIntentionActionFactory() {
-        val signatureRenderer = IdeDescriptorRenderers.SOURCE_CODE.withOptions {
+        private val signatureRenderer = IdeDescriptorRenderers.SOURCE_CODE.withOptions {
             defaultParameterValueRenderer = null
             startFromDeclarationKeyword = true
             withoutReturnType = true

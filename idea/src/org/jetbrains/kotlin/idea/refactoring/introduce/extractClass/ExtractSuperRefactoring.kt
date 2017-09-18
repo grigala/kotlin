@@ -35,7 +35,7 @@ import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.idea.actions.NewKotlinFileAction
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.codeInsight.shorten.performDelayedRefactoringRequests
 import org.jetbrains.kotlin.idea.core.*
@@ -245,7 +245,7 @@ class ExtractSuperRefactoring(
         }
 
         if (typeParameters.isNotEmpty()) {
-            val typeParameterListText = typeParameters.sortedBy { it.startOffset }.map { it.text }.joinToString(prefix = "<", postfix = ">")
+            val typeParameterListText = typeParameters.sortedBy { it.startOffset }.joinToString(prefix = "<", postfix = ">") { it.text }
             newClass.addAfter(psiFactory.createTypeParameterList(typeParameterListText), newClass.nameIdentifier)
         }
 
@@ -297,7 +297,7 @@ class ExtractSuperRefactoring(
         handler.getErrorMessage(originalClass)?.let { throw CommonRefactoringUtil.RefactoringErrorHintException(it) }
 
         val superClassEntry = if (!extractInfo.isInterface) {
-            val originalClassDescriptor = originalClass.resolveToDescriptor() as ClassDescriptor
+            val originalClassDescriptor = originalClass.unsafeResolveToDescriptor() as ClassDescriptor
             val superClassDescriptor = originalClassDescriptor.getSuperClassNotAny()
             originalClass.superTypeListEntries.firstOrNull {
                 bindingContext[BindingContext.TYPE, it.typeReference]?.constructor?.declarationDescriptor == superClassDescriptor

@@ -21,9 +21,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.search.EverythingGlobalScope
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.stubs.StubIndex
-import org.jetbrains.kotlin.analyzer.LanguageSettingsProvider
 import org.jetbrains.kotlin.asJava.builder.LightClassConstructionContext
 import org.jetbrains.kotlin.config.JvmTarget
+import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.container.get
 import org.jetbrains.kotlin.container.useImpl
 import org.jetbrains.kotlin.container.useInstance
@@ -38,6 +38,7 @@ import org.jetbrains.kotlin.idea.caches.resolve.getModuleInfo
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.caches.resolve.lightClasses.IDELightClassConstructionContext.Mode.EXACT
 import org.jetbrains.kotlin.idea.caches.resolve.lightClasses.IDELightClassConstructionContext.Mode.LIGHT
+import org.jetbrains.kotlin.idea.compiler.IDELanguageSettingsProvider
 import org.jetbrains.kotlin.idea.project.IdeaEnvironment
 import org.jetbrains.kotlin.idea.project.ResolveElementCache
 import org.jetbrains.kotlin.idea.stubindex.KotlinOverridableInternalMembersShortNameIndex
@@ -129,12 +130,47 @@ object IDELightClassContexts {
         return IDELightClassConstructionContext(resolveSession.bindingContext, resolveSession.moduleDescriptor, EXACT)
     }
 
+    fun contextForScript(script: KtScript): LightClassConstructionContext {
+        val resolutionFacade = script.getResolutionFacade()
+        val bindingContext = resolutionFacade.analyze(script)
+
+        val descriptor = bindingContext[BindingContext.SCRIPT, script]
+        if (descriptor == null) {
+            LOG.warn("No script descriptor in context for script: " + script.getElementTextWithContext())
+            return IDELightClassConstructionContext(bindingContext, resolutionFacade.moduleDescriptor, EXACT)
+        }
+
+        ForceResolveUtil.forceResolveAllContents(descriptor)
+
+        return IDELightClassConstructionContext(bindingContext, resolutionFacade.moduleDescriptor, EXACT)
+    }
+
     fun lightContextForClassOrObject(classOrObject: KtClassOrObject): LightClassConstructionContext? {
         if (!isDummyResolveApplicable(classOrObject)) return null
 
         val resolveSession = setupAdHocResolve(classOrObject.project, classOrObject.getResolutionFacade().moduleDescriptor, listOf(classOrObject.containingKtFile))
 
         ForceResolveUtil.forceResolveAllContents(resolveSession.resolveToDescriptor(classOrObject))
+
+        return IDELightClassConstructionContext(resolveSession.bindingContext, resolveSession.moduleDescriptor, LIGHT)
+    }
+
+    fun lightContextForFacade(files: List<KtFile>): LightClassConstructionContext {
+        val representativeFile = files.first()
+        val resolveSession = setupAdHocResolve(representativeFile.project, representativeFile.getResolutionFacade().moduleDescriptor, files)
+
+        forceResolvePackageDeclarations(files, resolveSession)
+
+        return IDELightClassConstructionContext(resolveSession.bindingContext, resolveSession.moduleDescriptor, LIGHT)
+    }
+
+    fun lightContextForScript(script: KtScript): LightClassConstructionContext {
+        val resolveSession = setupAdHocResolve(
+                script.project,
+                script.getResolutionFacade().moduleDescriptor,
+                listOf(script.containingKtFile))
+
+        ForceResolveUtil.forceResolveAllContents(resolveSession.resolveToDescriptor(script))
 
         return IDELightClassConstructionContext(resolveSession.bindingContext, resolveSession.moduleDescriptor, LIGHT)
     }
@@ -193,18 +229,9 @@ object IDELightClassContexts {
         return result
     }
 
-    fun lightContextForFacade(files: List<KtFile>): LightClassConstructionContext {
-        val representativeFile = files.first()
-        val resolveSession = setupAdHocResolve(representativeFile.project, representativeFile.getResolutionFacade().moduleDescriptor, files)
-
-        forceResolvePackageDeclarations(files, resolveSession)
-
-        return IDELightClassConstructionContext(resolveSession.bindingContext, resolveSession.moduleDescriptor, LIGHT)
-    }
-
     fun forceResolvePackageDeclarations(files: Collection<KtFile>, session: ResolveSession) {
         for (file in files) {
-            if (file.isScript) continue
+            if (file.isScript()) continue
 
             val packageFqName = file.packageFqName
 
@@ -217,26 +244,26 @@ object IDELightClassContexts {
             }
 
             for (declaration in file.declarations) {
-                if (declaration is KtFunction) {
-                    val name = declaration.nameAsSafeName
-                    val functions = packageDescriptor.memberScope.getContributedFunctions(name, NoLookupLocation.FROM_IDE)
-                    for (descriptor in functions) {
-                        ForceResolveUtil.forceResolveAllContents(descriptor)
+                when (declaration) {
+                    is KtFunction -> {
+                        val name = declaration.nameAsSafeName
+                        val functions = packageDescriptor.memberScope.getContributedFunctions(name, NoLookupLocation.FROM_IDE)
+                        for (descriptor in functions) {
+                            ForceResolveUtil.forceResolveAllContents(descriptor)
+                        }
                     }
-                }
-                else if (declaration is KtProperty) {
-                    val name = declaration.nameAsSafeName
-                    val properties = packageDescriptor.memberScope.getContributedVariables(name, NoLookupLocation.FROM_IDE)
-                    for (descriptor in properties) {
-                        ForceResolveUtil.forceResolveAllContents(descriptor)
+                    is KtProperty -> {
+                        val name = declaration.nameAsSafeName
+                        val properties = packageDescriptor.memberScope.getContributedVariables(name, NoLookupLocation.FROM_IDE)
+                        for (descriptor in properties) {
+                            ForceResolveUtil.forceResolveAllContents(descriptor)
+                        }
                     }
-                }
-                else if (declaration is KtClassOrObject || declaration is KtTypeAlias || declaration is KtDestructuringDeclaration) {
-                    // Do nothing: we are not interested in classes or type aliases,
-                    // and all destructuring declarations are erroneous at top level
-                }
-                else {
-                    LOG.error("Unsupported declaration kind: " + declaration + " in file " + file.name + "\n" + file.text)
+                    is KtClassOrObject, is KtTypeAlias, is KtDestructuringDeclaration -> {
+                        // Do nothing: we are not interested in classes or type aliases,
+                        // and all destructuring declarations are erroneous at top level
+                    }
+                    else -> LOG.error("Unsupported declaration kind: " + declaration + " in file " + file.name + "\n" + file.text)
                 }
             }
 
@@ -254,7 +281,7 @@ object IDELightClassContexts {
 
         val moduleInfo = files.first().getModuleInfo()
         val container = createContainer("LightClassStub", JvmPlatform) {
-            val jvmTarget = LanguageSettingsProvider.getInstance(project).getTargetPlatform(moduleInfo) as? JvmTarget
+            val jvmTarget = IDELanguageSettingsProvider.getTargetPlatform(moduleInfo) as? JvmTarget
             configureModule(
                     ModuleContext(moduleDescriptor, project), JvmPlatform,
                     jvmTarget ?: JvmTarget.DEFAULT, trace
@@ -263,7 +290,7 @@ object IDELightClassContexts {
             useInstance(GlobalSearchScope.EMPTY_SCOPE)
             useInstance(LookupTracker.DO_NOTHING)
             useImpl<FileScopeProviderImpl>()
-            useInstance(LanguageSettingsProvider.getInstance(project).getLanguageVersionSettings(moduleInfo, project))
+            useInstance(IDELanguageSettingsProvider.getLanguageVersionSettings(moduleInfo, project))
             useInstance(FileBasedDeclarationProviderFactory(sm, files))
 
             useImpl<AdHocAnnotationResolver>()
@@ -308,6 +335,7 @@ object IDELightClassContexts {
     class AdHocAnnotationResolver(
             private val moduleDescriptor: ModuleDescriptor,
             private val callResolver: CallResolver,
+            private val languageVersionSettings: LanguageVersionSettings,
             constantExpressionEvaluator: ConstantExpressionEvaluator,
             storageManager: StorageManager
     ) : AnnotationResolverImpl(callResolver, constantExpressionEvaluator, storageManager) {
@@ -338,7 +366,7 @@ object IDELightClassContexts {
                     BasicCallResolutionContext.create(
                             trace, scope, CallMaker.makeCall(null, null, annotationEntry), TypeUtils.NO_EXPECTED_TYPE,
                             DataFlowInfoFactory.EMPTY, ContextDependency.INDEPENDENT, CheckArgumentTypesMode.CHECK_VALUE_ARGUMENTS,
-                            true
+                            true, languageVersionSettings
                     ),
                     annotationEntry.calleeExpression!!.constructorReferenceExpression!!,
                     annotationConstructor.returnType

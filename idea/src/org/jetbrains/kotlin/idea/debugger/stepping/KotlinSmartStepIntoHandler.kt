@@ -25,8 +25,10 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiMethod
 import com.intellij.util.Range
 import com.intellij.util.containers.OrderedSet
+import org.jetbrains.kotlin.builtins.functions.FunctionInvokeDescriptor
 import org.jetbrains.kotlin.builtins.isSuspendFunctionType
 import org.jetbrains.kotlin.codegen.intrinsics.IntrinsicMethods
+import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
 import org.jetbrains.kotlin.descriptors.ConstructorDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
@@ -35,6 +37,7 @@ import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.analyzeFully
 import org.jetbrains.kotlin.idea.codeInsight.CodeInsightUtils
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
+import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.load.java.isFromJava
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
@@ -186,7 +189,17 @@ class KotlinSmartStepIntoHandler : JvmSmartStepIntoHandler() {
                             }
                         }
 
-                        val label = KotlinMethodSmartStepTarget.calcLabel(descriptor)
+                        val callLabel = KotlinMethodSmartStepTarget.calcLabel(descriptor)
+                        val label = when (descriptor) {
+                            is FunctionInvokeDescriptor -> {
+                                when (expression) {
+                                    is KtSimpleNameExpression -> "${runReadAction { expression.text }}.$callLabel"
+                                    else -> callLabel
+                                }
+                            }
+                            else -> callLabel
+                        }
+
                         result.add(KotlinMethodSmartStepTarget(descriptor, label, expression, lines))
                     }
                 }
@@ -208,7 +221,7 @@ class KotlinSmartStepIntoHandler : JvmSmartStepIntoHandler() {
     }
 
 
-    private val methods = IntrinsicMethods()
+    private val methods = IntrinsicMethods(JvmTarget.JVM_1_6)
 
     private fun isIntrinsic(descriptor: CallableMemberDescriptor): Boolean {
         return methods.getIntrinsic(descriptor) != null

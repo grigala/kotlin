@@ -6,6 +6,16 @@
         <extensionPoint name="declarationAttributeAltererExtension"
                         interface="org.jetbrains.kotlin.extensions.DeclarationAttributeAltererExtension"
                         area="IDEA_PROJECT"/>
+
+        <extensionPoint name="androidDexer"
+                        interface="org.jetbrains.kotlin.idea.debugger.evaluate.classLoading.AndroidDexer"
+                        area="IDEA_PROJECT"/>
+
+        <extensionPoint name="idePlatformSupport"
+                        interface="org.jetbrains.kotlin.caches.resolve.IdePlatformSupport"/>
+
+        <extensionPoint name="highlighterExtension"
+                        interface="org.jetbrains.kotlin.idea.highlighter.HighlighterExtension"/>
     </extensionPoints>
 
     <extensions defaultExtensionNs="org.jetbrains.kotlin">
@@ -22,5 +32,9 @@
         <scriptTemplatesProvider id="StandardKotlinScriptTemplateProvider"
                                  order="last"
                                  implementation="org.jetbrains.kotlin.idea.script.StandardKotlinScriptTemplateProvider"/>
+
+        <idePlatformSupport implementation="org.jetbrains.kotlin.caches.resolve.JvmPlatformSupport"/>
+        <idePlatformSupport implementation="org.jetbrains.kotlin.caches.resolve.JsPlatformSupport"/>
+        <idePlatformSupport implementation="org.jetbrains.kotlin.caches.resolve.CommonPlatformSupport"/>
     </extensions>
 </idea-plugin>

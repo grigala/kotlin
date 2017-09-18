@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,29 +22,29 @@ import com.intellij.psi.PsiElement
 import com.intellij.util.SmartList
 import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.containers.SmartHashSet
-import org.jetbrains.kotlin.builtins.KotlinBuiltIns
+import org.jetbrains.kotlin.config.LanguageFeature
+import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DELEGATION
+import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.FAKE_OVERRIDE
 import org.jetbrains.kotlin.diagnostics.DiagnosticFactory2
 import org.jetbrains.kotlin.diagnostics.DiagnosticFactoryWithPsiElement
+import org.jetbrains.kotlin.diagnostics.Errors.*
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.resolve.calls.callResolverUtil.*
-import org.jetbrains.kotlin.types.*
-import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
-
-import java.util.*
-
-import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DELEGATION
-import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.FAKE_OVERRIDE
-import org.jetbrains.kotlin.diagnostics.Errors.*
 import org.jetbrains.kotlin.resolve.DescriptorUtils.classCanHaveAbstractMembers
 import org.jetbrains.kotlin.resolve.OverridingUtil.OverrideCompatibilityInfo.Result.OVERRIDABLE
+import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isOrOverridesSynthesized
+import org.jetbrains.kotlin.types.*
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.kotlin.utils.addToStdlib.assertedCast
+import java.util.*
 
 class OverrideResolver(
         private val trace: BindingTrace,
-        private val overridesBackwardCompatibilityHelper: OverridesBackwardCompatibilityHelper
+        private val overridesBackwardCompatibilityHelper: OverridesBackwardCompatibilityHelper,
+        private val languageVersionSettings: LanguageVersionSettings
 ) {
 
     fun check(c: TopDownAnalysisContext) {
@@ -247,6 +247,9 @@ class OverrideResolver(
             if (DataClassDescriptorResolver.isComponentLike(declared.name)) {
                 checkOverrideForComponentFunction(declared)
             }
+            else if (declared.name == DataClassDescriptorResolver.COPY_METHOD_NAME) {
+                checkOverrideForCopyFunction(declared)
+            }
             return
         }
 
@@ -342,6 +345,20 @@ class OverrideResolver(
                 throw IllegalStateException("Component functions are not properties")
             }
         })
+    }
+
+    private fun checkOverrideForCopyFunction(copyFunction: CallableMemberDescriptor) {
+        val overridden = copyFunction.overriddenDescriptors.firstOrNull()
+        if (overridden != null) {
+            val baseClassifier = overridden.containingDeclaration
+            val dataModifier = findDataModifierForDataClass(copyFunction.containingDeclaration)
+            if (languageVersionSettings.supportsFeature(LanguageFeature.ProhibitDataClassesOverridingCopy)) {
+                trace.report(DATA_CLASS_OVERRIDE_DEFAULT_VALUES_ERROR.on(dataModifier, copyFunction, baseClassifier))
+            }
+            else {
+                trace.report(DATA_CLASS_OVERRIDE_DEFAULT_VALUES_WARNING.on(dataModifier, copyFunction, baseClassifier))
+            }
+        }
     }
 
     private fun checkParameterOverridesForAllClasses(c: TopDownAnalysisContext) {
@@ -741,7 +758,7 @@ class OverrideResolver(
             val propertyMemberDescriptor = if (memberDescriptor is PropertyDescriptor) memberDescriptor else null
 
             for (overridden in overriddenDescriptors) {
-                if (!overridden.isOverridable) {
+                if (overridden.modality == Modality.FINAL) {
                     reportError.overridingFinalMember(memberDescriptor, overridden)
                 }
 
@@ -802,17 +819,17 @@ class OverrideResolver(
 
             val substitutedSuperReturnType = typeSubstitutor.substitute(superDescriptor.type, Variance.OUT_VARIANCE)!!
 
-            if (superDescriptor.isVar) {
-                return KotlinTypeChecker.DEFAULT.equalTypes(subDescriptor.type, substitutedSuperReturnType)
+            return if (superDescriptor.isVar) {
+                KotlinTypeChecker.DEFAULT.equalTypes(subDescriptor.type, substitutedSuperReturnType)
             }
             else {
-                return KotlinTypeChecker.DEFAULT.isSubtypeOf(subDescriptor.type, substitutedSuperReturnType)
+                KotlinTypeChecker.DEFAULT.isSubtypeOf(subDescriptor.type, substitutedSuperReturnType)
             }
         }
 
         private fun findDataModifierForDataClass(dataClass: DeclarationDescriptor): PsiElement {
             val classDeclaration = DescriptorToSourceUtils.getSourceFromDescriptor(dataClass) as KtClassOrObject?
-            if (classDeclaration != null && classDeclaration.modifierList != null) {
+            if (classDeclaration?.modifierList != null) {
                 val modifier = classDeclaration.modifierList!!.getModifier(KtTokens.DATA_KEYWORD)
                 if (modifier != null) {
                     return modifier

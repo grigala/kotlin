@@ -21,8 +21,10 @@ import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.JavaSdk
 import com.intellij.openapi.projectRoots.JavaSdkVersion
+import com.intellij.openapi.projectRoots.ProjectJdkTable
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.roots.ModuleRootModel
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import org.jetbrains.kotlin.cli.common.arguments.*
 import org.jetbrains.kotlin.compilerRunner.ArgumentUtils
@@ -33,14 +35,14 @@ import org.jetbrains.kotlin.idea.compiler.configuration.KotlinCommonCompilerArgu
 import org.jetbrains.kotlin.idea.compiler.configuration.KotlinCompilerSettings
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.idea.versions.*
-import java.lang.reflect.Field
+import kotlin.reflect.KProperty1
 
 private fun getDefaultTargetPlatform(module: Module, rootModel: ModuleRootModel?): TargetPlatformKind<*> {
-    if (getRuntimeLibraryVersions(module, rootModel, TargetPlatformKind.JavaScript).isNotEmpty()) {
-        return TargetPlatformKind.JavaScript
-    }
-    if (getRuntimeLibraryVersions(module, rootModel, TargetPlatformKind.Common).isNotEmpty()) {
-        return TargetPlatformKind.Common
+    for (platform in TargetPlatformKind.ALL_PLATFORMS) {
+        if (platform.version == TargetPlatformVersion.NoVersion &&
+            getRuntimeLibraryVersions(module, rootModel, platform).isNotEmpty()) {
+            return platform
+        }
     }
 
     val sdk = ((rootModel ?: ModuleRootManager.getInstance(module))).sdk
@@ -163,6 +165,8 @@ val jvmUIExposedFields = commonUIExposedFields + jvmSpecificUIExposedFields
 private val jvmPrimaryFields = commonPrimaryFields + jvmSpecificUIExposedFields
 
 private val jsSpecificUIExposedFields = listOf(K2JSCompilerArguments::sourceMap.name,
+                                               K2JSCompilerArguments::sourceMapPrefix.name,
+                                               K2JSCompilerArguments::sourceMapEmbedSources.name,
                                                K2JSCompilerArguments::outputPrefix.name,
                                                K2JSCompilerArguments::outputPostfix.name,
                                                K2JSCompilerArguments::moduleKind.name)
@@ -176,29 +180,52 @@ private val CommonCompilerArguments.primaryFields: List<String>
         else -> commonPrimaryFields
     }
 
-fun parseCompilerArgumentsToFacet(arguments: List<String>, defaultArguments: List<String>, kotlinFacet: KotlinFacet) {
-    val argumentArray = arguments.toTypedArray()
+private val CommonCompilerArguments.ignoredFields: List<String>
+    get() = when (this) {
+        is K2JVMCompilerArguments -> listOf(K2JVMCompilerArguments::noJdk.name, K2JVMCompilerArguments::jdkHome.name)
+        else -> emptyList()
+    }
 
+private fun Module.configureJdkIfPossible(compilerArguments: K2JVMCompilerArguments, modelsProvider: IdeModifiableModelsProvider) {
+    val jdkHome = compilerArguments.jdkHome ?: return
+    val jdk = ProjectJdkTable.getInstance().allJdks.firstOrNull {
+        it.sdkType is JavaSdk && FileUtil.comparePaths(it.homePath, jdkHome) == 0
+    } ?: return
+    modelsProvider.getModifiableRootModel(this).sdk = jdk
+}
+
+fun parseCompilerArgumentsToFacet(
+        arguments: List<String>,
+        defaultArguments: List<String>,
+        kotlinFacet: KotlinFacet,
+        modelsProvider: IdeModifiableModelsProvider
+) {
     with(kotlinFacet.configuration.settings) {
         val compilerArguments = this.compilerArguments ?: return
 
         val defaultCompilerArguments = compilerArguments::class.java.newInstance()
-        parseCommandLineArguments(defaultArguments.toTypedArray(), defaultCompilerArguments)
+        parseCommandLineArguments(defaultArguments, defaultCompilerArguments)
         defaultCompilerArguments.convertPathsToSystemIndependent()
 
-        parseCommandLineArguments(argumentArray, compilerArguments)
+        parseCommandLineArguments(arguments, compilerArguments)
 
         compilerArguments.convertPathsToSystemIndependent()
 
-        // Retain only fields exposed in facet configuration editor.
+        // Retain only fields exposed (and not explicitly ignored) in facet configuration editor.
         // The rest is combined into string and stored in CompilerSettings.additionalArguments
 
-        val primaryFields = compilerArguments.primaryFields
+        if (compilerArguments is K2JVMCompilerArguments) {
+            kotlinFacet.module.configureJdkIfPossible(compilerArguments, modelsProvider)
+        }
 
-        fun exposeAsAdditionalArgument(field: Field) = field.name !in primaryFields && field.get(compilerArguments) != field.get(defaultCompilerArguments)
+        val primaryFields = compilerArguments.primaryFields
+        val ignoredFields = compilerArguments.ignoredFields
+
+        fun exposeAsAdditionalArgument(property: KProperty1<CommonCompilerArguments, Any?>) =
+                property.name !in primaryFields && property.get(compilerArguments) != property.get(defaultCompilerArguments)
 
         val additionalArgumentsString = with(compilerArguments::class.java.newInstance()) {
-            copyFieldsSatisfying(compilerArguments, this, ::exposeAsAdditionalArgument)
+            copyFieldsSatisfying(compilerArguments, this) { exposeAsAdditionalArgument(it) && it.name !in ignoredFields }
             ArgumentUtils.convertArgumentsToStringList(this).joinToString(separator = " ") {
                 if (StringUtil.containsWhitespaces(it) || it.startsWith('"')) {
                     StringUtil.wrapWithDoubleQuote(StringUtil.escapeQuotes(it))
@@ -209,7 +236,9 @@ fun parseCompilerArgumentsToFacet(arguments: List<String>, defaultArguments: Lis
                 if (additionalArgumentsString.isNotEmpty()) additionalArgumentsString else CompilerSettings.DEFAULT_ADDITIONAL_ARGUMENTS
 
         with(compilerArguments::class.java.newInstance()) {
-            copyFieldsSatisfying(this, compilerArguments, ::exposeAsAdditionalArgument)
+            copyFieldsSatisfying(this, compilerArguments) { exposeAsAdditionalArgument(it) || it.name in ignoredFields }
         }
+
+        updateMergedArguments()
     }
 }

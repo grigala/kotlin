@@ -1075,6 +1075,12 @@ public class JvmBasicCompletionTestGenerated extends AbstractJvmBasicCompletionT
                 doTest(fileName);
             }
 
+            @TestMetadata("InValExtType.kt")
+            public void testInValExtType() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/common/autoPopup/InValExtType.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("NoAutoPopupAfterNumberLiteral.kt")
             public void testNoAutoPopupAfterNumberLiteral() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/common/autoPopup/NoAutoPopupAfterNumberLiteral.kt");
@@ -1306,6 +1312,51 @@ public class JvmBasicCompletionTestGenerated extends AbstractJvmBasicCompletionT
             @TestMetadata("SyntheticExtensions2.kt")
             public void testSyntheticExtensions2() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/common/callableReference/SyntheticExtensions2.kt");
+                doTest(fileName);
+            }
+        }
+
+        @TestMetadata("idea/idea-completion/testData/basic/common/dslMarker")
+        @TestDataPath("$PROJECT_ROOT")
+        @RunWith(JUnit3RunnerWithInners.class)
+        public static class DslMarker extends AbstractJvmBasicCompletionTest {
+            @TestMetadata("2dslsInsideOtherChild.kt")
+            public void test2dslsInsideOtherChild() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/common/dslMarker/2dslsInsideOtherChild.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("2receivers.kt")
+            public void test2receivers() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/common/dslMarker/2receivers.kt");
+                doTest(fileName);
+            }
+
+            public void testAllFilesPresentInDslMarker() throws Exception {
+                KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/idea-completion/testData/basic/common/dslMarker"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+            }
+
+            @TestMetadata("child.kt")
+            public void testChild() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/common/dslMarker/child.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("compositeDsl.kt")
+            public void testCompositeDsl() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/common/dslMarker/compositeDsl.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("container.kt")
+            public void testContainer() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/common/dslMarker/container.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("root.kt")
+            public void testRoot() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/common/dslMarker/root.kt");
                 doTest(fileName);
             }
         }
@@ -2959,6 +3010,69 @@ public class JvmBasicCompletionTestGenerated extends AbstractJvmBasicCompletionT
             @TestMetadata("SyntheticJavaProperties2.kt")
             public void testSyntheticJavaProperties2() throws Exception {
                 String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/boldOrGrayed/SyntheticJavaProperties2.kt");
+                doTest(fileName);
+            }
+        }
+
+        @TestMetadata("idea/idea-completion/testData/basic/java/importAliases")
+        @TestDataPath("$PROJECT_ROOT")
+        @RunWith(JUnit3RunnerWithInners.class)
+        public static class ImportAliases extends AbstractJvmBasicCompletionTest {
+            public void testAllFilesPresentInImportAliases() throws Exception {
+                KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/idea-completion/testData/basic/java/importAliases"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+            }
+
+            @TestMetadata("Class.kt")
+            public void testClass() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/importAliases/Class.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("ExtensionFun.kt")
+            public void testExtensionFun() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/importAliases/ExtensionFun.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("ExtensionValSmart.kt")
+            public void testExtensionValSmart() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/importAliases/ExtensionValSmart.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("KDoc.kt")
+            public void testKDoc() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/importAliases/KDoc.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("KDocExtension.kt")
+            public void testKDocExtension() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/importAliases/KDocExtension.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("PrefixUsed.kt")
+            public void testPrefixUsed() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/importAliases/PrefixUsed.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("TopLevelFun.kt")
+            public void testTopLevelFun() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/importAliases/TopLevelFun.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("TopLevelVal.kt")
+            public void testTopLevelVal() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/importAliases/TopLevelVal.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("TypeAlias.kt")
+            public void testTypeAlias() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/idea-completion/testData/basic/java/importAliases/TypeAlias.kt");
                 doTest(fileName);
             }
         }

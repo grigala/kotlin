@@ -24,6 +24,7 @@ import org.jetbrains.kotlin.descriptors.FunctionDescriptor;
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor;
 import org.jetbrains.kotlin.idea.MainFunctionDetector;
 import org.jetbrains.kotlin.js.backend.ast.*;
+import org.jetbrains.kotlin.js.backend.ast.metadata.MetadataProperties;
 import org.jetbrains.kotlin.js.config.JsConfig;
 import org.jetbrains.kotlin.js.facade.MainCallParameters;
 import org.jetbrains.kotlin.js.facade.TranslationUnit;
@@ -39,11 +40,10 @@ import org.jetbrains.kotlin.js.translate.declaration.FileDeclarationVisitor;
 import org.jetbrains.kotlin.js.translate.expression.ExpressionVisitor;
 import org.jetbrains.kotlin.js.translate.expression.PatternTranslator;
 import org.jetbrains.kotlin.js.translate.test.JSTestGenerator;
-import org.jetbrains.kotlin.js.translate.test.JSTester;
-import org.jetbrains.kotlin.js.translate.test.QUnitTester;
 import org.jetbrains.kotlin.js.translate.utils.AnnotationsUtils;
 import org.jetbrains.kotlin.js.translate.utils.BindingUtils;
 import org.jetbrains.kotlin.js.translate.utils.JsAstUtils;
+import org.jetbrains.kotlin.js.translate.utils.TranslationUtils;
 import org.jetbrains.kotlin.js.translate.utils.mutator.AssignToExpressionMutator;
 import org.jetbrains.kotlin.psi.KtDeclaration;
 import org.jetbrains.kotlin.psi.KtExpression;
@@ -61,7 +61,9 @@ import org.jetbrains.kotlin.types.TypeUtils;
 import org.jetbrains.kotlin.utils.ExceptionUtilsKt;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.jetbrains.kotlin.js.translate.general.ModuleWrapperTranslation.wrapIfNecessary;
 import static org.jetbrains.kotlin.js.translate.utils.JsAstUtils.convertToStatement;
@@ -122,6 +124,15 @@ public final class Translation {
     ) {
         KotlinType expectedType = context.bindingContext().getType(expression);
         ConstantValue<?> constant = compileTimeValue.toConstantValue(expectedType != null ? expectedType : TypeUtils.NO_EXPECTED_TYPE);
+        JsExpression result = translateConstantWithoutType(constant);
+        if (result != null) {
+            MetadataProperties.setType(result, expectedType);
+        }
+        return result;
+    }
+
+    @Nullable
+    private static JsExpression translateConstantWithoutType(@NotNull ConstantValue<?> constant) {
         if (constant instanceof NullValue) {
             return new JsNullLiteral();
         }
@@ -186,31 +197,31 @@ public final class Translation {
             @NotNull JsBlock block
     ) {
         JsNode jsNode = translateExpression(expression, context, block);
+
         if (jsNode instanceof JsExpression) {
-            KotlinType expressionType = context.bindingContext().getType(expression);
-            return unboxIfNeeded((JsExpression) jsNode, expressionType != null && KotlinBuiltIns.isCharOrNullableChar(expressionType));
+            JsExpression jsExpression = (JsExpression) jsNode;
+            KotlinType type = context.bindingContext().getType(expression);
+            if (MetadataProperties.getType(jsExpression) == null) {
+                MetadataProperties.setType(jsExpression, type);
+            }
+            else if (type != null) {
+                jsExpression = TranslationUtils.coerce(context, jsExpression, type);
+            }
+            return jsExpression;
         }
 
         assert jsNode instanceof JsStatement : "Unexpected node of type: " + jsNode.getClass().toString();
         if (BindingContextUtilsKt.isUsedAsExpression(expression, context.bindingContext())) {
-            TemporaryVariable result = context.declareTemporary(null);
+            TemporaryVariable result = context.declareTemporary(null, expression);
             AssignToExpressionMutator saveResultToTemporaryMutator = new AssignToExpressionMutator(result.reference());
             block.getStatements().add(mutateLastExpression(jsNode, saveResultToTemporaryMutator));
-            return result.reference();
+            JsExpression tmpVar = result.reference();
+            MetadataProperties.setType(tmpVar, context.bindingContext().getType(expression));
+            return tmpVar;
         }
 
         block.getStatements().add(convertToStatement(jsNode));
         return new JsNullLiteral().source(expression);
-    }
-
-    @NotNull
-    public static JsExpression unboxIfNeeded(@NotNull JsExpression expression, boolean charOrNullableChar) {
-        if (charOrNullableChar &&
-            (expression instanceof JsInvocation || expression instanceof JsNameRef || expression instanceof JsArrayAccess)
-        ) {
-            expression = JsAstUtils.boxedCharToChar(expression);
-        }
-        return expression;
     }
 
     @NotNull
@@ -274,7 +285,8 @@ public final class Translation {
 
         Map<KtFile, List<DeclarationDescriptor>> fileMemberScopes = new HashMap<>();
 
-        JsAstDeserializer deserializer = new JsAstDeserializer(program);
+        List<File> sourceRoots = config.getSourceMapRoots().stream().map(File::new).collect(Collectors.toList());
+        JsAstDeserializer deserializer = new JsAstDeserializer(program, sourceRoots);
         for (TranslationUnit unit : units) {
             if (unit instanceof TranslationUnit.SourceFile) {
                 KtFile file = ((TranslationUnit.SourceFile) unit).getFile();
@@ -338,7 +350,7 @@ public final class Translation {
                                                      config.getModuleKind()));
 
         return new AstGenerationResult(program, internalModuleName, fragments, fragmentMap, newFragments,
-                                       fileMemberScopes, importedModuleList);
+                                       merger.getImportBlock().getStatements(), fileMemberScopes, importedModuleList);
     }
 
     private static boolean isBuiltinModule(@NotNull List<JsProgramFragment> fragments) {
@@ -392,8 +404,8 @@ public final class Translation {
     ) {
         StaticContext staticContext = new StaticContext(trace, config, moduleDescriptor);
         TranslationContext context = TranslationContext.rootContext(staticContext);
-        JSTester tester = new QUnitTester(context);
-        JSTestGenerator.generateTestCalls(context, moduleDescriptor, tester);
+
+        new JSTestGenerator(context).generateTestCalls(moduleDescriptor);
 
         return staticContext.getFragment();
     }

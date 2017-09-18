@@ -42,6 +42,12 @@ public class MultiPlatformIntegrationTestGenerated extends AbstractMultiPlatform
         doTest(fileName);
     }
 
+    @TestMetadata("compilerArguments")
+    public void testCompilerArguments() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/compilerArguments/");
+        doTest(fileName);
+    }
+
     @TestMetadata("createImplClassInPlatformModule")
     public void testCreateImplClassInPlatformModule() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/createImplClassInPlatformModule/");
@@ -90,9 +96,21 @@ public class MultiPlatformIntegrationTestGenerated extends AbstractMultiPlatform
         doTest(fileName);
     }
 
+    @TestMetadata("missingOverload")
+    public void testMissingOverload() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/missingOverload/");
+        doTest(fileName);
+    }
+
     @TestMetadata("simple")
     public void testSimple() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/simple/");
+        doTest(fileName);
+    }
+
+    @TestMetadata("simpleNoImplKeywordOnTopLevelFunction")
+    public void testSimpleNoImplKeywordOnTopLevelFunction() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/simpleNoImplKeywordOnTopLevelFunction/");
         doTest(fileName);
     }
 
@@ -128,6 +146,12 @@ public class MultiPlatformIntegrationTestGenerated extends AbstractMultiPlatform
             doTest(fileName);
         }
 
+        @TestMetadata("functionIncorrectSignatureFromSuperclass")
+        public void testFunctionIncorrectSignatureFromSuperclass() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/classScopes/functionIncorrectSignatureFromSuperclass/");
+            doTest(fileName);
+        }
+
         @TestMetadata("missingConstructor")
         public void testMissingConstructor() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/classScopes/missingConstructor/");
@@ -155,6 +179,12 @@ public class MultiPlatformIntegrationTestGenerated extends AbstractMultiPlatform
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/multiplatform/implTypeAlias"), Pattern.compile("^([^\\.]+)$"), TargetBackend.ANY, true);
         }
 
+        @TestMetadata("discriminateHeaderClassInFavorOfTypeAlias")
+        public void testDiscriminateHeaderClassInFavorOfTypeAlias() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/implTypeAlias/discriminateHeaderClassInFavorOfTypeAlias/");
+            doTest(fileName);
+        }
+
         @TestMetadata("generic")
         public void testGeneric() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/implTypeAlias/generic/");
@@ -174,6 +204,12 @@ public class MultiPlatformIntegrationTestGenerated extends AbstractMultiPlatform
     public static class Regressions extends AbstractMultiPlatformIntegrationTest {
         public void testAllFilesPresentInRegressions() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/multiplatform/regressions"), Pattern.compile("^([^\\.]+)$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("incompatibleClassScopesWithImplTypeAlias")
+        public void testIncompatibleClassScopesWithImplTypeAlias() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/multiplatform/regressions/incompatibleClassScopesWithImplTypeAlias/");
+            doTest(fileName);
         }
 
         @TestMetadata("kt17001")

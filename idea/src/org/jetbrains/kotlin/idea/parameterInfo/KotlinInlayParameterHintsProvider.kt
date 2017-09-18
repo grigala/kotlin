@@ -28,10 +28,7 @@ import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.quickfix.createFromUsage.callableBuilder.getReturnTypeReference
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.KtCallExpression
-import org.jetbrains.kotlin.psi.KtNamedFunction
-import org.jetbrains.kotlin.psi.KtParameter
-import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.calls.model.DefaultValueArgument
@@ -55,7 +52,8 @@ enum class HintType(desc: String, enabled: Boolean) {
         }
 
         override fun isApplicable(elem: PsiElement): Boolean = (elem is KtProperty && elem.getReturnTypeReference() == null && elem.isLocal) ||
-                                                               (elem is KtParameter && elem.isLoopParameter && elem.typeReference == null)
+                                                               (elem is KtParameter && elem.isLoopParameter && elem.typeReference == null) ||
+                                                               (elem is KtDestructuringDeclarationEntry)
     },
 
     FUNCTION_HINT("Show function return type hints", false) {
@@ -119,7 +117,7 @@ class KotlinInlayParameterHintsProvider : InlayParameterHintsProvider {
 
     override fun getSupportedOptions(): List<Option> = HintType.values().map { it.option }
 
-    override fun getDefaultBlackList(): Set<String> = emptySet()
+    override fun getDefaultBlackList(): Set<String> = setOf("*listOf", "*setOf", "*arrayOf", "*ListOf", "*SetOf", "*ArrayOf")
 
     override fun getHintInfo(element: PsiElement): HintInfo? {
         val hintType = HintType.resolve(element) ?: return null

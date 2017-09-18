@@ -24,7 +24,6 @@ import com.sun.tools.javac.tree.JCTree
 import com.sun.tools.javac.tree.JCTree.*
 import com.sun.tools.javac.tree.TreeMaker
 import org.jetbrains.kotlin.codegen.state.GenerationState
-import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.kapt3.*
 import org.jetbrains.kotlin.kapt3.javac.KaptTreeMaker
@@ -33,11 +32,8 @@ import org.jetbrains.kotlin.kapt3.util.*
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.resolve.descriptorUtil.getSuperClassNotAny
 import org.jetbrains.kotlin.resolve.descriptorUtil.getSuperClassOrAny
 import org.jetbrains.kotlin.types.KotlinType
-import org.jetbrains.kotlin.types.typeUtil.isAnyOrNullableAny
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.jetbrains.org.objectweb.asm.Type
 import org.jetbrains.org.objectweb.asm.tree.*
@@ -85,8 +81,12 @@ class ClassFileToSourceStubConverter(
         get() = _bindings
 
     private val fileManager = kaptContext.context.get(JavaFileManager::class.java) as JavacFileManager
+
     val treeMaker = TreeMaker.instance(kaptContext.context) as KaptTreeMaker
+
     private val signatureParser = SignatureParser(treeMaker)
+
+    private val anonymousTypeHandler = AnonymousTypeHandler(this)
 
     private var done = false
 
@@ -122,7 +122,7 @@ class ClassFileToSourceStubConverter(
     private fun convertTopLevelClass(clazz: ClassNode): JCCompilationUnit? {
         val origin = kaptContext.origins[clazz] ?: return null
         val ktFile = origin.element?.containingFile as? KtFile ?: return null
-        val descriptor = origin.descriptor as? DeclarationDescriptor ?: return null
+        val descriptor = origin.descriptor ?: return null
 
         // Nested classes will be processed during the outer classes conversion
         if ((descriptor as? ClassDescriptor)?.isNested ?: false) return null
@@ -191,7 +191,7 @@ class ClassFileToSourceStubConverter(
         if (isSynthetic(clazz.access)) return null
         if (checkIfShouldBeIgnored(Type.getObjectType(clazz.name))) return null
 
-        val descriptor = kaptContext.origins[clazz]?.descriptor as? DeclarationDescriptor ?: return null
+        val descriptor = kaptContext.origins[clazz]?.descriptor ?: return null
         val isNested = (descriptor as? ClassDescriptor)?.isNested ?: false
         val isInner = isNested && (descriptor as? ClassDescriptor)?.isInner ?: false
 
@@ -204,7 +204,7 @@ class ClassFileToSourceStubConverter(
                 if (isEnum) ElementKind.ENUM else ElementKind.CLASS,
                 packageFqName, clazz.visibleAnnotations, clazz.invisibleAnnotations)
 
-        val isDefaultImpls = clazz.name.endsWith("${descriptor.name.asString()}/DefaultImpls")
+        val isDefaultImpls = clazz.name.endsWith("${descriptor.name.asString()}\$DefaultImpls")
                              && isPublic(clazz.access) && isFinal(clazz.access)
                              && descriptor is ClassDescriptor
                              && descriptor.kind == ClassKind.INTERFACE
@@ -218,10 +218,10 @@ class ClassFileToSourceStubConverter(
 
         val interfaces = mapJList(clazz.interfaces) {
             if (isAnnotation && it == "java/lang/annotation/Annotation") return@mapJList null
-            treeMaker.FqName(it)
+            treeMaker.FqName(treeMaker.getQualifiedName(it))
         }
 
-        val superClass = treeMaker.FqName(clazz.superName)
+        val superClass = treeMaker.FqName(treeMaker.getQualifiedName(clazz.superName))
 
         val hasSuperClass = clazz.superName != "java/lang/Object" && !isEnum
         val genericType = signatureParser.parseClassSignature(clazz.signature, superClass, interfaces)
@@ -322,14 +322,11 @@ class ClassFileToSourceStubConverter(
             outerClass: ClassNode? = findContainingClassNode(clazz)
     ): Boolean {
         if (outerClass == null) return false
-        if (clazz.simpleName == outerClass.simpleName) return true
+        if (treeMaker.getSimpleName(clazz) == treeMaker.getSimpleName(outerClass)) return true
         // Try to find the containing class for outerClassNode (to check the whole tree recursively)
         val containingClassForOuterClass = findContainingClassNode(outerClass) ?: return false
         return checkIfInnerClassNameConflictsWithOuter(clazz, containingClassForOuterClass)
     }
-
-    private val ClassNode.simpleName: String
-        get() = name.substringAfterLast(".").substringAfterLast("/")
 
     private fun getClassAccessFlags(clazz: ClassNode, descriptor: DeclarationDescriptor, isInner: Boolean, isNested: Boolean) = when {
         (descriptor.containingDeclaration as? ClassDescriptor)?.kind == ClassKind.INTERFACE -> {
@@ -373,9 +370,9 @@ class ClassFileToSourceStubConverter(
 
         // Enum type must be an identifier (Javac requirement)
         val typeExpression = if (isEnum(field.access))
-            treeMaker.SimpleName(type.className.substringAfterLast('.'))
+            treeMaker.SimpleName(treeMaker.getQualifiedName(type).substringAfterLast('.'))
         else
-            getNotAnonymousType(descriptor) {
+            anonymousTypeHandler.getNonAnonymousType(descriptor) {
                 getNonErrorType((descriptor as? CallableDescriptor)?.returnType,
                                 ktTypeProvider = { (kaptContext.origins[field]?.element as? KtVariableDeclaration)?.typeReference },
                                 ifNonError = { signatureParser.parseFieldSignature(field.signature, treeMaker.Type(type)) })
@@ -437,7 +434,7 @@ class ClassFileToSourceStubConverter(
                     info.visibleAnnotations,
                     info.invisibleAnnotations)
 
-            val name = treeMaker.name(getValidIdentifierName(info.name) ?: "p${index}_" + info.name.hashCode())
+            val name = treeMaker.name(getValidIdentifierName(info.name) ?: "p${index}_" + info.name.hashCode().ushr(1))
             val type = treeMaker.Type(info.type)
             treeMaker.VarDef(modifiers, name, type, null)
         }
@@ -513,7 +510,7 @@ class ClassFileToSourceStubConverter(
                     }
                 })
 
-        val returnType = getNotAnonymousType(descriptor) {
+        val returnType = anonymousTypeHandler.getNonAnonymousType(descriptor) {
             getNonErrorType(descriptor.returnType,
                             ktTypeProvider = {
                                 val element = kaptContext.origins[method]?.element
@@ -570,37 +567,6 @@ class ClassFileToSourceStubConverter(
         return name
     }
 
-    private inline fun <T : JCExpression?> getNotAnonymousType(descriptor: DeclarationDescriptor?, f: () -> T): T {
-        if (descriptor is CallableDescriptor) {
-            val returnTypeDescriptor = descriptor.returnType?.constructor?.declarationDescriptor
-            if (returnTypeDescriptor is ClassDescriptor && DescriptorUtils.isAnonymousObject(returnTypeDescriptor)) {
-                @Suppress("UNCHECKED_CAST")
-                return getMostSuitableSuperTypeForAnonymousType(returnTypeDescriptor) as T
-            }
-        }
-
-        return f()
-    }
-
-    private fun getMostSuitableSuperTypeForAnonymousType(typeDescriptor: ClassDescriptor): JCExpression {
-        val superClass = typeDescriptor.getSuperClassNotAny()
-        val typeMapper = kaptContext.generationState.typeMapper
-
-        if (superClass != null) {
-            return treeMaker.Type(typeMapper.mapType(superClass))
-        } else {
-            val sortedSuperTypes = typeDescriptor.typeConstructor.supertypes
-                    .sortedBy { it.constructor.declarationDescriptor?.name?.asString() ?: "" }
-
-            for (superType in sortedSuperTypes) {
-                if (superType.isAnyOrNullableAny()) continue
-                return treeMaker.Type(typeMapper.mapType(superType))
-            }
-        }
-
-        return treeMaker.FqName("java.lang.Object")
-    }
-
     @Suppress("NOTHING_TO_INLINE")
     private inline fun convertModifiers(
             access: Int,
@@ -637,7 +603,7 @@ class ClassFileToSourceStubConverter(
 
     private fun convertAnnotation(annotation: AnnotationNode, packageFqName: String? = "", filtered: Boolean = true): JCAnnotation? {
         val annotationType = Type.getType(annotation.desc)
-        val fqName = annotationType.className
+        val fqName = treeMaker.getQualifiedName(annotationType)
 
         if (filtered) {
             if (BLACKLISTED_ANNOTATIONS.any { fqName.startsWith(it) }) return null

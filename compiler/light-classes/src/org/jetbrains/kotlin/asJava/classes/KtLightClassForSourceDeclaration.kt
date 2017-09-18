@@ -50,7 +50,6 @@ import org.jetbrains.kotlin.asJava.elements.KtLightPsiReferenceList
 import org.jetbrains.kotlin.asJava.hasInterfaceDefaultImpls
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
-import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.lexer.KtTokens.*
 import org.jetbrains.kotlin.load.java.structure.LightClassOriginKind
 import org.jetbrains.kotlin.name.FqName
@@ -59,6 +58,7 @@ import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.debugText.getDebugText
 import org.jetbrains.kotlin.psi.psiUtil.getElementTextWithContext
+import org.jetbrains.kotlin.psi.psiUtil.hasExpectModifier
 import org.jetbrains.kotlin.psi.stubs.KotlinClassOrObjectStub
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import java.util.*
@@ -138,7 +138,7 @@ abstract class KtLightClassForSourceDeclaration(protected val classOrObject: KtC
     override fun getNavigationElement(): PsiElement = classOrObject
 
     override fun isEquivalentTo(another: PsiElement?): Boolean {
-        return another is PsiClass && Comparing.equal(another.qualifiedName, qualifiedName)
+        return another is KtLightClassForSourceDeclaration && Comparing.equal(another.qualifiedName, qualifiedName)
     }
 
     override fun getElementIcon(flags: Int): Icon? {
@@ -277,13 +277,12 @@ abstract class KtLightClassForSourceDeclaration(protected val classOrObject: KtC
     override fun isInheritor(baseClass: PsiClass, checkDeep: Boolean): Boolean {
         LightClassInheritanceHelper.getService(project).isInheritor(this, baseClass, checkDeep).ifSure { return it }
 
-        val qualifiedName: String?
-        if (baseClass is KtLightClassForSourceDeclaration) {
+        val qualifiedName: String? = if (baseClass is KtLightClassForSourceDeclaration) {
             val baseDescriptor = baseClass.getDescriptor()
-            qualifiedName = if (baseDescriptor != null) DescriptorUtils.getFqName(baseDescriptor).asString() else null
+            if (baseDescriptor != null) DescriptorUtils.getFqName(baseDescriptor).asString() else null
         }
         else {
-            qualifiedName = baseClass.qualifiedName
+            baseClass.qualifiedName
         }
 
         val thisDescriptor = getDescriptor()
@@ -335,7 +334,7 @@ abstract class KtLightClassForSourceDeclaration(protected val classOrObject: KtC
 
 
         fun create(classOrObject: KtClassOrObject): KtLightClassForSourceDeclaration? {
-            if (classOrObject.containingKtFile.isScript || classOrObject.hasModifier(KtTokens.HEADER_KEYWORD)) {
+            if (classOrObject.hasExpectModifier()) {
                 return null
             }
 
@@ -367,10 +366,11 @@ abstract class KtLightClassForSourceDeclaration(protected val classOrObject: KtC
         }
 
         fun getLightClassDataHolder(classOrObject: KtClassOrObject): LightClassDataHolder.ForClass {
-            return getLightClassCachedValue(classOrObject).value
+            return classOrObject.containingKtFile.script?.let { KtLightClassForScript.getLightClassCachedValue(it).value } ?:
+                   getLightClassCachedValue(classOrObject).value
         }
 
-        fun getLightClassCachedValue(classOrObject: KtClassOrObject): CachedValue<LightClassDataHolder.ForClass> {
+        private fun getLightClassCachedValue(classOrObject: KtClassOrObject): CachedValue<LightClassDataHolder.ForClass> {
             var value =
                     getOutermostClassOrObject(classOrObject).getUserData(JAVA_API_STUB) // stub computed for outer class can be used for inner/nested
                     ?: classOrObject.getUserData(JAVA_API_STUB)

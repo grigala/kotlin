@@ -18,28 +18,35 @@ package org.jetbrains.kotlin.idea.quickfix
 
 import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.config.TargetPlatformKind
+import org.jetbrains.kotlin.idea.stubs.createFacet
 import org.junit.Test
 
 class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
+    private fun doMultiPlatformTest(
+            expectName: String = "header", // todo: change dir name
+            vararg impls: Pair<String, TargetPlatformKind<*>> = arrayOf("jvm" to TargetPlatformKind.Jvm[JvmTarget.JVM_1_6]),
+            withTests: Boolean = false
+    ) {
+        val commonModule = module(expectName, hasTestRoot = withTests)
+        commonModule.createFacet(TargetPlatformKind.Common)
 
-    private fun doMultiPlatformTest(headerName: String = "header",
-                                    implName: String = "jvm",
-                                    implKind: TargetPlatformKind<*> = TargetPlatformKind.Jvm[JvmTarget.JVM_1_6],
-                                    withTests: Boolean = false) {
-        val header = module(headerName, hasTestRoot = withTests)
-        header.createFacet(TargetPlatformKind.Common)
-
-        val jvm = module(implName, hasTestRoot = withTests)
-        jvm.createFacet(implKind)
-        jvm.enableMultiPlatform()
-        jvm.addDependency(header)
+        impls.forEach { (implName, implKind) ->
+            val implModule = module(implName, hasTestRoot = withTests)
+            implModule.createFacet(implKind)
+            implModule.enableMultiPlatform()
+            implModule.addDependency(commonModule)
+        }
 
         doQuickFixTest()
     }
 
+    private fun doTestHeaderWithJvmAndJs() {
+        doMultiPlatformTest(impls = *arrayOf("jvm" to TargetPlatformKind.Jvm[JvmTarget.JVM_1_6], "js" to TargetPlatformKind.JavaScript))
+    }
+
     @Test
     fun testAbstract() {
-        doMultiPlatformTest(implName = "js", implKind = TargetPlatformKind.JavaScript)
+        doMultiPlatformTest(impls = "js" to TargetPlatformKind.JavaScript)
     }
 
     @Test
@@ -48,8 +55,28 @@ class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
     }
 
     @Test
+    fun testDeprecatedHeader() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testDeprecatedHeaderImpl() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testDeprecatedImpl() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testDeprecatedImplHeader() {
+        doMultiPlatformTest()
+    }
+
+    @Test
     fun testEnum() {
-        doMultiPlatformTest(implName = "js", implKind = TargetPlatformKind.JavaScript)
+        doMultiPlatformTest(impls = "js" to TargetPlatformKind.JavaScript)
     }
 
     @Test
@@ -64,6 +91,16 @@ class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
 
     @Test
     fun testObject() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testOrderHeader() {
+        doMultiPlatformTest()
+    }
+
+    @Test
+    fun testOrderImpl() {
         doMultiPlatformTest()
     }
 
@@ -94,11 +131,62 @@ class QuickFixMultiModuleTest : AbstractQuickFixMultiModuleTest() {
 
     @Test
     fun testSealed() {
-        doMultiPlatformTest(implName = "js", implKind = TargetPlatformKind.JavaScript)
+        doMultiPlatformTest(impls = "js" to TargetPlatformKind.JavaScript)
     }
 
     @Test
     fun testWithTest() {
-        doMultiPlatformTest(headerName = "common", withTests = true)
+        doMultiPlatformTest(expectName = "common", withTests = true)
     }
+
+    @Test
+    fun testMemberFunToExtensionByHeader() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testMemberFunToExtensionByImpl() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testMemberValToExtensionByHeader() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testMemberValToExtensionByHeaderWithInapplicableImpl() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testMemberValToExtensionByImpl() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testAddOperatorByHeader() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testAddOperatorByImpl() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testMemberFunReceiverToParameterByHeader() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testMemberFunReceiverToParameterByImpl() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testMemberFunParameterToReceiverByHeader() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testMemberFunParameterToReceiverByImpl() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testFunctionTypeParameterToReceiverByHeader() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testFunctionTypeParameterToReceiverByImpl() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testFunctionTypeReceiverToParameterByHeader() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testFunctionTypeReceiverToParameterByImpl() = doTestHeaderWithJvmAndJs()
+
+    @Test
+    fun testImplementMembersInHeaderClass() = doMultiPlatformTest(impls = *arrayOf())
+
+    @Test
+    fun testImplementMembersInImplClassNonImplInheritor() = doMultiPlatformTest()
 }

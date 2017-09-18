@@ -17,7 +17,6 @@
 package org.jetbrains.kotlin.idea.codeInsight
 
 import com.intellij.psi.PsiElement
-import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
 import org.jetbrains.kotlin.idea.resolve.frontendService
@@ -31,10 +30,10 @@ import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 import org.jetbrains.kotlin.psi.KtVariableDeclaration
 import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
 import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.DeprecationResolver
 import org.jetbrains.kotlin.resolve.bindingContextUtil.getDataFlowInfoBefore
 import org.jetbrains.kotlin.resolve.calls.smartcasts.SmartCastManager
 import org.jetbrains.kotlin.resolve.descriptorUtil.isExtension
-import org.jetbrains.kotlin.resolve.isHiddenInResolution
 import org.jetbrains.kotlin.resolve.scopes.*
 import org.jetbrains.kotlin.resolve.scopes.receivers.ClassQualifier
 import org.jetbrains.kotlin.resolve.scopes.utils.collectAllFromMeAndParent
@@ -77,7 +76,7 @@ class ReferenceVariantsHelper(
     ): Collection<DeclarationDescriptor> {
         var variants: Collection<DeclarationDescriptor>
                 = getReferenceVariantsNoVisibilityFilter(contextElement, kindFilter, nameFilter, callTypeAndReceiver, useReceiverType)
-                .filter { !it.isHiddenInResolution(resolutionFacade.frontendService<LanguageVersionSettings>()) && visibilityFilter(it) }
+                .filter { !resolutionFacade.frontendService<DeprecationResolver>().isHiddenInResolution(it) && visibilityFilter(it) }
 
         if (filterOutShadowed) {
             ShadowedDeclarationsFilter.create(bindingContext, resolutionFacade, contextElement, callTypeAndReceiver)?.let {
@@ -204,9 +203,9 @@ class ReferenceVariantsHelper(
             descriptors.processAll(implicitReceiverTypes, implicitReceiverTypes, resolutionScope, callType, kindFilter, nameFilter)
 
             // add non-instance members
-            descriptors.addAll(resolutionScope.collectDescriptorsFiltered(filterWithoutExtensions, nameFilter))
+            descriptors.addAll(resolutionScope.collectDescriptorsFiltered(filterWithoutExtensions, nameFilter, changeNamesForAliased = true))
             descriptors.addAll(resolutionScope.collectAllFromMeAndParent { scope ->
-                scope.collectSyntheticStaticMembers(resolutionFacade, kindFilter, nameFilter)
+                scope.collectSyntheticStaticMembersAndConstructors(resolutionFacade, kindFilter, nameFilter)
             })
         }
 
@@ -231,7 +230,7 @@ class ReferenceVariantsHelper(
         }
         else {
             val scope = contextElement.getResolutionScope(bindingContext, resolutionFacade)
-            return scope.collectDescriptorsFiltered(kindFilter, nameFilter)
+            return scope.collectDescriptorsFiltered(kindFilter, nameFilter, changeNamesForAliased = true)
         }
     }
 
@@ -264,8 +263,7 @@ class ReferenceVariantsHelper(
 
             if (isStatic) {
                 explicitReceiverTypes
-                        .map { (it.constructor.declarationDescriptor as? ClassDescriptor)?.staticScope }
-                        .filterNotNull()
+                        .mapNotNull { (it.constructor.declarationDescriptor as? ClassDescriptor)?.staticScope }
                         .flatMapTo(descriptors) { it.collectStaticMembers(resolutionFacade, kindFilter, nameFilter) }
             }
         }
@@ -347,7 +345,7 @@ class ReferenceVariantsHelper(
             filterToUse = filterToUse.withKinds(DescriptorKindFilter.NON_SINGLETON_CLASSIFIERS_MASK)
         }
 
-        for (descriptor in scope.collectDescriptorsFiltered(filterToUse, nameFilter)) {
+        for (descriptor in scope.collectDescriptorsFiltered(filterToUse, nameFilter, changeNamesForAliased = true)) {
             if (descriptor is ClassDescriptor) {
                 if (descriptor.modality == Modality.ABSTRACT || descriptor.modality == Modality.SEALED) continue
                 if (!constructorFilter(descriptor)) continue
@@ -380,7 +378,7 @@ class ReferenceVariantsHelper(
             }
         }
 
-        for (descriptor in scope.collectDescriptorsFiltered(kindFilter exclude DescriptorKindExclude.NonExtensions, nameFilter)) {
+        for (descriptor in scope.collectDescriptorsFiltered(kindFilter exclude DescriptorKindExclude.NonExtensions, nameFilter, changeNamesForAliased = true)) {
             // todo: sometimes resolution scope here is LazyJavaClassMemberScope. see ea.jetbrains.com/browser/ea_problems/72572
             process(descriptor as CallableDescriptor)
         }
@@ -405,14 +403,15 @@ private fun MemberScope.collectStaticMembers(
         kindFilter: DescriptorKindFilter,
         nameFilter: (Name) -> Boolean
 ): Collection<DeclarationDescriptor> {
-    return getDescriptorsFiltered(kindFilter, nameFilter) + collectSyntheticStaticMembers(resolutionFacade, kindFilter, nameFilter)
+    return getDescriptorsFiltered(kindFilter, nameFilter) + collectSyntheticStaticMembersAndConstructors(resolutionFacade, kindFilter, nameFilter)
 }
 
-fun ResolutionScope.collectSyntheticStaticMembers(
+fun ResolutionScope.collectSyntheticStaticMembersAndConstructors(
         resolutionFacade: ResolutionFacade,
         kindFilter: DescriptorKindFilter,
         nameFilter: (Name) -> Boolean
 ): List<FunctionDescriptor> {
     val syntheticScopes = resolutionFacade.getFrontendService(SyntheticScopes::class.java)
-    return syntheticScopes.collectSyntheticStaticFunctions(this).filter { kindFilter.accepts(it) && nameFilter(it.name) }
+    return (syntheticScopes.collectSyntheticStaticFunctions(this) + syntheticScopes.collectSyntheticConstructors(this))
+            .filter { kindFilter.accepts(it) && nameFilter(it.name) }
 }

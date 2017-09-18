@@ -18,12 +18,9 @@ package org.jetbrains.kotlin.codegen.inline
 
 import org.jetbrains.kotlin.codegen.AsmUtil
 import org.jetbrains.kotlin.codegen.OwnerKind
-import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil.DEFAULT_LAMBDA_FAKE_CALL
-import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil.getConstant
 import org.jetbrains.kotlin.codegen.inline.ReifiedTypeInliner.Companion.isNeedClassReificationMarker
 import org.jetbrains.kotlin.codegen.optimization.common.InsnSequence
 import org.jetbrains.kotlin.codegen.optimization.common.asSequence
-import org.jetbrains.kotlin.codegen.optimization.common.insnText
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.resolve.DescriptorUtils
@@ -54,7 +51,7 @@ fun extractDefaultLambdaOffsetAndDescriptor(jvmSignature: JvmMethodSignature, fu
     val valueParameterOffset = valueParameters.takeWhile { it.kind != JvmMethodParameterKind.VALUE }.size
 
     return functionDescriptor.valueParameters.filter {
-        InlineUtil.isInlineLambdaParameter(it) && it.declaresDefaultValue()
+        InlineUtil.isInlineParameter(it) && it.declaresDefaultValue()
     }.associateBy {
         parameterOffsets[valueParameterOffset + it.index]
     }
@@ -108,7 +105,7 @@ fun expandMaskConditionsAndUpdateVariableNodes(
         else null
     }.toList()
 
-    val toDelete = arrayListOf<AbstractInsnNode>()
+    val toDelete = linkedSetOf<AbstractInsnNode>()
     val toInsert = arrayListOf<Pair<AbstractInsnNode, AbstractInsnNode>>()
 
     val defaultLambdasInfo = extractDefaultLambdasInfo(conditions, defaultLambdas, toDelete, toInsert)
@@ -130,6 +127,8 @@ fun expandMaskConditionsAndUpdateVariableNodes(
         node.instructions.insert(position, newInsn)
     }
 
+    node.localVariables.removeIf { it.start in toDelete && it.end in toDelete }
+
     node.remove(toDelete)
 
     return defaultLambdasInfo
@@ -139,7 +138,7 @@ fun expandMaskConditionsAndUpdateVariableNodes(
 private fun extractDefaultLambdasInfo(
         conditions: List<Condition>,
         defaultLambdas: Map<Int, ValueParameterDescriptor>,
-        toDelete: MutableList<AbstractInsnNode>,
+        toDelete: MutableCollection<AbstractInsnNode>,
         toInsert: MutableList<Pair<AbstractInsnNode, AbstractInsnNode>>
 ): List<DefaultLambda> {
     val defaultLambdaConditions = conditions.filter { it.expandNotDelete && defaultLambdas.contains(it.varIndex) }

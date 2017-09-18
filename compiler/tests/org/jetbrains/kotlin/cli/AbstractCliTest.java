@@ -24,7 +24,7 @@ import kotlin.collections.CollectionsKt;
 import kotlin.io.FilesKt;
 import kotlin.text.Charsets;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.cli.common.CLICompiler;
+import org.jetbrains.kotlin.checkers.AbstractForeignAnnotationsTestKt;
 import org.jetbrains.kotlin.cli.common.CLITool;
 import org.jetbrains.kotlin.cli.common.ExitCode;
 import org.jetbrains.kotlin.cli.js.K2JSCompiler;
@@ -78,7 +78,7 @@ public abstract class AbstractCliTest extends TestCaseWithTmpdir {
                 .replace("\\", "/")
                 .replace(KotlinCompilerVersion.VERSION, "$VERSION$");
 
-        return normalizedOutputWithoutExitCode + exitCode;
+        return normalizedOutputWithoutExitCode + exitCode + "\n";
     }
 
     private void doTest(@NotNull String fileName, @NotNull CLITool<?> compiler) throws Exception {
@@ -120,6 +120,26 @@ public abstract class AbstractCliTest extends TestCaseWithTmpdir {
             }
         }
 
+        List<String> containsTextList = InTextDirectivesUtils.findLinesWithPrefixesRemoved(content, "// CONTAINS: ");
+        for (String containsSpec : containsTextList) {
+            String[] parts = containsSpec.split(",", 2);
+            String fileName = parts[0].trim();
+            String contentToSearch = parts[1].trim();
+            File file = new File(tmpdir, fileName);
+            if (!file.exists()) {
+                diagnostics.add("File does not exist: " + fileName);
+            }
+            else if (file.isDirectory()) {
+                diagnostics.add("File is a directory: " + fileName);
+            }
+            else {
+                String text = FilesKt.readText(file, Charsets.UTF_8);
+                if (!text.contains(contentToSearch)) {
+                    diagnostics.add("File " + fileName + " does not contain string: " + contentToSearch);
+                }
+            }
+        }
+
         if (!diagnostics.isEmpty()) {
             diagnostics.add(0, diagnostics.size() + " problem(s) found:");
             Assert.fail(StringsKt.join(diagnostics, "\n"));
@@ -127,7 +147,7 @@ public abstract class AbstractCliTest extends TestCaseWithTmpdir {
     }
 
     @NotNull
-    static List<String> readArgs(@NotNull String argsFilePath, @NotNull String tempDir) throws IOException {
+    private static List<String> readArgs(@NotNull String argsFilePath, @NotNull String tempDir) throws IOException {
         List<String> lines = FilesKt.readLines(new File(argsFilePath), Charsets.UTF_8);
 
         return CollectionsKt.mapNotNull(lines, arg -> {
@@ -143,7 +163,11 @@ public abstract class AbstractCliTest extends TestCaseWithTmpdir {
 
             return argsWithColonsReplaced
                     .replace("$TEMP_DIR$", tempDir)
-                    .replace("$TESTDATA_DIR$", new File(argsFilePath).getParent());
+                    .replace("$TESTDATA_DIR$", new File(argsFilePath).getParent())
+                    .replace(
+                            "$FOREIGN_ANNOTATIONS_DIR$",
+                            new File(AbstractForeignAnnotationsTestKt.getFOREIGN_ANNOTATIONS_SOURCES_PATH()).getPath()
+                    );
         });
     }
 

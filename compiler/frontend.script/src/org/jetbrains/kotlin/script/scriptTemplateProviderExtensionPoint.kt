@@ -22,7 +22,7 @@ import com.intellij.openapi.extensions.Extensions
 import com.intellij.openapi.project.Project
 import java.io.File
 import java.net.URLClassLoader
-import kotlin.script.dependencies.ScriptDependenciesResolver
+import kotlin.script.experimental.dependencies.DependenciesResolver
 
 interface ScriptTemplatesProvider {
 
@@ -38,11 +38,19 @@ interface ScriptTemplatesProvider {
 
     val templateClassNames: Iterable<String>
 
-    val resolver: ScriptDependenciesResolver? get() = null
+    val resolver: DependenciesResolver? get() = null
 
     val filePattern: String? get() = null
 
-    val dependenciesClasspath: Iterable<String>
+    val templateClasspath: List<File>
+
+    // TODO: need to provide a way to specify this in compiler/repl .. etc
+    /*
+     * Allows to specify additional jars needed for DependenciesResolver (and not script template).
+     * Script template dependencies naturally become (part of) dependencies of the script which is not always desired for resolver dependencies.
+     * i.e. gradle resolver may depend on some jars that 'built.gradle.kts' files should not depend on.
+     */
+    val additionalResolverClasspath: List<File> get() = emptyList()
 
     val environment: Map<String, Any?>?
 
@@ -53,27 +61,35 @@ interface ScriptTemplatesProvider {
 }
 
 fun makeScriptDefsFromTemplatesProviderExtensions(project: Project,
-                                                  errorsHandler: ((ScriptTemplatesProvider, Exception) -> Unit) = { _, ex -> throw ex }
-): List<KotlinScriptDefinitionFromAnnotatedTemplate> =
+                                                  errorsHandler: ((ScriptTemplatesProvider, Throwable) -> Unit)
+): List<KotlinScriptDefinition> =
         makeScriptDefsFromTemplatesProviders(Extensions.getArea(project).getExtensionPoint(ScriptTemplatesProvider.EP_NAME).extensions.asIterable(),
                                              errorsHandler)
 
 fun makeScriptDefsFromTemplatesProviders(providers: Iterable<ScriptTemplatesProvider>,
-                                         errorsHandler: ((ScriptTemplatesProvider, Exception) -> Unit) = { _, ex -> throw ex }
-): List<KotlinScriptDefinitionFromAnnotatedTemplate> {
-    return providers.filter { it.isValid }.flatMap { provider ->
-        try {
-            Logger.getInstance("makeScriptDefsFromTemplatesProviders")
-                    .info("[kts] loading script definitions ${provider.templateClassNames} using cp: ${provider.dependenciesClasspath.joinToString(File.pathSeparator)}")
-            val loader = URLClassLoader(provider.dependenciesClasspath.map { File(it).toURI().toURL() }.toTypedArray(), ScriptTemplatesProvider::class.java.classLoader)
-            provider.templateClassNames.map {
-                val cl = loader.loadClass(it)
-                KotlinScriptDefinitionFromAnnotatedTemplate(cl.kotlin, provider.resolver, provider.filePattern, provider.environment)
-            }
-        }
-        catch (ex: Exception) {
-            errorsHandler(provider, ex)
-            emptyList<KotlinScriptDefinitionFromAnnotatedTemplate>()
+                                         errorsHandler: ((ScriptTemplatesProvider, Throwable) -> Unit) = { _, ex -> throw ex }
+): List<KotlinScriptDefinition> = providers.flatMap { provider ->
+    try {
+        val loader = createClassLoader(provider)
+        provider.templateClassNames.map {
+            KotlinScriptDefinitionFromAnnotatedTemplate(
+                    loader.loadClass(it).kotlin, provider.resolver,
+                    provider.filePattern, provider.environment, provider.templateClasspath
+            )
         }
     }
+    catch (ex: Throwable) {
+        LOG.info("Templates provider ${provider.id} is invalid: ${ex.message}")
+        errorsHandler(provider, ex)
+        emptyList<KotlinScriptDefinition>()
+    }
 }
+
+private fun createClassLoader(provider: ScriptTemplatesProvider): ClassLoader {
+    val classpath = provider.templateClasspath + provider.additionalResolverClasspath
+    LOG.info("[kts] loading script definitions ${provider.templateClassNames} using cp: ${classpath.joinToString(File.pathSeparator)}")
+    val baseLoader = ScriptTemplatesProvider::class.java.classLoader
+    return if (classpath.isEmpty()) baseLoader else URLClassLoader(classpath.map { it.toURI().toURL() }.toTypedArray(), baseLoader)
+}
+
+private val LOG = Logger.getInstance("ScriptTemplatesProviders")

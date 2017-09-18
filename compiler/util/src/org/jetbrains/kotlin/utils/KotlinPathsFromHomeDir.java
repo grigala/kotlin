@@ -40,12 +40,6 @@ public class KotlinPathsFromHomeDir implements KotlinPaths {
         return new File(homePath, "lib");
     }
 
-    @Override
-    @NotNull
-    public File getRuntimePath() {
-        return getLibraryFile(PathUtil.KOTLIN_JAVA_RUNTIME_JAR);
-    }
-
     @NotNull
     @Override
     public File getStdlibPath() {
@@ -104,6 +98,12 @@ public class KotlinPathsFromHomeDir implements KotlinPaths {
     @Override
     public File getNoArgPluginJarPath() {
         return getLibraryFile(PathUtil.NOARG_PLUGIN_JAR_NAME);
+    }
+
+    @NotNull
+    @Override
+    public File getSamWithReceiverJarPath() {
+        return getLibraryFile(PathUtil.SAM_WITH_RECEIVER_PLUGIN_JAR_NAME);
     }
 
     @NotNull

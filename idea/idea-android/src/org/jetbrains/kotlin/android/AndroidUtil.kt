@@ -35,7 +35,7 @@ import org.jetbrains.android.util.AndroidUtils
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.PackageFragmentDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.load.java.descriptors.JavaClassDescriptor
 import org.jetbrains.kotlin.load.java.descriptors.JavaPropertyDescriptor
 import org.jetbrains.kotlin.psi.KtClass
@@ -50,9 +50,9 @@ import org.jetbrains.kotlin.resolve.source.PsiSourceFile
 
 internal fun KtClass.findComponentDeclarationInManifest(manifest: Manifest): AndroidAttributeValue<PsiClass>? {
     val application = manifest.application ?: return null
-    val type = (resolveToDescriptor(BodyResolveMode.PARTIAL) as? ClassDescriptor)?.defaultType ?: return null
+    val type = (unsafeResolveToDescriptor(BodyResolveMode.PARTIAL) as? ClassDescriptor)?.defaultType ?: return null
 
-    val component = when {
+    return when {
         type.isSubclassOf(AndroidUtils.ACTIVITY_BASE_CLASS_NAME) ->
             application.activities?.find { it.activityClass.value?.qualifiedName == fqName?.asString() }?.activityClass
         type.isSubclassOf(AndroidUtils.SERVICE_CLASS_NAME) ->
@@ -63,8 +63,6 @@ internal fun KtClass.findComponentDeclarationInManifest(manifest: Manifest): And
             application.providers?.find { it.providerClass.value?.qualifiedName == fqName?.asString() }?.providerClass
         else -> null
     }
-
-    return component
 }
 
 internal fun PsiElement.getAndroidFacetForFile(): AndroidFacet? {
@@ -86,11 +84,11 @@ internal fun JavaPropertyDescriptor.getResourceReferenceType(): AndroidPsiUtils.
     val rClass = containingClass.containingDeclaration as? JavaClassDescriptor ?: return NONE
 
     if (R_CLASS == rClass.name.asString()) {
-        if ((rClass.containingDeclaration as? PackageFragmentDescriptor)?.fqName?.asString() == ANDROID_PKG) {
-            return FRAMEWORK
+        return if ((rClass.containingDeclaration as? PackageFragmentDescriptor)?.fqName?.asString() == ANDROID_PKG) {
+            FRAMEWORK
         }
         else {
-            return APP
+            APP
         }
     }
 
@@ -125,7 +123,7 @@ internal fun getReferredResourceOrManifestField(facet: AndroidFacet, expression:
         val qName = rClassDescriptor.fqNameSafe.asString()
 
         if (SdkConstants.CLASS_R == qName || AndroidPsiElementFinder.INTERNAL_R_CLASS_QNAME == qName) {
-            return AndroidResourceUtil.MyReferredResourceFieldInfo(resClassName, resFieldName, true, false)
+            return AndroidResourceUtil.MyReferredResourceFieldInfo(resClassName, resFieldName, facet.module, true, false)
         }
     }
 
@@ -134,7 +132,7 @@ internal fun getReferredResourceOrManifestField(facet: AndroidFacet, expression:
         return null
     }
 
-    return AndroidResourceUtil.MyReferredResourceFieldInfo(resClassName, resFieldName, false, false)
+    return AndroidResourceUtil.MyReferredResourceFieldInfo(resClassName, resFieldName, facet.module, false, false)
 }
 
 private fun KtExpression.getPreviousInQualifiedChain(): KtExpression? {

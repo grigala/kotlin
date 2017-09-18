@@ -29,6 +29,7 @@ import org.jetbrains.kotlin.idea.codeInsight.shorten.addToShorteningWaitSet
 import org.jetbrains.kotlin.idea.core.ShortenReferences
 import org.jetbrains.kotlin.idea.core.copied
 import org.jetbrains.kotlin.idea.core.quoteIfNeeded
+import org.jetbrains.kotlin.idea.core.replaced
 import org.jetbrains.kotlin.idea.intentions.OperatorToFunctionIntention
 import org.jetbrains.kotlin.idea.refactoring.fqName.getKotlinFqName
 import org.jetbrains.kotlin.lexer.KtToken
@@ -78,8 +79,12 @@ class KtSimpleNameReference(expression: KtSimpleNameExpression) : KtSimpleRefere
     }
 
     override fun isReferenceTo(element: PsiElement?): Boolean {
-        if (element != null && !canBeReferenceTo(element)) {
-            return false
+        if (element != null) {
+            if (!canBeReferenceTo(element)) return false
+
+            for (extension in Extensions.getArea(element.project).getExtensionPoint(SimpleNameReferenceExtension.EP_NAME).extensions) {
+                if (extension.isReferenceTo(this, element)) return true
+            }
         }
 
         return super.isReferenceTo(element)
@@ -206,7 +211,7 @@ class KtSimpleNameReference(expression: KtSimpleNameExpression) : KtSimpleRefere
                 val typeText = "$text${elementToReplace.typeArgumentList?.text ?: ""}"
                 elementToReplace.replace(psiFactory.createType(typeText).typeElement!!)
             }
-            else -> elementToReplace.replace(psiFactory.createExpression(text))
+            else -> KtPsiUtil.safeDeparenthesize(elementToReplace.replaced(psiFactory.createExpression(text)))
         } as KtElement
 
         val selector = (newElement as? KtCallableReferenceExpression)?.callableReference
@@ -228,12 +233,12 @@ class KtSimpleNameReference(expression: KtSimpleNameExpression) : KtSimpleRefere
                             tokenType, element.parent is KtUnaryExpression, element.parent is KtBinaryExpression
                     ) ?: return emptyList()
                     val counterpart = OperatorConventions.ASSIGNMENT_OPERATION_COUNTERPARTS[tokenType]
-                    if (counterpart != null) {
+                    return if (counterpart != null) {
                         val counterpartName = OperatorConventions.getNameForOperationSymbol(counterpart, false, true)!!
-                        return listOf(name, counterpartName)
+                        listOf(name, counterpartName)
                     }
                     else {
-                        return listOf(name)
+                        listOf(name)
                     }
                 }
             }

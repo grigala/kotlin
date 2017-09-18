@@ -35,6 +35,10 @@ import org.jetbrains.kotlin.js.translate.context.TranslationContext
 import org.jetbrains.kotlin.js.translate.intrinsic.functions.basic.FunctionIntrinsicWithReceiverComputed
 import org.jetbrains.kotlin.js.translate.reference.ReferenceTranslator
 import org.jetbrains.kotlin.js.translate.utils.TranslationUtils.simpleReturnFunction
+import org.jetbrains.kotlin.psi.KtBlockExpression
+import org.jetbrains.kotlin.psi.KtDeclarationWithBody
+import org.jetbrains.kotlin.psi.KtFunctionLiteral
+import org.jetbrains.kotlin.psi.KtLambdaExpression
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.descriptorUtil.hasOrInheritsParametersWithDefaultValue
@@ -88,6 +92,7 @@ fun generateDelegateCall(
     invocation.source = source
 
     val functionObject = simpleReturnFunction(context.scope(), invocation)
+    functionObject.source = source?.finalElement
     functionObject.parameters.addAll(parameters)
 
     val fromFunctionName = fromDescriptor.getNameForFunctionWithPossibleDefaultParam()
@@ -120,7 +125,7 @@ fun <T, S> List<T>.splitToRanges(classifier: (T) -> S): List<Pair<List<T>, S>> {
 fun getReferenceToJsClass(type: KotlinType, context: TranslationContext): JsExpression {
     val classifierDescriptor = type.constructor.declarationDescriptor
 
-    val referenceToJsClass: JsExpression = when (classifierDescriptor) {
+    return when (classifierDescriptor) {
         is ClassDescriptor -> {
             ReferenceTranslator.translateAsTypeReference(classifierDescriptor, context)
         }
@@ -129,14 +134,13 @@ fun getReferenceToJsClass(type: KotlinType, context: TranslationContext): JsExpr
 
             context.usageTracker()?.used(classifierDescriptor)
 
-            context.getNameForDescriptor(classifierDescriptor).makeRef()
+            context.captureTypeIfNeedAndGetCapturedName(classifierDescriptor) ?:
+                    context.getNameForDescriptor(classifierDescriptor).makeRef()
         }
         else -> {
             throw IllegalStateException("Can't get reference for $type")
         }
     }
-
-    return referenceToJsClass
 }
 
 fun TranslationContext.addFunctionToPrototype(
@@ -200,4 +204,43 @@ fun definePackageAlias(name: String, varName: JsName, tag: String, parentRef: Js
     val rhs = JsAstUtils.or(selfRef, JsAstUtils.assignment(selfRef.deepCopy(), JsObjectLiteral(false)))
 
     return JsAstUtils.newVar(varName, rhs).apply { exportedPackage = tag }
+}
+
+val PsiElement.finalElement: PsiElement
+    get() = when (this) {
+        is KtFunctionLiteral -> rBrace ?: this
+        is KtDeclarationWithBody -> (bodyExpression as? KtBlockExpression)?.rBrace ?: bodyExpression ?: this
+        is KtLambdaExpression -> bodyExpression?.rBrace ?: this
+        else -> this
+    }
+
+fun TranslationContext.addFunctionButNotExport(descriptor: FunctionDescriptor, expression: JsExpression): JsName =
+        addFunctionButNotExport(getInnerNameForDescriptor(descriptor), expression)
+
+fun TranslationContext.addFunctionButNotExport(name: JsName, expression: JsExpression): JsName {
+    when (expression) {
+        is JsFunction -> {
+            expression.name = name
+            addDeclarationStatement(expression.makeStmt())
+        }
+        else -> {
+            addDeclarationStatement(JsAstUtils.newVar(name, expression))
+        }
+    }
+    return name
+}
+
+fun createPrototypeStatements(superName: JsName, name: JsName): List<JsStatement> {
+    val superclassRef = superName.makeRef()
+    val superPrototype = JsAstUtils.prototypeOf(superclassRef)
+    val superPrototypeInstance = JsInvocation(JsNameRef("create", "Object"), superPrototype)
+
+    val classRef = name.makeRef()
+    val prototype = JsAstUtils.prototypeOf(classRef)
+    val prototypeStatement = JsAstUtils.assignment(prototype, superPrototypeInstance).makeStmt()
+
+    val constructorRef = JsNameRef("constructor", prototype.deepCopy())
+    val constructorStatement = JsAstUtils.assignment(constructorRef, classRef.deepCopy()).makeStmt()
+
+    return listOf(prototypeStatement, constructorStatement)
 }

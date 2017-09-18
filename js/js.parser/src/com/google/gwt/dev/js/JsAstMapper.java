@@ -1108,6 +1108,8 @@ public class JsAstMapper {
     }
 
     private <T extends JsNode> T withLocation(T astNode, Node node) {
+        if (astNode == null) return null;
+
         CodePosition location = node.getPosition();
         if (location != null) {
             JsLocation jsLocation = new JsLocation(fileName, location.getLine(), location.getOffset());
@@ -1115,7 +1117,10 @@ public class JsAstMapper {
                 astNode.setSource(jsLocation);
             }
             else if (astNode instanceof JsExpressionStatement) {
-                ((JsExpressionStatement) astNode).getExpression().setSource(jsLocation);
+                JsExpression expression = ((JsExpressionStatement) astNode).getExpression();
+                if (expression.getSource() == null) {
+                    expression.setSource(jsLocation);
+                }
             }
         }
         return astNode;

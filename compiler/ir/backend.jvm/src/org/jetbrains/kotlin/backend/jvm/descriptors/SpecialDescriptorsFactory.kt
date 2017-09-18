@@ -33,8 +33,8 @@ import org.jetbrains.org.objectweb.asm.Opcodes
 import java.util.*
 
 class SpecialDescriptorsFactory(
-        val psiSourceManager: PsiSourceManager,
-        val builtIns: KotlinBuiltIns
+        private val psiSourceManager: PsiSourceManager,
+        private val builtIns: KotlinBuiltIns
 ) {
     private val singletonFieldDescriptors = HashMap<ClassDescriptor, PropertyDescriptor>()
     private val outerThisDescriptors = HashMap<ClassDescriptor, PropertyDescriptor>()
@@ -125,14 +125,12 @@ class SpecialDescriptorsFactory(
     private fun createObjectInstanceFieldDescriptor(objectDescriptor: ClassDescriptor): PropertyDescriptor {
         assert(objectDescriptor.kind == ClassKind.OBJECT) { "Should be an object: $objectDescriptor" }
 
-        val instanceFieldDescriptor = PropertyDescriptorImpl.create(
+        return PropertyDescriptorImpl.create(
                 objectDescriptor,
                 Annotations.EMPTY, Modality.FINAL, Visibilities.PUBLIC, false,
                 Name.identifier("INSTANCE"),
                 CallableMemberDescriptor.Kind.SYNTHESIZED, SourceElement.NO_SOURCE, /* lateInit = */ false, /* isConst = */ false,
-                /* isHeader = */ false, /* isImpl = */ false, /* isExternal = */ false, /* isDelegated = */ false
+                /* isExpect = */ false, /* isActual = */ false, /* isExternal = */ false, /* isDelegated = */ false
         ).initialize(objectDescriptor.defaultType)
-
-        return instanceFieldDescriptor
     }
 }

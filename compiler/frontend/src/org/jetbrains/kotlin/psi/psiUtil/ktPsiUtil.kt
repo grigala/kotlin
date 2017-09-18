@@ -108,11 +108,10 @@ fun KtSimpleNameExpression.getReceiverExpression(): KtExpression? {
         }
         parent is KtCallExpression -> {
             //This is in case `a().b()`
-            val callExpression = parent
-            val grandParent = callExpression.parent
+            val grandParent = parent.parent
             if (grandParent is KtQualifiedExpression) {
                 val parentsReceiver = grandParent.receiverExpression
-                if (parentsReceiver != callExpression) {
+                if (parentsReceiver != parent) {
                     return parentsReceiver
                 }
             }
@@ -177,27 +176,6 @@ fun KtBlockExpression.contentRange(): PsiChildRange {
 }
 
 // ----------- Inheritance -----------------------------------------------------------------------------------------------------------------
-
-fun KtClass.isInheritable(): Boolean {
-    return isInterface() || hasModifier(KtTokens.OPEN_KEYWORD) ||
-           hasModifier(KtTokens.ABSTRACT_KEYWORD) || hasModifier(KtTokens.SEALED_KEYWORD)
-}
-
-fun KtDeclaration.isOverridable(): Boolean {
-    val parent = parent
-    if (!(parent is KtClassBody || parent is KtParameterList)) return false
-
-    val klass = if (parent.parent is KtPrimaryConstructor)
-        parent.parent.parent as? KtClass
-    else
-        parent.parent as? KtClass
-    if (klass == null || (!klass.isInheritable() && !klass.isEnum())) return false
-
-    if (hasModifier(KtTokens.FINAL_KEYWORD) || hasModifier(KtTokens.PRIVATE_KEYWORD)) return false
-
-    return klass.isInterface() ||
-           hasModifier(KtTokens.ABSTRACT_KEYWORD) || hasModifier(KtTokens.OPEN_KEYWORD) || hasModifier(KtTokens.OVERRIDE_KEYWORD)
-}
 
 fun KtClass.isAbstract(): Boolean = isInterface() || hasModifier(KtTokens.ABSTRACT_KEYWORD)
 
@@ -379,6 +357,33 @@ fun KtStringTemplateExpression.getContentRange(): TextRange {
     return TextRange(start, if (lastChild.elementType == KtTokens.CLOSING_QUOTE) length - lastChild.textLength else length)
 }
 
+/**
+ * Check expression might be a callee of call with the same name.
+ * Note that 'this' in 'this(args)' isn't considered to be a callee, also 'name' is not a callee in 'name++'.
+ */
+fun KtSimpleNameExpression.isCallee(): Boolean {
+    val parent = parent
+    return when (parent) {
+        is KtCallElement -> parent.calleeExpression == this
+        is KtBinaryExpression -> parent.operationReference == this
+        else -> {
+            val callElement =
+                    getStrictParentOfType<KtUserType>()
+                    ?.getStrictParentOfType<KtTypeReference>()
+                    ?.getStrictParentOfType<KtConstructorCalleeExpression>()
+                    ?.getStrictParentOfType<KtCallElement>()
+
+            if (callElement != null) {
+                val ktConstructorCalleeExpression = callElement.calleeExpression as? KtConstructorCalleeExpression
+                (ktConstructorCalleeExpression?.typeReference?.typeElement as? KtUserType)?.referenceExpression == this
+            }
+            else {
+                false
+            }
+        }
+    }
+}
+
 val KtStringTemplateExpression.plainContent: String
     get() = getContentRange().substring(text)
 
@@ -526,6 +531,15 @@ fun KtCallExpression.getOrCreateValueArgumentList(): KtValueArgumentList {
     valueArgumentList?.let { return it }
     return addAfter(KtPsiFactory(this).createCallArguments("()"),
                     typeArgumentList ?: calleeExpression) as KtValueArgumentList
+}
+
+fun KtCallExpression.addTypeArgument(typeArgument: KtTypeProjection) {
+    if (typeArgumentList != null) {
+        typeArgumentList?.addArgument(typeArgument)
+    }
+    else {
+        addAfter(KtPsiFactory(this).createTypeArguments("<${typeArgument.text}>"), calleeExpression)
+    }
 }
 
 fun KtDeclaration.hasBody() = when (this) {

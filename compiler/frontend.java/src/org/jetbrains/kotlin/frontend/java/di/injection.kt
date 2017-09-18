@@ -19,6 +19,7 @@ package org.jetbrains.kotlin.frontend.java.di
 import com.intellij.openapi.project.Project
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.builtins.JvmBuiltInsPackageFragmentProvider
+import org.jetbrains.kotlin.config.AnalysisFlag
 import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.config.LanguageVersionSettings
@@ -33,8 +34,6 @@ import org.jetbrains.kotlin.load.java.InternalFlexibleTypeTransformer
 import org.jetbrains.kotlin.load.java.JavaClassFinderImpl
 import org.jetbrains.kotlin.load.java.components.*
 import org.jetbrains.kotlin.load.java.lazy.ModuleClassResolver
-import org.jetbrains.kotlin.load.java.sam.SamConversionResolverImpl
-import org.jetbrains.kotlin.load.java.sam.SamWithReceiverResolver
 import org.jetbrains.kotlin.load.kotlin.DeserializationComponentsForJava
 import org.jetbrains.kotlin.load.kotlin.VirtualFileFinderFactory
 import org.jetbrains.kotlin.platform.JvmBuiltIns
@@ -65,8 +64,6 @@ private fun StorageComponentContainer.configureJavaTopDownAnalysis(
     useImpl<SignaturePropagatorImpl>()
     useImpl<TraceBasedErrorReporter>()
     useImpl<PsiBasedExternalAnnotationResolver>()
-    useInstance(SamWithReceiverResolver())
-    useImpl<SamConversionResolverImpl>()
     useInstance(InternalFlexibleTypeTransformer)
 
     useImpl<CompilerDeserializationConfiguration>()
@@ -103,6 +100,8 @@ fun createContainerForLazyResolveWithJava(
     useInstance(declarationProviderFactory)
 
     useInstance(languageVersionSettings)
+
+    useInstance(languageVersionSettings.getFlag(AnalysisFlag.jsr305))
 
     if (useBuiltInsProvider) {
         useInstance((moduleContext.module.builtIns as JvmBuiltIns).settings)

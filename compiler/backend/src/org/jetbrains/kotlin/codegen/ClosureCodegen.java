@@ -24,16 +24,17 @@ import kotlin.collections.CollectionsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.codegen.binding.CalculatedClosure;
+import org.jetbrains.kotlin.codegen.binding.CodegenBinding;
 import org.jetbrains.kotlin.codegen.context.ClosureContext;
 import org.jetbrains.kotlin.codegen.context.EnclosedValueDescriptor;
 import org.jetbrains.kotlin.codegen.coroutines.CoroutineCodegenUtilKt;
-import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil;
 import org.jetbrains.kotlin.codegen.serialization.JvmSerializerExtension;
 import org.jetbrains.kotlin.codegen.signature.BothSignatureWriter;
 import org.jetbrains.kotlin.codegen.signature.JvmSignatureWriter;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
+import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor;
 import org.jetbrains.kotlin.descriptors.impl.SimpleFunctionDescriptorImpl;
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation;
 import org.jetbrains.kotlin.load.java.JvmAbi;
@@ -60,6 +61,7 @@ import java.util.List;
 import static org.jetbrains.kotlin.codegen.AsmUtil.*;
 import static org.jetbrains.kotlin.codegen.JvmCodegenUtil.isConst;
 import static org.jetbrains.kotlin.codegen.binding.CodegenBinding.CLOSURE;
+import static org.jetbrains.kotlin.codegen.inline.InlineCodegenUtils2Kt.initDefaultSourceMappingIfNeeded;
 import static org.jetbrains.kotlin.codegen.serialization.JvmSerializationBindings.METHOD_FOR_FUNCTION;
 import static org.jetbrains.kotlin.resolve.jvm.AsmTypes.*;
 import static org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin.NO_ORIGIN;
@@ -158,7 +160,7 @@ public class ClosureCodegen extends MemberCodegen<KtElement> {
                       superInterfaceAsmTypes
         );
 
-        InlineCodegenUtil.initDefaultSourceMappingIfNeeded(context, this, state);
+        initDefaultSourceMappingIfNeeded(context, this, state);
 
         v.visitSource(element.getContainingFile().getName(), null);
     }
@@ -201,7 +203,7 @@ public class ClosureCodegen extends MemberCodegen<KtElement> {
             erasedInterfaceFunction = getErasedInvokeFunction(funDescriptor);
         }
         else {
-            erasedInterfaceFunction = samType.getAbstractMethod().getOriginal();
+            erasedInterfaceFunction = samType.getOriginalAbstractMethod();
         }
 
         generateBridge(
@@ -229,9 +231,10 @@ public class ClosureCodegen extends MemberCodegen<KtElement> {
     @Override
     protected void generateKotlinMetadataAnnotation() {
         FunctionDescriptor frontendFunDescriptor = CodegenUtilKt.unwrapFrontendVersion(funDescriptor);
-        FunctionDescriptor freeLambdaDescriptor = createFreeLambdaDescriptor(frontendFunDescriptor);
         Method method = v.getSerializationBindings().get(METHOD_FOR_FUNCTION, frontendFunDescriptor);
         assert method != null : "No method for " + frontendFunDescriptor;
+
+        FunctionDescriptor freeLambdaDescriptor = FakeDescriptorsForReferencesKt.createFreeFakeLambdaDescriptor(frontendFunDescriptor);
         v.getSerializationBindings().put(METHOD_FOR_FUNCTION, freeLambdaDescriptor, method);
 
         DescriptorSerializer serializer =
@@ -243,30 +246,6 @@ public class ClosureCodegen extends MemberCodegen<KtElement> {
             writeAnnotationData(av, serializer, functionProto);
             return Unit.INSTANCE;
         });
-    }
-
-    /**
-     * Given a function descriptor, creates another function descriptor with type parameters copied from outer context(s).
-     * This is needed because once we're serializing this to a proto, there's no place to store information about external type parameters.
-     */
-    @NotNull
-    private static FunctionDescriptor createFreeLambdaDescriptor(@NotNull FunctionDescriptor descriptor) {
-        FunctionDescriptor.CopyBuilder<? extends FunctionDescriptor> builder = descriptor.newCopyBuilder();
-        List<TypeParameterDescriptor> typeParameters = new ArrayList<>(0);
-        builder.setTypeParameters(typeParameters);
-
-        DeclarationDescriptor container = descriptor.getContainingDeclaration();
-        while (container != null) {
-            if (container instanceof ClassDescriptor) {
-                typeParameters.addAll(((ClassDescriptor) container).getDeclaredTypeParameters());
-            }
-            else if (container instanceof CallableDescriptor && !(container instanceof ConstructorDescriptor)) {
-                typeParameters.addAll(((CallableDescriptor) container).getTypeParameters());
-            }
-            container = container.getContainingDeclaration();
-        }
-
-        return typeParameters.isEmpty() ? descriptor : builder.build();
     }
 
     @Override
@@ -381,13 +360,30 @@ public class ClosureCodegen extends MemberCodegen<KtElement> {
             @NotNull GenerationState state
     ) {
         DeclarationDescriptor container = descriptor.getContainingDeclaration();
+
         if (container instanceof ClassDescriptor) {
             // TODO: getDefaultType() here is wrong and won't work for arrays
             putJavaLangClassInstance(iv, state.getTypeMapper().mapType(((ClassDescriptor) container).getDefaultType()));
-            wrapJavaClassIntoKClass(iv);
         }
         else if (container instanceof PackageFragmentDescriptor) {
             iv.aconst(state.getTypeMapper().mapOwner(descriptor));
+        }
+        else if (descriptor instanceof VariableDescriptorWithAccessors) {
+            iv.aconst(state.getBindingContext().get(
+                    CodegenBinding.DELEGATED_PROPERTY_METADATA_OWNER, ((VariableDescriptorWithAccessors) descriptor)
+            ));
+        }
+        else {
+            iv.aconst(null);
+            return;
+        }
+
+        boolean isContainerPackage =
+                descriptor instanceof LocalVariableDescriptor
+                ? DescriptorUtils.getParentOfType(descriptor, ClassDescriptor.class) == null
+                : container instanceof PackageFragmentDescriptor;
+
+        if (isContainerPackage) {
             // Note that this name is not used in reflection. There should be the name of the referenced declaration's module instead,
             // but there's no nice API to obtain that name here yet
             // TODO: write the referenced declaration's module name and use it in reflection
@@ -396,7 +392,7 @@ public class ClosureCodegen extends MemberCodegen<KtElement> {
                             Type.getMethodDescriptor(K_DECLARATION_CONTAINER_TYPE, getType(Class.class), getType(String.class)), false);
         }
         else {
-            iv.aconst(null);
+            wrapJavaClassIntoKClass(iv);
         }
     }
 

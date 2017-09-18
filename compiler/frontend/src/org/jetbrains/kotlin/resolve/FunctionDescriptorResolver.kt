@@ -33,6 +33,8 @@ import org.jetbrains.kotlin.diagnostics.Errors.*
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.hasExpectModifier
+import org.jetbrains.kotlin.psi.psiUtil.hasActualModifier
 import org.jetbrains.kotlin.resolve.DescriptorResolver.getDefaultModality
 import org.jetbrains.kotlin.resolve.DescriptorResolver.getDefaultVisibility
 import org.jetbrains.kotlin.resolve.DescriptorUtils.getDispatchReceiverParameterIfNeeded
@@ -122,20 +124,19 @@ class FunctionDescriptorResolver(
         assert(function.typeReference == null) {
             "Return type must be initialized early for function: " + function.text + ", at: " + DiagnosticUtils.atLocation(function) }
 
-        val returnType = if (function.hasBlockBody()) {
-            builtIns.unitType
-        }
-        else if (function.hasBody()) {
-            descriptorResolver.inferReturnTypeFromExpressionBody(trace, scope, dataFlowInfo, function, functionDescriptor)
-        }
-        else {
-            ErrorUtils.createErrorType("No type, no body")
+        val returnType = when {
+            function.hasBlockBody() ->
+                builtIns.unitType
+            function.hasBody() ->
+                descriptorResolver.inferReturnTypeFromExpressionBody(trace, scope, dataFlowInfo, function, functionDescriptor)
+            else ->
+                ErrorUtils.createErrorType("No type, no body")
         }
         functionDescriptor.setReturnType(returnType)
     }
 
     fun initializeFunctionDescriptorAndExplicitReturnType(
-            containingDescriptor: DeclarationDescriptor,
+            container: DeclarationDescriptor,
             scope: LexicalScope,
             function: KtFunction,
             functionDescriptor: SimpleFunctionDescriptorImpl,
@@ -165,12 +166,12 @@ class FunctionDescriptorResolver(
 
         val returnType = function.typeReference?.let { typeResolver.resolveType(headerScope, it, trace, true) }
 
-        val visibility = resolveVisibilityFromModifiers(function, getDefaultVisibility(function, containingDescriptor))
-        val modality = resolveMemberModalityFromModifiers(function, getDefaultModality(containingDescriptor, visibility, function.hasBody()),
-                                                          trace.bindingContext, containingDescriptor)
+        val visibility = resolveVisibilityFromModifiers(function, getDefaultVisibility(function, container))
+        val modality = resolveMemberModalityFromModifiers(function, getDefaultModality(container, visibility, function.hasBody()),
+                                                          trace.bindingContext, container)
         functionDescriptor.initialize(
                 receiverType,
-                getDispatchReceiverParameterIfNeeded(containingDescriptor),
+                getDispatchReceiverParameterIfNeeded(container),
                 typeParameterDescriptors,
                 valueParameterDescriptors,
                 returnType,
@@ -183,9 +184,9 @@ class FunctionDescriptorResolver(
         functionDescriptor.isInline = function.hasModifier(KtTokens.INLINE_KEYWORD)
         functionDescriptor.isTailrec = function.hasModifier(KtTokens.TAILREC_KEYWORD)
         functionDescriptor.isSuspend = function.hasModifier(KtTokens.SUSPEND_KEYWORD)
-        functionDescriptor.isHeader = function.hasModifier(KtTokens.HEADER_KEYWORD) ||
-                                        containingDescriptor is ClassDescriptor && containingDescriptor.isHeader
-        functionDescriptor.isImpl = function.hasModifier(KtTokens.IMPL_KEYWORD)
+        functionDescriptor.isExpect = container is PackageFragmentDescriptor && function.hasExpectModifier() ||
+                                      container is ClassDescriptor && container.isExpect
+        functionDescriptor.isActual = function.hasActualModifier()
 
         receiverType?.let { ForceResolveUtil.forceResolveAllContents(it.annotations) }
         for (valueParameterDescriptor in valueParameterDescriptors) {
@@ -295,11 +296,11 @@ class FunctionDescriptorResolver(
                 isPrimary,
                 declarationToTrace.toSourceElement()
         )
-        if (classDescriptor.isHeader) {
-            constructorDescriptor.isHeader = true
+        if (classDescriptor.isExpect) {
+            constructorDescriptor.isExpect = true
         }
-        if (classDescriptor.isImpl) {
-            constructorDescriptor.isImpl = true
+        if (classDescriptor.isActual) {
+            constructorDescriptor.isActual = true
         }
         if (declarationToTrace is PsiElement)
             trace.record(BindingContext.CONSTRUCTOR, declarationToTrace, constructorDescriptor)
@@ -336,19 +337,19 @@ class FunctionDescriptorResolver(
         for (i in valueParameters.indices) {
             val valueParameter = valueParameters[i]
             val typeReference = valueParameter.typeReference
-            val expectedType = expectedParameterTypes?.let { if (i < it.size) it[i] else null }
+            val expectedType = expectedParameterTypes?.let { if (i < it.size) it[i] else null }?.takeUnless { TypeUtils.noExpectedType(it) }
 
             val type: KotlinType
             if (typeReference != null) {
                 type = typeResolver.resolveType(parameterScope, typeReference, trace, true)
-                if (expectedType != null && !TypeUtils.noExpectedType(expectedType)) {
+                if (expectedType != null) {
                     if (!KotlinTypeChecker.DEFAULT.isSubtypeOf(expectedType, type)) {
                         trace.report(EXPECTED_PARAMETER_TYPE_MISMATCH.on(valueParameter, expectedType))
                     }
                 }
             }
             else {
-                if (isFunctionLiteral(functionDescriptor) || isFunctionExpression(functionDescriptor)) {
+                type = if (isFunctionLiteral(functionDescriptor) || isFunctionExpression(functionDescriptor)) {
                     val containsUninferredParameter = TypeUtils.contains(expectedType) {
                         TypeUtils.isDontCarePlaceholder(it) || ErrorUtils.isUninferredParameter(it)
                     }
@@ -356,11 +357,11 @@ class FunctionDescriptorResolver(
                         trace.report(CANNOT_INFER_PARAMETER_TYPE.on(valueParameter))
                     }
 
-                    type = expectedType ?: TypeUtils.CANT_INFER_FUNCTION_PARAM_TYPE
+                    expectedType ?: TypeUtils.CANT_INFER_FUNCTION_PARAM_TYPE
                 }
                 else {
                     trace.report(VALUE_PARAMETER_WITH_NO_TYPE_ANNOTATION.on(valueParameter))
-                    type = ErrorUtils.createErrorType("Type annotation was missing for parameter ${valueParameter.nameAsSafeName}")
+                    ErrorUtils.createErrorType("Type annotation was missing for parameter ${valueParameter.nameAsSafeName}")
                 }
             }
 

@@ -16,7 +16,6 @@
 
 package org.jetbrains.kotlin.gradle.plugin
 
-import org.apache.commons.lang.SystemUtils
 import org.gradle.BuildAdapter
 import org.gradle.BuildResult
 import org.gradle.api.invocation.Gradle
@@ -27,6 +26,7 @@ import org.jetbrains.kotlin.com.intellij.openapi.vfs.impl.jar.CoreJarFileSystem
 import org.jetbrains.kotlin.compilerRunner.DELETED_SESSION_FILE_PREFIX
 import org.jetbrains.kotlin.compilerRunner.GradleCompilerRunner
 import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile
+import org.jetbrains.kotlin.gradle.utils.isWindows
 import org.jetbrains.kotlin.incremental.BuildCacheStorage
 import org.jetbrains.kotlin.incremental.multiproject.ArtifactDifferenceRegistryProvider
 import org.jetbrains.kotlin.incremental.relativeToRoot
@@ -72,8 +72,8 @@ internal class KotlinGradleBuildServices private constructor(gradle: Gradle): Bu
     private val log = Logging.getLogger(this.javaClass)
     private val cleanup = CompilerServicesCleanup()
     private var startMemory: Long? = null
-    private val workingDir = File(gradle.rootProject.buildDir, "kotlin-build").apply { mkdirs() }
-    private val buildCacheStorage = BuildCacheStorage(workingDir)
+    private val workingDir: File by lazy { File(gradle.rootProject.buildDir, "kotlin-build").apply { mkdirs() } }
+    private val buildCacheStorage: BuildCacheStorage by lazy { BuildCacheStorage(workingDir) }
     private val shouldReportMemoryUsage = System.getProperty(SHOULD_REPORT_MEMORY_USAGE_PROPERTY) != null
 
     internal val artifactDifferenceRegistryProvider: ArtifactDifferenceRegistryProvider
@@ -190,7 +190,7 @@ internal class CompilerServicesCleanup() {
         // clearing jar cache to avoid problems like KT-9440 (unable to clean/rebuild a project due to locked jar file)
         // problem is known to happen only on windows - the reason (seems) related to http://bugs.java.com/view_bug.do?bug_id=6357433
         // clean cache only when running on windows
-        if (SystemUtils.IS_OS_WINDOWS) {
+        if (isWindows) {
             cleanJarCache()
         }
 

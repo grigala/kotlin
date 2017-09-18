@@ -49,14 +49,14 @@ import org.jetbrains.kotlin.asJava.toLightClass
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotated
-import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.findModuleDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
+import org.jetbrains.kotlin.idea.core.isInheritable
 import org.jetbrains.kotlin.idea.core.toDescriptor
 import org.jetbrains.kotlin.idea.findUsages.KotlinFindUsagesHandlerFactory
 import org.jetbrains.kotlin.idea.findUsages.handlers.KotlinFindClassUsagesHandler
 import org.jetbrains.kotlin.idea.highlighter.allImplementingCompatibleModules
-import org.jetbrains.kotlin.idea.highlighter.markers.hasImplementationsOf
+import org.jetbrains.kotlin.idea.highlighter.markers.hasActualsFor
 import org.jetbrains.kotlin.idea.imports.importableFqName
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.references.resolveMainReferenceToDescriptors
@@ -68,9 +68,6 @@ import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.*
-import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.types.KotlinType
-import org.jetbrains.kotlin.types.isError
 import org.jetbrains.kotlin.util.findCallableMemberBySignature
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
@@ -116,20 +113,15 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
         }
 
         // variation of IDEA's AnnotationUtil.checkAnnotatedUsingPatterns()
-        private fun checkAnnotatedUsingPatterns(annotated: Annotated, annotationPatterns: Collection<String>): Boolean {
-            val annotationsPresent = annotated.annotations
-                    .map(AnnotationDescriptor::getType)
-                    .filterNot(KotlinType::isError)
-                    .mapNotNull { it.constructor.declarationDescriptor?.let { descriptor ->
-                        DescriptorUtils.getFqName(descriptor).asString()
-                    } }
-
+        fun checkAnnotatedUsingPatterns(annotated: Annotated, annotationPatterns: Collection<String>): Boolean {
+            val annotationsPresent = annotated.annotations.mapNotNull { it.fqName?.asString() }
             if (annotationsPresent.isEmpty()) return false
 
             for (pattern in annotationPatterns) {
                 val hasAnnotation = if (pattern.endsWith(".*")) {
                     annotationsPresent.any { it.startsWith(pattern.dropLast(1)) }
-                } else {
+                }
+                else {
                     pattern in annotationsPresent
                 }
                 if (hasAnnotation) return true
@@ -137,7 +129,6 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
 
             return false
         }
-
     }
 
     override fun runForWholeFile() = true
@@ -154,6 +145,7 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
                     is KtSecondaryConstructor -> "Constructor is never used"
                     is KtProperty, is KtParameter -> "Property ''$name'' is never used"
                     is KtTypeParameter -> "Type parameter ''$name'' is never used"
+                    is KtTypeAlias -> "Type alias ''$name'' is never used"
                     else -> return
                 }
 
@@ -260,8 +252,8 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
                 if (import.aliasName != null && import.aliasName != declaration.name) {
                     return false
                 }
-                // check if we import member(s) from object or enum and search for their usages
-                if (declaration is KtObjectDeclaration || (declaration is KtClass && declaration.isEnum())) {
+                // check if we import member(s) from object / nested object / enum and search for their usages
+                if (declaration is KtClassOrObject) {
                     if (import.isAllUnder) {
                         val importedFrom = import.importedReference?.getQualifiedElementSelector()?.mainReference?.resolve()
                                                    as? KtClassOrObject ?: return true
@@ -272,7 +264,11 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
                             val importedDeclaration =
                                     import.importedReference?.getQualifiedElementSelector()?.mainReference?.resolve() as? KtNamedDeclaration
                                     ?: return true
-                            return declaration !in importedDeclaration.parentsWithSelf && !hasNonTrivialUsages(importedDeclaration)
+                            if (declaration is KtObjectDeclaration ||
+                                (declaration is KtClass && declaration.isEnum()) ||
+                                importedDeclaration.containingClassOrObject is KtObjectDeclaration) {
+                                return declaration !in importedDeclaration.parentsWithSelf && !hasNonTrivialUsages(importedDeclaration)
+                            }
                         }
                     }
                 }
@@ -282,10 +278,12 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
             return false
         }
 
-        if (declaration is KtCallableDeclaration) {
+        if (declaration is KtCallableDeclaration && !declaration.hasModifier(KtTokens.INTERNAL_KEYWORD)) {
             val lightMethods = declaration.toLightMethods()
-            for (method in lightMethods) {
-                if (!MethodReferencesSearch.search(method).forEach(::checkReference)) return true
+            if (lightMethods.isNotEmpty()) {
+                return lightMethods.any { method ->
+                    !MethodReferencesSearch.search(method).forEach(::checkReference)
+                }
             }
         }
 
@@ -328,16 +326,16 @@ class UnusedSymbolInspection : AbstractKotlinInspection() {
     }
 
     private fun isPlatformImplementation(declaration: KtNamedDeclaration) =
-            declaration.hasModifier(KtTokens.IMPL_KEYWORD)
+            declaration.hasActualModifier()
 
     private fun hasPlatformImplementations(declaration: KtNamedDeclaration, descriptor: DeclarationDescriptor?): Boolean {
-        if (!declaration.hasModifier(KtTokens.HEADER_KEYWORD)) return false
+        if (!declaration.hasExpectModifier()) return false
 
         descriptor as? MemberDescriptor ?: return false
         val commonModuleDescriptor = declaration.containingKtFile.findModuleDescriptor()
 
-        return commonModuleDescriptor.allImplementingCompatibleModules.any { it.hasImplementationsOf(descriptor) } ||
-               commonModuleDescriptor.hasImplementationsOf(descriptor)
+        return commonModuleDescriptor.allImplementingCompatibleModules.any { it.hasActualsFor(descriptor) } ||
+               commonModuleDescriptor.hasActualsFor(descriptor)
     }
 
     override fun createOptionsPanel(): JComponent? {

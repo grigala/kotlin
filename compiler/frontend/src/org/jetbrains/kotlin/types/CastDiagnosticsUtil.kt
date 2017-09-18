@@ -164,18 +164,17 @@ object CastDiagnosticsUtil {
         val variables = subtypeWithVariables.constructor.parameters
         val variableConstructors = variables.map { descriptor -> descriptor.typeConstructor }.toSet()
 
-        val substitution: MutableMap<TypeConstructor, TypeProjection>
-        if (supertypeWithVariables != null) {
+        val substitution: MutableMap<TypeConstructor, TypeProjection> = if (supertypeWithVariables != null) {
             // Now, let's try to unify Collection<T> and Collection<Foo> solution is a map from T to Foo
             val solution = TypeUnifier.unify(
                     TypeProjectionImpl(supertype), TypeProjectionImpl(supertypeWithVariables), variableConstructors::contains
             )
-            substitution = Maps.newHashMap(solution.substitution)
+            Maps.newHashMap(solution.substitution)
         }
         else {
             // If there's no corresponding supertype, no variables are determined
             // This may be OK, e.g. in case 'Any as List<*>'
-            substitution = Maps.newHashMapWithExpectedSize<TypeConstructor, TypeProjection>(variables.size)
+            Maps.newHashMapWithExpectedSize<TypeConstructor, TypeProjection>(variables.size)
         }
 
         // If some of the parameters are not determined by unification, it means that these parameters are lost,
@@ -204,28 +203,26 @@ object CastDiagnosticsUtil {
             expression: KtBinaryExpressionWithTypeRHS,
             context: ExpressionTypingContext,
             targetType: KotlinType,
-            actualType: KotlinType,
-            typeChecker: KotlinTypeChecker
+            actualType: KotlinType
     ): Boolean {
         // Here: x as? Type <=> x as Type?
         val refinedTargetType = if (KtPsiUtil.isSafeCast(expression)) TypeUtils.makeNullable(targetType) else targetType
         val possibleTypes = DataFlowAnalyzer.getAllPossibleTypes(expression.left, actualType, context)
-        return isRefinementUseless(possibleTypes, refinedTargetType, typeChecker, shouldCheckForExactType(expression, context.expectedType))
+        return isRefinementUseless(possibleTypes, refinedTargetType, shouldCheckForExactType(expression, context.expectedType))
     }
 
     // It is a warning "useless cast" for `as` and a warning "redundant is" for `is`
     fun isRefinementUseless(
             possibleTypes: Collection<KotlinType>,
             targetType: KotlinType,
-            typeChecker: KotlinTypeChecker,
             shouldCheckForExactType: Boolean
     ): Boolean {
-        val intersectedType = TypeIntersector.intersectTypes(typeChecker, possibleTypes.map { it.upperIfFlexible() }) ?: return false
+        val intersectedType = TypeIntersector.intersectTypes(possibleTypes.map { it.upperIfFlexible() }) ?: return false
 
         return if (shouldCheckForExactType)
             isExactTypeCast(intersectedType, targetType)
         else
-            isUpcast(intersectedType, targetType, typeChecker)
+            isUpcast(intersectedType, targetType)
     }
 
     private fun shouldCheckForExactType(expression: KtBinaryExpressionWithTypeRHS, expectedType: KotlinType): Boolean {
@@ -242,8 +239,8 @@ object CastDiagnosticsUtil {
         return candidateType == targetType && candidateType.isExtensionFunctionType == targetType.isExtensionFunctionType
     }
 
-    private fun isUpcast(candidateType: KotlinType, targetType: KotlinType, typeChecker: KotlinTypeChecker): Boolean {
-        if (!typeChecker.isSubtypeOf(candidateType, targetType)) return false
+    private fun isUpcast(candidateType: KotlinType, targetType: KotlinType): Boolean {
+        if (!KotlinTypeChecker.DEFAULT.isSubtypeOf(candidateType, targetType)) return false
 
         if (candidateType.isFunctionType && targetType.isFunctionType) {
             return candidateType.isExtensionFunctionType == targetType.isExtensionFunctionType

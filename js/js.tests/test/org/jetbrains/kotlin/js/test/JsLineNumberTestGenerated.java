@@ -78,6 +78,12 @@ public class JsLineNumberTestGenerated extends AbstractJsLineNumberTest {
         doTest(fileName);
     }
 
+    @TestMetadata("conditionalDecomposed.kt")
+    public void testConditionalDecomposed() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/conditionalDecomposed.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("coroutine.kt")
     public void testCoroutine() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/coroutine.kt");
@@ -108,9 +114,27 @@ public class JsLineNumberTestGenerated extends AbstractJsLineNumberTest {
         doTest(fileName);
     }
 
+    @TestMetadata("destructuring.kt")
+    public void testDestructuring() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/destructuring.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("destructuringInline.kt")
+    public void testDestructuringInline() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/destructuringInline.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("doWhileWithComplexCondition.kt")
     public void testDoWhileWithComplexCondition() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/doWhileWithComplexCondition.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("elvis.kt")
+    public void testElvis() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/elvis.kt");
         doTest(fileName);
     }
 
@@ -144,6 +168,12 @@ public class JsLineNumberTestGenerated extends AbstractJsLineNumberTest {
         doTest(fileName);
     }
 
+    @TestMetadata("inlineArguments.kt")
+    public void testInlineArguments() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/inlineArguments.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("inlineLocalVarsRef.kt")
     public void testInlineLocalVarsRef() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/inlineLocalVarsRef.kt");
@@ -171,6 +201,12 @@ public class JsLineNumberTestGenerated extends AbstractJsLineNumberTest {
     @TestMetadata("innerClass.kt")
     public void testInnerClass() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/innerClass.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("isOperator.kt")
+    public void testIsOperator() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/isOperator.kt");
         doTest(fileName);
     }
 
@@ -249,6 +285,12 @@ public class JsLineNumberTestGenerated extends AbstractJsLineNumberTest {
     @TestMetadata("valParameter.kt")
     public void testValParameter() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/valParameter.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("whenEntryWithMultipleConditions.kt")
+    public void testWhenEntryWithMultipleConditions() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("js/js.translator/testData/lineNumbers/whenEntryWithMultipleConditions.kt");
         doTest(fileName);
     }
 

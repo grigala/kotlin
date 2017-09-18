@@ -158,30 +158,6 @@ public final class JsAstUtils {
     }
 
     @NotNull
-    public static JsExpression charToBoxedChar(@NotNull JsExpression expression) {
-        return withBoxingMetadata(invokeKotlinFunction("toBoxedChar", unnestBoxing(expression)));
-    }
-
-    @NotNull
-    public static JsExpression boxedCharToChar(@NotNull JsExpression expression) {
-        return withBoxingMetadata(invokeKotlinFunction("unboxChar", unnestBoxing(expression)));
-    }
-
-    @NotNull
-    private static JsExpression unnestBoxing(@NotNull JsExpression expression) {
-        if (expression instanceof JsInvocation && MetadataProperties.getBoxing((JsInvocation) expression)) {
-            return ((JsInvocation) expression).getArguments().get(0);
-        }
-        return expression;
-    }
-
-    @NotNull
-    private static JsInvocation withBoxingMetadata(@NotNull JsInvocation call) {
-        MetadataProperties.setBoxing(call, true);
-        return call;
-    }
-
-    @NotNull
     public static JsExpression toShort(@NotNull JsExpression expression) {
         return invokeKotlinFunction(OperatorConventions.SHORT.getIdentifier(), expression);
     }
@@ -352,7 +328,7 @@ public final class JsAstUtils {
 
     @NotNull
     public static JsStatement assignmentToThisField(@NotNull String fieldName, @NotNull JsExpression right) {
-        return assignment(new JsNameRef(fieldName, new JsThisRef()), right).makeStmt();
+        return assignment(new JsNameRef(fieldName, new JsThisRef()), right).source(right.getSource()).makeStmt();
     }
 
     public static JsStatement asSyntheticStatement(@NotNull JsExpression expression) {
@@ -433,9 +409,9 @@ public final class JsAstUtils {
         if (expressions.size() == 1) {
             return expressions.get(0);
         }
-        JsExpression result = expressions.get(expressions.size() - 1);
-        for (int i = expressions.size() - 2; i >= 0; i--) {
-            result = new JsBinaryOperation(JsBinaryOperator.COMMA, expressions.get(i), result);
+        JsExpression result = expressions.get(0);
+        for (int i = 1; i < expressions.size(); i++) {
+            result = new JsBinaryOperation(JsBinaryOperator.COMMA, result, expressions.get(i));
         }
         return result;
     }
@@ -468,7 +444,7 @@ public final class JsAstUtils {
     }
 
     @NotNull
-    public static JsStatement defineSimpleProperty(@NotNull String name, @NotNull JsExpression value, @Nullable SourceElement source) {
+    public static JsStatement defineSimpleProperty(@NotNull JsName name, @NotNull JsExpression value, @Nullable SourceElement source) {
         JsExpression assignment = assignment(new JsNameRef(name, new JsThisRef()), value);
         if (source != null) {
             assignment.setSource(KotlinSourceElementKt.getPsi(source));

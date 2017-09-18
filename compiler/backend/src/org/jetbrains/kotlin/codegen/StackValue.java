@@ -19,7 +19,6 @@ package org.jetbrains.kotlin.codegen;
 import com.intellij.psi.tree.IElementType;
 import kotlin.Unit;
 import kotlin.collections.ArraysKt;
-import kotlin.collections.CollectionsKt;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -27,12 +26,12 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.builtins.PrimitiveType;
 import org.jetbrains.kotlin.codegen.intrinsics.IntrinsicMethods;
-import org.jetbrains.kotlin.codegen.intrinsics.JavaClassProperty;
-import org.jetbrains.kotlin.codegen.state.GenerationState;
+import org.jetbrains.kotlin.codegen.pseudoInsns.PseudoInsnsKt;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.impl.SyntheticFieldDescriptor;
 import org.jetbrains.kotlin.load.java.JvmAbi;
+import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.psi.KtExpression;
 import org.jetbrains.kotlin.psi.ValueArgument;
 import org.jetbrains.kotlin.resolve.BindingContext;
@@ -150,6 +149,11 @@ public abstract class StackValue {
     }
 
     @NotNull
+    public static Local local(int index, @NotNull Type type, @NotNull VariableDescriptor descriptor) {
+        return new Local(index, type, descriptor.isLateInit(), descriptor.getName());
+    }
+
+    @NotNull
     public static Delegate delegate(
             @NotNull Type type,
             @NotNull StackValue delegateValue,
@@ -163,6 +167,11 @@ public abstract class StackValue {
     @NotNull
     public static StackValue shared(int index, @NotNull Type type) {
         return new Shared(index, type);
+    }
+
+    @NotNull
+    public static StackValue shared(int index, @NotNull Type type, @NotNull VariableDescriptor descriptor) {
+        return new Shared(index, type, descriptor.isLateInit(), descriptor.getName());
     }
 
     @NotNull
@@ -181,7 +190,7 @@ public abstract class StackValue {
         }
     }
 
-    public static StackValue createDefaulValue(@NotNull Type type) {
+    public static StackValue createDefaultValue(@NotNull Type type) {
         if (type.getSort() == Type.OBJECT || type.getSort() == Type.ARRAY) {
             return constant(null, type);
         }
@@ -297,9 +306,11 @@ public abstract class StackValue {
             @Nullable CallableMethod setter,
             @NotNull StackValue receiver,
             @NotNull ExpressionCodegen codegen,
-            @Nullable ResolvedCall resolvedCall
+            @Nullable ResolvedCall resolvedCall,
+            boolean skipLateinitAssertion
     ) {
-        return new Property(descriptor, backingFieldOwner, getter, setter, isStaticBackingField, fieldName, type, receiver, codegen, resolvedCall);
+        return new Property(descriptor, backingFieldOwner, getter, setter, isStaticBackingField, fieldName, type, receiver, codegen,
+                            resolvedCall, skipLateinitAssertion);
     }
 
     @NotNull
@@ -437,16 +448,18 @@ public abstract class StackValue {
             @NotNull Type localType,
             @NotNull Type classType,
             @NotNull String fieldName,
-            @NotNull Field refWrapper
+            @NotNull Field refWrapper,
+            @NotNull VariableDescriptor variableDescriptor
     ) {
-        return new FieldForSharedVar(localType, classType, fieldName, refWrapper);
+        return new FieldForSharedVar(localType, classType, fieldName, refWrapper,
+                                     variableDescriptor.isLateInit(), variableDescriptor.getName());
     }
 
     @NotNull
     public static FieldForSharedVar fieldForSharedVar(@NotNull FieldForSharedVar field, @NotNull StackValue newReceiver) {
         Field oldReceiver = (Field) field.receiver;
         Field newSharedVarReceiver = field(oldReceiver, newReceiver);
-        return new FieldForSharedVar(field.type, field.owner, field.name, newSharedVarReceiver);
+        return new FieldForSharedVar(field.type, field.owner, field.name, newSharedVarReceiver, field.isLateinit, field.variableName);
     }
 
     public static StackValue coercion(@NotNull StackValue value, @NotNull Type castType) {
@@ -518,9 +531,11 @@ public abstract class StackValue {
                     descriptor
             );
             StackValue extensionReceiver = genReceiver(receiver, codegen, resolvedCall, callableMethod, callExtensionReceiver, true);
-            Type type = CallReceiver.calcType(resolvedCall, dispatchReceiverParameter, extensionReceiverParameter, codegen.typeMapper, callableMethod, codegen.getState());
-            assert type != null : "Could not map receiver type for " + resolvedCall;
-            return new CallReceiver(dispatchReceiver, extensionReceiver, type);
+            return CallReceiver.generateCallReceiver(
+                    resolvedCall, codegen, callableMethod,
+                    dispatchReceiverParameter, dispatchReceiver,
+                    extensionReceiverParameter, extensionReceiver
+            );
         }
         return receiver;
     }
@@ -569,14 +584,13 @@ public abstract class StackValue {
     }
 
     @Contract("null -> false")
-    private static boolean isLocalFunCall(@Nullable Callable callableMethod) {
+    static boolean isLocalFunCall(@Nullable Callable callableMethod) {
         return callableMethod != null && callableMethod.getGenerateCalleeType() != null;
     }
 
     public static StackValue receiverWithoutReceiverArgument(StackValue receiverWithParameter) {
         if (receiverWithParameter instanceof CallReceiver) {
-            CallReceiver callReceiver = (CallReceiver) receiverWithParameter;
-            return new CallReceiver(callReceiver.dispatchReceiver, none(), callReceiver.type);
+            return ((CallReceiver) receiverWithParameter).withoutReceiverArgument();
         }
         return receiverWithParameter;
     }
@@ -625,19 +639,35 @@ public abstract class StackValue {
 
     public static class Local extends StackValue {
         public final int index;
+        private final boolean isLateinit;
+        private final Name name;
 
-        private Local(int index, Type type) {
+        private Local(int index, Type type, boolean isLateinit, Name name) {
             super(type, false);
-            this.index = index;
 
             if (index < 0) {
                 throw new IllegalStateException("local variable index must be non-negative");
             }
+
+            if (isLateinit && name == null) {
+                throw new IllegalArgumentException("Lateinit local variable should have name: #" + index + " " + type.getDescriptor());
+            }
+
+            this.index = index;
+            this.isLateinit = isLateinit;
+            this.name = name;
+        }
+
+        private Local(int index, Type type) {
+            this(index, type, false, null);
         }
 
         @Override
         public void putSelector(@NotNull Type type, @NotNull InstructionAdapter v) {
             v.load(index, this.type);
+            if (isLateinit) {
+                StackValue.genNonNullAssertForLateinit(v, name.asString());
+            }
             coerceTo(type, v);
             // TODO unbox
         }
@@ -646,6 +676,9 @@ public abstract class StackValue {
         public void storeSelector(@NotNull Type topOfStackType, @NotNull InstructionAdapter v) {
             coerceFrom(topOfStackType, v);
             v.store(index, this.type);
+            if (isLateinit) {
+                PseudoInsnsKt.storeNotNull(v);
+            }
         }
     }
 
@@ -1156,20 +1189,17 @@ public abstract class StackValue {
         private final CallableMethod getter;
         private final CallableMethod setter;
         private final Type backingFieldOwner;
-
         private final PropertyDescriptor descriptor;
-
         private final String fieldName;
-        @NotNull private final ExpressionCodegen codegen;
-        @Nullable private final ResolvedCall resolvedCall;
+        private final ExpressionCodegen codegen;
+        private final ResolvedCall resolvedCall;
+        private final boolean skipLateinitAssertion;
 
         public Property(
-                @NotNull PropertyDescriptor descriptor, @Nullable Type backingFieldOwner,
-                @Nullable CallableMethod getter, @Nullable CallableMethod setter, boolean isStaticBackingField,
-                @Nullable String fieldName, @NotNull Type type,
-                @NotNull StackValue receiver,
-                @NotNull ExpressionCodegen codegen,
-                @Nullable ResolvedCall resolvedCall
+                @NotNull PropertyDescriptor descriptor, @Nullable Type backingFieldOwner, @Nullable CallableMethod getter,
+                @Nullable CallableMethod setter, boolean isStaticBackingField, @Nullable String fieldName, @NotNull Type type,
+                @NotNull StackValue receiver, @NotNull ExpressionCodegen codegen, @Nullable ResolvedCall resolvedCall,
+                boolean skipLateinitAssertion
         ) {
             super(type, isStatic(isStaticBackingField, getter), isStatic(isStaticBackingField, setter), receiver, true);
             this.backingFieldOwner = backingFieldOwner;
@@ -1179,6 +1209,7 @@ public abstract class StackValue {
             this.fieldName = fieldName;
             this.codegen = codegen;
             this.resolvedCall = resolvedCall;
+            this.skipLateinitAssertion = skipLateinitAssertion;
         }
 
         @Override
@@ -1190,7 +1221,9 @@ public abstract class StackValue {
 
                 v.visitFieldInsn(isStaticPut ? GETSTATIC : GETFIELD,
                                  backingFieldOwner.getInternalName(), fieldName, this.type.getDescriptor());
-                genNotNullAssertionForLateInitIfNeeded(v);
+                if (!skipLateinitAssertion) {
+                    genNotNullAssertionForLateInitIfNeeded(v);
+                }
                 coerceTo(type, v);
             }
             else {
@@ -1260,12 +1293,7 @@ public abstract class StackValue {
         private void genNotNullAssertionForLateInitIfNeeded(@NotNull InstructionAdapter v) {
             if (!descriptor.isLateInit()) return;
 
-            v.dup();
-            Label ok = new Label();
-            v.ifnonnull(ok);
-            v.visitLdcInsn(descriptor.getName().asString());
-            v.invokestatic(IntrinsicMethods.INTRINSICS_CLASS_NAME, "throwUninitializedPropertyAccessException", "(Ljava/lang/String;)V", false);
-            v.mark(ok);
+            StackValue.genNonNullAssertForLateinit(v, descriptor.getName().asString());
         }
 
         @Override
@@ -1329,6 +1357,15 @@ public abstract class StackValue {
         }
     }
 
+    private static void genNonNullAssertForLateinit(@NotNull InstructionAdapter v, @NotNull String name) {
+        v.dup();
+        Label ok = new Label();
+        v.ifnonnull(ok);
+        v.visitLdcInsn(name);
+        v.invokestatic(IntrinsicMethods.INTRINSICS_CLASS_NAME, "throwUninitializedPropertyAccessException", "(Ljava/lang/String;)V", false);
+        v.mark(ok);
+    }
+
     private static class Expression extends StackValue {
         private final KtExpression expression;
         private final ExpressionCodegen generator;
@@ -1347,10 +1384,23 @@ public abstract class StackValue {
 
     public static class Shared extends StackValueWithSimpleReceiver {
         private final int index;
+        private final boolean isLateinit;
+        private final Name name;
 
-        public Shared(int index, Type type) {
+        public Shared(int index, Type type, boolean isLateinit, Name name) {
             super(type, false, false, local(index, OBJECT_TYPE), false);
             this.index = index;
+
+            if (isLateinit && name == null) {
+                throw new IllegalArgumentException("Lateinit shared local variable should have name: #" + index + " " + type.getDescriptor());
+            }
+
+            this.isLateinit = isLateinit;
+            this.name = name;
+        }
+
+        public Shared(int index, Type type) {
+            this(index, type, false, null);
         }
 
         public int getIndex() {
@@ -1362,6 +1412,9 @@ public abstract class StackValue {
             Type refType = refType(this.type);
             Type sharedType = sharedTypeForType(this.type);
             v.visitFieldInsn(GETFIELD, sharedType.getInternalName(), "element", refType.getDescriptor());
+            if (isLateinit) {
+                StackValue.genNonNullAssertForLateinit(v, name.asString());
+            }
             coerceFrom(refType, v);
             coerceTo(type, v);
         }
@@ -1399,11 +1452,23 @@ public abstract class StackValue {
     public static class FieldForSharedVar extends StackValueWithSimpleReceiver {
         final Type owner;
         final String name;
+        final boolean isLateinit;
+        final Name variableName;
 
-        public FieldForSharedVar(Type type, Type owner, String name, StackValue.Field receiver) {
+        public FieldForSharedVar(
+                Type type, Type owner, String name, StackValue.Field receiver,
+                boolean isLateinit, Name variableName
+        ) {
             super(type, false, false, receiver, receiver.canHaveSideEffects());
+
+            if (isLateinit && variableName == null) {
+                throw new IllegalArgumentException("variableName should be non-null for captured lateinit variable " + name);
+            }
+
             this.owner = owner;
             this.name = name;
+            this.isLateinit = isLateinit;
+            this.variableName = variableName;
         }
 
         @Override
@@ -1411,6 +1476,9 @@ public abstract class StackValue {
             Type sharedType = sharedTypeForType(this.type);
             Type refType = refType(this.type);
             v.visitFieldInsn(GETFIELD, sharedType.getInternalName(), "element", refType.getDescriptor());
+            if (isLateinit) {
+                StackValue.genNonNullAssertForLateinit(v, variableName.asString());
+            }
             coerceFrom(refType, v);
             coerceTo(type, v);
         }
@@ -1514,101 +1582,6 @@ public abstract class StackValue {
 
             value.put(this.type, v, true);
             coerceTo(type, v);
-        }
-    }
-
-    public static class CallReceiver extends StackValue {
-        private final StackValue dispatchReceiver;
-        private final StackValue extensionReceiver;
-
-        public CallReceiver(
-                @NotNull StackValue dispatchReceiver,
-                @NotNull StackValue extensionReceiver,
-                @NotNull Type type
-        ) {
-            super(type, dispatchReceiver.canHaveSideEffects() || extensionReceiver.canHaveSideEffects());
-            this.dispatchReceiver = dispatchReceiver;
-            this.extensionReceiver = extensionReceiver;
-        }
-
-        @Nullable
-        public static Type calcType(
-                @NotNull ResolvedCall<?> resolvedCall,
-                @Nullable ReceiverParameterDescriptor dispatchReceiver,
-                @Nullable ReceiverParameterDescriptor extensionReceiver,
-                @NotNull KotlinTypeMapper typeMapper,
-                @Nullable Callable callableMethod,
-                @NotNull GenerationState state
-        ) {
-            if (extensionReceiver != null) {
-                CallableDescriptor descriptor = resolvedCall.getCandidateDescriptor();
-
-                if (descriptor instanceof PropertyDescriptor &&
-                    // hackaround: boxing changes behaviour of T.javaClass intrinsic
-                    state.getIntrinsics().getIntrinsic((PropertyDescriptor) descriptor) != JavaClassProperty.INSTANCE
-                ) {
-                    ReceiverParameterDescriptor receiverCandidate = descriptor.getExtensionReceiverParameter();
-                    assert receiverCandidate != null;
-                    return typeMapper.mapType(receiverCandidate.getType());
-                }
-
-                return callableMethod != null ? callableMethod.getExtensionReceiverType() : typeMapper.mapType(extensionReceiver.getType());
-            }
-            else if (dispatchReceiver != null) {
-                CallableDescriptor descriptor = resolvedCall.getResultingDescriptor();
-
-                if (CodegenUtilKt.isJvmStaticInObjectOrClass(descriptor)) {
-                    return Type.VOID_TYPE;
-                }
-
-                if (callableMethod != null) {
-                    return callableMethod.getDispatchReceiverType();
-                }
-
-                // Extract the receiver from the resolved call, workarounding the fact that ResolvedCall#dispatchReceiver doesn't have
-                // all the needed information, for example there's no way to find out whether or not a smart cast was applied to the receiver.
-                DeclarationDescriptor container = descriptor.getContainingDeclaration();
-                if (container instanceof ClassDescriptor) {
-                    return typeMapper.mapClass((ClassDescriptor) container);
-                }
-
-                return typeMapper.mapType(dispatchReceiver);
-            }
-            else if (isLocalFunCall(callableMethod)) {
-                return callableMethod.getGenerateCalleeType();
-            }
-
-            return Type.VOID_TYPE;
-        }
-
-        @Override
-        public void putSelector(@NotNull Type type, @NotNull InstructionAdapter v) {
-            StackValue currentExtensionReceiver = extensionReceiver;
-            boolean hasExtensionReceiver = extensionReceiver != none();
-            if (extensionReceiver instanceof StackValue.SafeCall) {
-                currentExtensionReceiver.put(currentExtensionReceiver.type, v);
-                currentExtensionReceiver = StackValue.onStack(currentExtensionReceiver.type);
-            }
-
-            dispatchReceiver.put(hasExtensionReceiver ? dispatchReceiver.type : type, v);
-
-            currentExtensionReceiver
-                    .moveToTopOfStack(hasExtensionReceiver ? type : currentExtensionReceiver.type, v, dispatchReceiver.type.getSize());
-        }
-
-        @Override
-        public void dup(@NotNull InstructionAdapter v, boolean withReceiver) {
-            AsmUtil.dup(v, extensionReceiver.type, dispatchReceiver.type);
-        }
-
-        @NotNull
-        public StackValue getDispatchReceiver() {
-            return dispatchReceiver;
-        }
-
-        @NotNull
-        public StackValue getExtensionReceiver() {
-            return extensionReceiver;
         }
     }
 

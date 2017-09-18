@@ -25,40 +25,50 @@ import com.intellij.openapi.module.StdModuleTypes
 import com.intellij.openapi.roots.DependencyScope
 import com.intellij.openapi.roots.ModuleRootModificationUtil
 import com.intellij.openapi.roots.OrderRootType
+import com.intellij.openapi.roots.libraries.PersistentLibraryKind
 import com.intellij.openapi.roots.ui.configuration.libraryEditor.NewLibraryEditor
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtil
+import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
 import com.intellij.testFramework.PsiTestUtil
 import org.jetbrains.kotlin.config.CompilerSettings
 import org.jetbrains.kotlin.config.KotlinFacetSettingsProvider
 import org.jetbrains.kotlin.config.TargetPlatformKind
 import org.jetbrains.kotlin.idea.facet.getOrCreateFacet
 import org.jetbrains.kotlin.idea.facet.initializeIfNeeded
+import org.jetbrains.kotlin.idea.project.PluginJetFilesProvider
 import org.jetbrains.kotlin.idea.test.ConfigLibraryUtil
 import org.jetbrains.kotlin.idea.test.KotlinJdkAndLibraryProjectDescriptor
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase
+import org.jetbrains.kotlin.test.KotlinTestUtils
+import org.jetbrains.kotlin.test.TestJdkKind
+import org.junit.Assert
 import java.io.File
 
 abstract class AbstractMultiModuleTest : DaemonAnalyzerTestCase() {
 
-    protected open val testPath = PluginTestCaseBase.getTestDataPathBase()
+    abstract override fun getTestDataPath(): String
 
-    protected fun module(name: String, hasTestRoot: Boolean = false, useFullJdk: Boolean = false): Module {
-        val srcDir = testPath + "${getTestName(true)}/$name"
+    override fun setUp() {
+        super.setUp()
+        VfsRootAccess.allowRootAccess(KotlinTestUtils.getHomeDirectory())
+    }
+
+    protected fun module(name: String, jdk: TestJdkKind = TestJdkKind.MOCK_JDK, hasTestRoot: Boolean = false): Module {
+        val srcDir = testDataPath + "${getTestName(true)}/$name"
         val moduleWithSrcRootSet = createModuleFromTestData(srcDir, name, StdModuleTypes.JAVA, true)!!
         if (hasTestRoot) {
             setTestRoot(moduleWithSrcRootSet, name)
         }
 
-        val jdkToUse = if (useFullJdk) PluginTestCaseBase.fullJdk() else PluginTestCaseBase.mockJdk()
-        ConfigLibraryUtil.configureSdk(moduleWithSrcRootSet, jdkToUse)
+        ConfigLibraryUtil.configureSdk(moduleWithSrcRootSet, PluginTestCaseBase.jdk(jdk))
 
         return moduleWithSrcRootSet
     }
 
     private fun setTestRoot(module: Module, name: String) {
-        val testDir = testPath + "${getTestName(true)}/${name}Test"
+        val testDir = testDataPath + "${getTestName(true)}/${name}Test"
         val testRootDirInTestData = File(testDir)
         val testRootDir = createTempDirectory()!!
         FileUtil.copyDir(testRootDirInTestData, testRootDir)
@@ -75,29 +85,15 @@ abstract class AbstractMultiModuleTest : DaemonAnalyzerTestCase() {
             other: Module,
             dependencyScope: DependencyScope = DependencyScope.COMPILE,
             exported: Boolean = false
-    ) = ModuleRootModificationUtil.addDependency(this, other, dependencyScope, exported)
+    ): Module = this.apply { ModuleRootModificationUtil.addDependency(this, other, dependencyScope, exported) }
 
-    protected fun Module.addLibrary(jar: File) {
+    protected fun Module.addLibrary(jar: File,
+                                    name: String = KotlinJdkAndLibraryProjectDescriptor.LIBRARY_NAME,
+                                    kind: PersistentLibraryKind<*>? = null) {
         ConfigLibraryUtil.addLibrary(NewLibraryEditor().apply {
-            name = KotlinJdkAndLibraryProjectDescriptor.LIBRARY_NAME
+            this.name = name
             addRoot(VfsUtil.getUrlForLibraryRoot(jar), OrderRootType.CLASSES)
-        }, this)
-    }
-
-    protected fun Module.createFacet(platformKind: TargetPlatformKind<*>? = null) {
-        val accessToken = WriteAction.start()
-        try {
-            val modelsProvider = IdeModifiableModelsProviderImpl(project)
-            getOrCreateFacet(modelsProvider, true).configuration.settings.initializeIfNeeded(
-                    this,
-                    modelsProvider.getModifiableRootModel(this),
-                    platformKind
-            )
-            modelsProvider.commit()
-        }
-        finally {
-            accessToken.finish()
-        }
+        }, this, kind)
     }
 
     protected fun Module.enableMultiPlatform() {
@@ -106,5 +102,33 @@ abstract class AbstractMultiModuleTest : DaemonAnalyzerTestCase() {
         facetSettings.compilerSettings = CompilerSettings().apply {
             additionalArguments += " -Xmulti-platform"
         }
+    }
+
+    protected fun checkFiles(shouldCheckFile: () -> Boolean = { true }, check: () -> Unit) {
+        var atLeastOneFile = false
+        PluginJetFilesProvider.allFilesInProject(myProject!!).forEach { file ->
+            configureByExistingFile(file.virtualFile!!)
+            if (shouldCheckFile()) {
+                atLeastOneFile = true
+                check()
+            }
+        }
+        Assert.assertTrue(atLeastOneFile)
+    }
+}
+
+fun Module.createFacet(platformKind: TargetPlatformKind<*>? = null) {
+    val accessToken = WriteAction.start()
+    try {
+        val modelsProvider = IdeModifiableModelsProviderImpl(project)
+        getOrCreateFacet(modelsProvider, true).configuration.settings.initializeIfNeeded(
+                this,
+                modelsProvider.getModifiableRootModel(this),
+                platformKind
+        )
+        modelsProvider.commit()
+    }
+    finally {
+        accessToken.finish()
     }
 }

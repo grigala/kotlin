@@ -110,6 +110,7 @@ public interface FunctionDescriptor extends CallableMemberDescriptor {
         @Override
         CopyBuilder<D> setCopyOverrides(boolean copyOverrides);
 
+        @Override
         @NotNull
         CopyBuilder<D> setName(@NotNull Name name);
 
@@ -117,6 +118,7 @@ public interface FunctionDescriptor extends CallableMemberDescriptor {
         CopyBuilder<D> setValueParameters(@NotNull List<ValueParameterDescriptor> parameters);
 
         @NotNull
+        @Override
         CopyBuilder<D> setTypeParameters(@NotNull List<TypeParameterDescriptor> parameters);
 
         @NotNull
@@ -130,16 +132,14 @@ public interface FunctionDescriptor extends CallableMemberDescriptor {
         CopyBuilder<D> setDispatchReceiverParameter(@Nullable ReceiverParameterDescriptor dispatchReceiverParameter);
 
         @NotNull
-        CopyBuilder<D> setOriginal(@Nullable FunctionDescriptor original);
+        @Override
+        CopyBuilder<D> setOriginal(@Nullable CallableMemberDescriptor original);
 
         @NotNull
         CopyBuilder<D> setSignatureChange();
 
         @NotNull
         CopyBuilder<D> setPreserveSourceElement();
-
-        @NotNull
-        CopyBuilder<D> setSource(@NotNull SourceElement source);
 
         @NotNull
         CopyBuilder<D> setDropOriginalInContainingParts();

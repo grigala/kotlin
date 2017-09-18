@@ -1,9 +1,9 @@
-// EXPECTED_REACHABLE_NODES: 496
+// EXPECTED_REACHABLE_NODES: 999
 // MODULE: lib
 // FILE: lib.kt
 package lib
 
-external fun bar()
+external fun bar(): Int
 
 val bar = 32
 

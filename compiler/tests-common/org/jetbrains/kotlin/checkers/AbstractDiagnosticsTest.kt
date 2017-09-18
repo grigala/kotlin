@@ -20,14 +20,10 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.analyzer.AnalysisResult
-import org.jetbrains.kotlin.analyzer.common.DefaultAnalyzerFacade
+import org.jetbrains.kotlin.analyzer.common.CommonAnalyzerFacade
 import org.jetbrains.kotlin.cli.jvm.compiler.CliLightClassGenerationSupport
-import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider
 import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM
-import org.jetbrains.kotlin.config.JvmTarget
-import org.jetbrains.kotlin.config.LanguageVersionSettings
-import org.jetbrains.kotlin.config.LanguageVersionSettingsImpl
-import org.jetbrains.kotlin.config.languageVersionSettings
+import org.jetbrains.kotlin.config.*
 import org.jetbrains.kotlin.container.get
 import org.jetbrains.kotlin.context.ModuleContext
 import org.jetbrains.kotlin.context.SimpleGlobalContext
@@ -53,6 +49,7 @@ import org.jetbrains.kotlin.name.SpecialNames
 import org.jetbrains.kotlin.platform.JvmBuiltIns
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.*
+import org.jetbrains.kotlin.resolve.calls.USE_NEW_INFERENCE
 import org.jetbrains.kotlin.resolve.calls.model.MutableResolvedCall
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.jvm.JavaDescriptorResolver
@@ -67,10 +64,12 @@ import org.jetbrains.kotlin.test.util.DescriptorValidator
 import org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator
 import org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator.RECURSIVE
 import org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator.RECURSIVE_ALL
+import org.jetbrains.kotlin.utils.keysToMap
 import org.junit.Assert
 import java.io.File
 import java.util.*
 import java.util.function.Predicate
+import java.util.regex.Pattern
 
 abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
     override fun analyzeAndCheck(testDataFile: File, files: List<TestFile>) {
@@ -143,7 +142,12 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
 
         var exceptionFromDescriptorValidation: Throwable? = null
         try {
-            val expectedFile = File(FileUtil.getNameWithoutExtension(testDataFile.absolutePath) + ".txt")
+            val expectedFile = if (InTextDirectivesUtils.isDirectiveDefined(testDataFile.readText(), "// JAVAC_EXPECTED_FILE")
+                                   && environment.configuration.getBoolean(JVMConfigurationKeys.USE_JAVAC)) {
+                File(FileUtil.getNameWithoutExtension(testDataFile.absolutePath) + ".javac.txt")
+            } else {
+                File(FileUtil.getNameWithoutExtension(testDataFile.absolutePath) + ".txt")
+            }
             validateAndCompareDescriptorWithFile(expectedFile, files, modules)
         }
         catch (e: Throwable) {
@@ -203,7 +207,7 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
         // To be overridden by diagnostic-like tests.
     }
 
-    private fun loadLanguageVersionSettings(module: List<TestFile>): LanguageVersionSettings {
+    protected open fun loadLanguageVersionSettings(module: List<TestFile>): LanguageVersionSettings {
         var result: LanguageVersionSettings? = null
         for (file in module) {
             val current = file.customLanguageVersionSettings
@@ -281,7 +285,7 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
                     files,
                     moduleTrace,
                     environment.configuration.copy().apply { this.languageVersionSettings = languageVersionSettings },
-                    { scope -> JvmPackagePartProvider(environment, scope) }
+                    environment::createPackagePartProvider
             )
         }
 
@@ -289,8 +293,8 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
 
         val platform = moduleDescriptor.getMultiTargetPlatform()
         if (platform == MultiTargetPlatform.Common) {
-            return DefaultAnalyzerFacade.analyzeFiles(
-                    files, moduleDescriptor.name, true,
+            return CommonAnalyzerFacade.analyzeFiles(
+                    files, moduleDescriptor.name, true, languageVersionSettings,
                     mapOf(
                             MultiTargetPlatform.CAPABILITY to MultiTargetPlatform.Common,
                             MODULE_FILES to files
@@ -307,17 +311,19 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
 
         val moduleContentScope = GlobalSearchScope.allScope(moduleContext.project)
         val moduleClassResolver = SingleModuleClassResolver()
+
         val container = createContainerForTopDownAnalyzerForJvm(
                 moduleContext,
                 moduleTrace,
                 FileBasedDeclarationProviderFactory(moduleContext.storageManager, files),
                 moduleContentScope,
                 LookupTracker.DO_NOTHING,
-                JvmPackagePartProvider(environment, moduleContentScope),
+                environment.createPackagePartProvider(moduleContentScope),
                 moduleClassResolver,
                 JvmTarget.JVM_1_6,
                 languageVersionSettings
         )
+
         container.initJvmBuiltInsForTopDownAnalysis()
         moduleClassResolver.resolver = container.get<JavaDescriptorResolver>()
 
@@ -338,7 +344,7 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
         val dependencies = moduleDescriptor.testOnly_AllDependentModules
 
         // TODO: diagnostics on common code reported during the platform module analysis should be distinguished somehow
-        // E.g. "<!JVM:IMPLEMENTATION_WITHOUT_HEADER!>...<!>
+        // E.g. "<!JVM:ACTUAL_WITHOUT_EXPECT!>...<!>
         val result = ArrayList<KtFile>(0)
         for (dependency in dependencies) {
             if (dependency.getCapability(MultiTargetPlatform.CAPABILITY) == MultiTargetPlatform.Common) {
@@ -356,6 +362,7 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
             testFiles: List<TestFile>,
             modules: Map<TestModule?, ModuleDescriptorImpl>
     ) {
+        if (skipDescriptorsValidation()) return
         if (testFiles.any { file -> InTextDirectivesUtils.isDirectiveDefined(file.expectedText, "// SKIP_TXT") }) {
             assertFalse(".txt file should not exist if SKIP_TXT directive is used: $expectedFile", expectedFile.exists())
             return
@@ -364,7 +371,15 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
         val comparator = RecursiveDescriptorComparator(createdAffectedPackagesConfiguration(testFiles, modules.values))
 
         val isMultiModuleTest = modules.size != 1
-        val rootPackageText = StringBuilder()
+
+        val packages =
+                (testFiles.flatMap {
+                    InTextDirectivesUtils.findListWithPrefixes(it.expectedText, "// RENDER_PACKAGE:").map {
+                        FqName(it.trim())
+                    }
+                } + FqName.ROOT).toSet()
+
+        val textByPackage = packages.keysToMap { StringBuilder() }
 
         val sortedModules = modules.keys.sortedWith(Comparator { x, y ->
             when {
@@ -376,39 +391,67 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
             }
         })
 
-        val module = sortedModules.iterator()
-        while (module.hasNext()) {
-            val moduleDescriptor = modules[module.next()]!!
-            val aPackage = moduleDescriptor.getPackage(FqName.ROOT)
-            assertFalse(aPackage.isEmpty())
+        for ((packageName, packageText) in textByPackage.entries) {
+            val module = sortedModules.iterator()
+            while (module.hasNext()) {
+                val moduleDescriptor = modules[module.next()]!!
 
-            if (isMultiModuleTest) {
-                rootPackageText.append(String.format("// -- Module: %s --\n", moduleDescriptor.name))
-            }
+                val aPackage = moduleDescriptor.getPackage(packageName)
+                assertFalse(aPackage.isEmpty())
 
-            val actualSerialized = comparator.serializeRecursively(aPackage)
-            rootPackageText.append(actualSerialized)
+                if (isMultiModuleTest) {
+                    packageText.append(String.format("// -- Module: %s --\n", moduleDescriptor.name))
+                }
 
-            if (isMultiModuleTest && module.hasNext()) {
-                rootPackageText.append("\n\n")
+                val actualSerialized = comparator.serializeRecursively(aPackage)
+                packageText.append(actualSerialized)
+
+                if (isMultiModuleTest && module.hasNext()) {
+                    packageText.append("\n\n")
+                }
             }
         }
 
-        val lineCount = StringUtil.getLineBreakCount(rootPackageText)
+        val allPackagesText = textByPackage.values.joinToString("\n")
+
+        val lineCount = StringUtil.getLineBreakCount(allPackagesText)
         assert(lineCount < 1000) {
             "Rendered descriptors of this test take up $lineCount lines. " +
             "Please ensure you don't render JRE contents to the .txt file. " +
             "Such tests are hard to maintain, take long time to execute and are subject to sudden unreviewed changes anyway."
         }
 
-        KotlinTestUtils.assertEqualsToFile(expectedFile, rootPackageText.toString())
+        KotlinTestUtils.assertEqualsToFile(expectedFile, allPackagesText)
+    }
+
+
+    protected open fun skipDescriptorsValidation(): Boolean = false
+
+    private fun getJavaFilePackage(testFile: TestFile): Name {
+        val pattern = Pattern.compile("^\\s*package [.\\w\\d]*", Pattern.MULTILINE)
+        val matcher = pattern.matcher(testFile.expectedText)
+
+        if (matcher.find()) {
+            return testFile.expectedText
+                    .substring(matcher.start(), matcher.end())
+                    .split(" ")
+                    .last()
+                    .filter { !it.isWhitespace() }
+                    .let { Name.identifier(it.split(".").first()) }
+        }
+
+        return SpecialNames.ROOT_PACKAGE
     }
 
     private fun createdAffectedPackagesConfiguration(
             testFiles: List<TestFile>,
             modules: Collection<ModuleDescriptor>
     ): RecursiveDescriptorComparator.Configuration {
-        val packagesNames = getTopLevelPackagesFromFileList(getKtFiles(testFiles, false))
+        val packagesNames = (
+                testFiles.filter { it.ktFile == null }
+                        .map { getJavaFilePackage(it) } +
+                getTopLevelPackagesFromFileList(getKtFiles(testFiles, false))
+                            ).toSet()
 
         val stepIntoFilter = Predicate<DeclarationDescriptor> { descriptor ->
             val module = DescriptorUtils.getContainingModuleOrNull(descriptor)
@@ -488,8 +531,10 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
 
             val lineAndColumn = DiagnosticUtils.getLineAndColumnInPsiFile(element.containingFile, element.textRange)
 
-            assertTrue("Resolved call for '${element.text}'$lineAndColumn is not completed",
-                       (resolvedCall as MutableResolvedCall<*>).isCompleted)
+            if (!USE_NEW_INFERENCE) {
+                assertTrue("Resolved call for '${element.text}'$lineAndColumn is not completed",
+                           (resolvedCall as MutableResolvedCall<*>).isCompleted)
+            }
         }
 
         checkResolvedCallsInDiagnostics(bindingContext)
@@ -519,6 +564,7 @@ abstract class AbstractDiagnosticsTest : BaseDiagnosticsTest() {
     private fun assertResolvedCallsAreCompleted(diagnostic: Diagnostic, resolvedCalls: Collection<ResolvedCall<*>>) {
         val element = diagnostic.psiElement
         val lineAndColumn = DiagnosticUtils.getLineAndColumnInPsiFile(element.containingFile, element.textRange)
+        if (USE_NEW_INFERENCE) return
 
         assertTrue("Resolved calls stored in ${diagnostic.factory.name}\nfor '${element.text}'$lineAndColumn are not completed",
                    resolvedCalls.all { (it as MutableResolvedCall<*>).isCompleted })

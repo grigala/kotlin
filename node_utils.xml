@@ -3,7 +3,7 @@
 
     <!-- Expected that these properties will be overridden by system properties -->
     <property name="kotlin.deploy.version" value="0.0.0"/>
-    <property name="kotlin.compiler.deploy.version" value="0.0.0"/>
+    <property name="kotlin.deploy.tag" value="dev"/>
     <property name="kotlin.npmjs.auth.token" value="AUTH"/>
 
     <property name="node.version" value="v6.3.1"/>
@@ -82,6 +82,7 @@
     <macrodef name="publish-to-npm">
         <attribute name="template"/>
         <attribute name="version"/>
+        <attribute name="tag"/>
         <element name="actions" optional="true" implicit="true"/>
         <sequential>
             <property name="deploy_to_npm_dir" value="${output}/deploy_to_npm"/>
@@ -101,19 +102,25 @@
             </npm>
             <npm command="publish" dir="${package_deploy_dir}">
                 <arg value="--//registry.npmjs.org/:_authToken=${kotlin.npmjs.auth.token}"/>
+                <arg value="--tag"/>
+                <arg value="@{tag}"/>
             </npm>
         </sequential>
     </macrodef>
 
     <target name="publish-kotlin-js-to-npm">
-        <publish-to-npm template="kotlin" version="${kotlin.deploy.version}">
+        <publish-to-npm template="kotlin" version="${kotlin.deploy.version}" tag="${kotlin.deploy.tag}">
             <copy file="${js.stdlib.output.dir}/kotlin.js" todir="${package_deploy_dir}" failonerror="true" />
             <copy file="${js.stdlib.output.dir}/kotlin.meta.js" todir="${package_deploy_dir}" failonerror="true" />
         </publish-to-npm>
     </target>
 
     <target name="publish-kotlin-compiler-to-npm">
-        <publish-to-npm template="kotlin-compiler" version="${kotlin.compiler.deploy.version}">
+        <publish-to-npm template="kotlin-compiler" version="${kotlin.deploy.version}" tag="${kotlin.deploy.tag}">
+            <copy todir="${package_deploy_dir}" failonerror="true" >
+                <fileset dir="${output}/kotlinc" />
+            </copy>
+            <chmod perm="ugo+rx" dir="dist/deploy_to_npm/kotlin-compiler/bin" includes="*" />
         </publish-to-npm>
     </target>
 
@@ -124,7 +131,7 @@
 
     <target name="run-nodejs-tests" description="Run JS backend tests in node.js" depends="download-nodejs-and-npm">
         <npm command="install" dir="js/js.translator/testData" />
-        <npm command="run" dir="js/js.translator/testData">
+        <npm command="run" dir="js/js.translator/testData" failonerror="false">
             <arg value="test"/>
         </npm>
     </target>

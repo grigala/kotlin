@@ -27,6 +27,7 @@ import org.jetbrains.kotlin.incremental.components.LookupLocation
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.FqNameUnsafe
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.DescriptorUtils.getContainingClass
 import org.jetbrains.kotlin.resolve.constants.EnumValue
@@ -213,10 +214,10 @@ fun Annotated.isDocumentedAnnotation(): Boolean =
         annotations.findAnnotation(KotlinBuiltIns.FQ_NAMES.mustBeDocumented) != null
 
 fun Annotated.getAnnotationRetention(): KotlinRetention? {
-    val annotationEntryDescriptor = annotations.findAnnotation(KotlinBuiltIns.FQ_NAMES.retention) ?: return null
-    val retentionArgumentValue = annotationEntryDescriptor.allValueArguments.entries.firstOrNull {
-        it.key.name.asString() == "value"
-    }?.value as? EnumValue ?: return null
+    val retentionArgumentValue = annotations.findAnnotation(KotlinBuiltIns.FQ_NAMES.retention)
+                                         ?.allValueArguments
+                                         ?.get(Name.identifier("value"))
+                                         as? EnumValue ?: return null
     return KotlinRetention.valueOf(retentionArgumentValue.value.name.asString())
 }
 
@@ -413,6 +414,8 @@ fun ClassDescriptor.isSubclassOf(superclass: ClassDescriptor): Boolean = Descrip
 
 val AnnotationDescriptor.annotationClass: ClassDescriptor?
     get() = type.constructor.declarationDescriptor as? ClassDescriptor
+
+fun AnnotationDescriptor.firstArgumentValue() = allValueArguments.values.firstOrNull()?.value
 
 fun MemberDescriptor.isEffectivelyExternal(): Boolean {
     if (isExternal) return true

@@ -1090,6 +1090,21 @@ public class IrTextTestCaseGenerated extends AbstractIrTextTestCase {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/ir/irText/regressions/typeAliasCtorForGenericClass.kt");
             doTest(fileName);
         }
+
+        @TestMetadata("compiler/testData/ir/irText/regressions/newInference")
+        @TestDataPath("$PROJECT_ROOT")
+        @RunWith(JUnit3RunnerWithInners.class)
+        public static class NewInference extends AbstractIrTextTestCase {
+            public void testAllFilesPresentInNewInference() throws Exception {
+                KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/ir/irText/regressions/newInference"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+            }
+
+            @TestMetadata("fixationOrder1.kt")
+            public void testFixationOrder1() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/ir/irText/regressions/newInference/fixationOrder1.kt");
+                doTest(fileName);
+            }
+        }
     }
 
     @TestMetadata("compiler/testData/ir/irText/singletons")
@@ -1125,6 +1140,12 @@ public class IrTextTestCaseGenerated extends AbstractIrTextTestCase {
     public static class Stubs extends AbstractIrTextTestCase {
         public void testAllFilesPresentInStubs() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/ir/irText/stubs"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("builtinMap.kt")
+        public void testBuiltinMap() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/ir/irText/stubs/builtinMap.kt");
+            doTest(fileName);
         }
 
         @TestMetadata("javaEnum.kt")

@@ -50,6 +50,7 @@ import org.jetbrains.kotlin.load.java.lazy.ModuleClassResolver
 import org.jetbrains.kotlin.load.java.structure.JavaClass
 import org.jetbrains.kotlin.load.java.structure.impl.VirtualFileBoundJavaClass
 import org.jetbrains.kotlin.load.kotlin.DeserializationComponentsForJava
+import org.jetbrains.kotlin.load.kotlin.KotlinClassFinder
 import org.jetbrains.kotlin.load.kotlin.incremental.IncrementalPackageFragmentProvider
 import org.jetbrains.kotlin.load.kotlin.incremental.IncrementalPackagePartProvider
 import org.jetbrains.kotlin.modules.TargetId
@@ -130,7 +131,7 @@ object TopDownAnalyzerFacadeForJVM {
         val module = moduleContext.module
 
         val incrementalComponents = configuration.get(JVMConfigurationKeys.INCREMENTAL_COMPILATION_COMPONENTS)
-        val lookupTracker = incrementalComponents?.getLookupTracker() ?: LookupTracker.DO_NOTHING
+        val lookupTracker = configuration.get(CommonConfigurationKeys.LOOKUP_TRACKER) ?: LookupTracker.DO_NOTHING
         val targetIds = configuration.get(JVMConfigurationKeys.MODULES)?.map(::TargetId)
 
         val separateModules = !configuration.getBoolean(JVMConfigurationKeys.USE_SINGLE_MODULE)
@@ -173,8 +174,6 @@ object TopDownAnalyzerFacadeForJVM {
                     packagePartProvider(dependencyScope), moduleClassResolver, jvmTarget, languageVersionSettings, configureJavaClassFinder
             )
 
-            StorageComponentContainerContributor.getInstances(project).forEach { it.onContainerComposed(dependenciesContainer, null) }
-
             moduleClassResolver.compiledCodeResolver = dependenciesContainer.get<JavaDescriptorResolver>()
 
             dependenciesContext.setDependencies(listOfNotNull(dependenciesContext.module, optionalBuiltInsModule))
@@ -201,8 +200,6 @@ object TopDownAnalyzerFacadeForJVM {
         ).apply {
             initJvmBuiltInsForTopDownAnalysis()
             (partProvider as? IncrementalPackagePartProvider)?.deserializationConfiguration = get<DeserializationConfiguration>()
-
-            StorageComponentContainerContributor.getInstances(project).forEach { it.onContainerComposed(this, null) }
         }
 
         moduleClassResolver.sourceCodeResolver = container.get<JavaDescriptorResolver>()
@@ -212,7 +209,8 @@ object TopDownAnalyzerFacadeForJVM {
             targetIds?.mapTo(additionalProviders) { targetId ->
                 IncrementalPackageFragmentProvider(
                         files, module, storageManager, container.get<DeserializationComponentsForJava>().components,
-                        incrementalComponents.getIncrementalCache(targetId), targetId
+                        incrementalComponents.getIncrementalCache(targetId), targetId,
+                        container.get<KotlinClassFinder>()
                 )
             }
         }

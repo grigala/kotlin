@@ -16,7 +16,6 @@
 
 package org.jetbrains.kotlin.resolve.calls.tower
 
-import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind
 import org.jetbrains.kotlin.resolve.scopes.receivers.DetailedReceiver
@@ -31,20 +30,23 @@ class KnownResultProcessor<out C>(
             = if (data == TowerData.Empty) listOfNotNull(result.takeIf { it.isNotEmpty() }) else emptyList()
 }
 
-class CompositeScopeTowerProcessor<out C>(
+// use this if processors priority is important
+class PrioritizedCompositeScopeTowerProcessor<out C>(
         vararg val processors: ScopeTowerProcessor<C>
 ) : ScopeTowerProcessor<C> {
     override fun process(data: TowerData): List<Collection<C>> = processors.flatMap { it.process(data) }
 }
 
+// use this if all processors has same priority
+class SamePriorityCompositeScopeTowerProcessor<out C>(
+        private vararg val processors: SimpleScopeTowerProcessor<C>
+): SimpleScopeTowerProcessor<C> {
+    override fun simpleProcess(data: TowerData): Collection<C> = processors.flatMap { it.simpleProcess(data) }
+}
+
 internal abstract class AbstractSimpleScopeTowerProcessor<C: Candidate>(
         val candidateFactory: CandidateFactory<C>
-) : ScopeTowerProcessor<C> {
-
-    protected abstract fun simpleProcess(data: TowerData): Collection<C>
-
-    override fun process(data: TowerData): List<Collection<C>> = listOfNotNull(simpleProcess(data).takeIf { it.isNotEmpty() })
-}
+) : SimpleScopeTowerProcessor<C>
 
 private typealias CandidatesCollector =
     ScopeTowerLevel.(extensionReceiver: ReceiverValueWithSmartCastInfo?) -> Collection<CandidateWithBoundDispatchReceiver>
@@ -132,34 +134,22 @@ private class NoExplicitReceiverScopeTowerProcessor<C: Candidate>(
 
 }
 
-private fun <D : CallableDescriptor, C : Candidate> processCommonAndSyntheticMembers(
-        receiverForMember: ReceiverValueWithSmartCastInfo,
-        scopeTowerLevel: ScopeTowerLevel,
-        collectCandidates: CandidatesCollector,
-        candidateFactory: CandidateFactory<C>,
-        isExplicitReceiver: Boolean
-): List<C> {
-    val (members, syntheticExtension) =
-            scopeTowerLevel.collectCandidates(null)
-                    .filter {
-                        it.descriptor.dispatchReceiverParameter == null || it.descriptor.extensionReceiverParameter == null
-                    }.partition { !it.requiresExtensionReceiver }
-
-    return members.map {
-               candidateFactory.createCandidate(
-                       it,
-                       if (isExplicitReceiver) ExplicitReceiverKind.DISPATCH_RECEIVER else ExplicitReceiverKind.NO_EXPLICIT_RECEIVER,
-                       extensionReceiver = null
-               )
-           } +
-           syntheticExtension.map {
-               candidateFactory.createCandidate(
-                       it,
-                       if (isExplicitReceiver) ExplicitReceiverKind.EXTENSION_RECEIVER else ExplicitReceiverKind.NO_EXPLICIT_RECEIVER,
-                       extensionReceiver = receiverForMember
-               )
-           }
-}
+private fun <C : Candidate> createSimpleProcessorWithoutClassValueReceiver(
+        scopeTower: ImplicitScopeTower,
+        context: CandidateFactory<C>,
+        explicitReceiver: DetailedReceiver?,
+        collectCandidates: CandidatesCollector
+): SimpleScopeTowerProcessor<C> =
+        when (explicitReceiver) {
+            is ReceiverValueWithSmartCastInfo -> ExplicitReceiverScopeTowerProcessor(scopeTower, context, explicitReceiver, collectCandidates)
+            is QualifierReceiver -> QualifierScopeTowerProcessor(scopeTower, context, explicitReceiver, collectCandidates)
+            else -> {
+                assert(explicitReceiver == null) {
+                    "Illegal explicit receiver: $explicitReceiver(${explicitReceiver!!::class.java.simpleName})"
+                }
+                NoExplicitReceiverScopeTowerProcessor(context, collectCandidates)
+            }
+        }
 
 private fun <C : Candidate> createSimpleProcessor(
         scopeTower: ImplicitScopeTower,
@@ -168,26 +158,26 @@ private fun <C : Candidate> createSimpleProcessor(
         classValueReceiver: Boolean,
         collectCandidates: CandidatesCollector
 ) : ScopeTowerProcessor<C> {
-    if (explicitReceiver is ReceiverValueWithSmartCastInfo) {
-        return ExplicitReceiverScopeTowerProcessor(scopeTower, context, explicitReceiver, collectCandidates)
-    }
-    else if (explicitReceiver is QualifierReceiver) {
-        val qualifierProcessor = QualifierScopeTowerProcessor(scopeTower, context, explicitReceiver, collectCandidates)
-        if (!classValueReceiver) return qualifierProcessor
+    val withoutClassValueProcessor = createSimpleProcessorWithoutClassValueReceiver(scopeTower, context, explicitReceiver, collectCandidates)
 
-        // todo enum entry, object.
-        val classValue = explicitReceiver.classValueReceiverWithSmartCastInfo ?: return qualifierProcessor
-        return CompositeScopeTowerProcessor(
-                qualifierProcessor,
+    if (classValueReceiver && explicitReceiver is QualifierReceiver) {
+        val classValue = explicitReceiver.classValueReceiverWithSmartCastInfo ?: return withoutClassValueProcessor
+        return PrioritizedCompositeScopeTowerProcessor(
+                withoutClassValueProcessor,
                 ExplicitReceiverScopeTowerProcessor(scopeTower, context, classValue, collectCandidates)
         )
     }
-    else {
-        assert(explicitReceiver == null) {
-            "Illegal explicit receiver: $explicitReceiver(${explicitReceiver!!::class.java.simpleName})"
-        }
-        return NoExplicitReceiverScopeTowerProcessor(context, collectCandidates)
-    }
+    return withoutClassValueProcessor
+}
+
+fun <C : Candidate> createCallableReferenceProcessor(
+        scopeTower: ImplicitScopeTower,
+        name: Name, context: CandidateFactory<C>,
+        explicitReceiver: DetailedReceiver?
+): SimpleScopeTowerProcessor<C> {
+    val variable = createSimpleProcessorWithoutClassValueReceiver(scopeTower, context, explicitReceiver) { getVariables(name, it) }
+    val function = createSimpleProcessorWithoutClassValueReceiver(scopeTower, context, explicitReceiver) { getFunctions(name, it) }
+    return SamePriorityCompositeScopeTowerProcessor(variable, function)
 }
 
 fun <C : Candidate> createVariableProcessor(scopeTower: ImplicitScopeTower, name: Name,
@@ -196,7 +186,7 @@ fun <C : Candidate> createVariableProcessor(scopeTower: ImplicitScopeTower, name
 
 fun <C : Candidate> createVariableAndObjectProcessor(scopeTower: ImplicitScopeTower, name: Name,
                                                      context: CandidateFactory<C>, explicitReceiver: DetailedReceiver?, classValueReceiver: Boolean = true
-) = CompositeScopeTowerProcessor(
+) = PrioritizedCompositeScopeTowerProcessor(
         createVariableProcessor(scopeTower, name, context, explicitReceiver),
         createSimpleProcessor(scopeTower, context, explicitReceiver, classValueReceiver) { getObjects(name, it) }
 )
@@ -212,7 +202,7 @@ fun <С: Candidate> createFunctionProcessor(
         simpleContext: CandidateFactory<С>,
         factoryProviderForInvoke: CandidateFactoryProviderForInvoke<С>,
         explicitReceiver: DetailedReceiver?
-): CompositeScopeTowerProcessor<С> {
+): PrioritizedCompositeScopeTowerProcessor<С> {
 
     // a.foo() -- simple function call
     val simpleFunction = createSimpleFunctionProcessor(scopeTower, name, simpleContext, explicitReceiver)
@@ -225,7 +215,7 @@ fun <С: Candidate> createFunctionProcessor(
         InvokeExtensionTowerProcessor(scopeTower, name, factoryProviderForInvoke, it)
     }
 
-    return CompositeScopeTowerProcessor(simpleFunction, invokeProcessor, invokeExtensionProcessor)
+    return PrioritizedCompositeScopeTowerProcessor(simpleFunction, invokeProcessor, invokeExtensionProcessor)
 }
 
 

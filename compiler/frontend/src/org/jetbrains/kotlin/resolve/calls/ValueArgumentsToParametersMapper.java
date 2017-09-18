@@ -87,7 +87,6 @@ public class ValueArgumentsToParametersMapper {
         private final Map<Name,ValueParameterDescriptor> parameterByName;
         private Map<Name,ValueParameterDescriptor> parameterByNameInOverriddenMethods;
 
-        private final Set<ValueArgument> unmappedArguments = Sets.newHashSet();
         private final Map<ValueParameterDescriptor, VarargValueArgument> varargs = Maps.newHashMap();
         private final Set<ValueParameterDescriptor> usedParameters = Sets.newHashSet();
         private Status status = OK;
@@ -164,7 +163,6 @@ public class ValueArgumentsToParametersMapper {
                 }
                 else {
                     report(TOO_MANY_ARGUMENTS.on(argument.asElement(), candidateCall.getCandidateDescriptor()));
-                    unmappedArguments.add(argument);
                     setStatus(WEAK_ERROR);
                 }
             }
@@ -185,11 +183,11 @@ public class ValueArgumentsToParametersMapper {
 
                 KtPsiUtilKt.checkReservedYield(nameReference, candidateCall.getTrace());
                 if (nameReference != null) {
-                    if (candidate instanceof MemberDescriptor && ((MemberDescriptor) candidate).isHeader() &&
+                    if (candidate instanceof MemberDescriptor && ((MemberDescriptor) candidate).isExpect() &&
                         candidate.getContainingDeclaration() instanceof ClassDescriptor) {
-                        // We do not allow named arguments for members of header classes until we're able to use both
-                        // headers and platform definitions when compiling platform code
-                        report(NAMED_ARGUMENTS_NOT_ALLOWED.on(nameReference, HEADER_CLASS_MEMBER));
+                        // We do not allow named arguments for members of expected classes until we're able to use both
+                        // expected and actual definitions when compiling platform code
+                        report(NAMED_ARGUMENTS_NOT_ALLOWED.on(nameReference, EXPECTED_CLASS_MEMBER));
                     }
                     else if (!candidate.hasStableParameterNames()) {
                         report(NAMED_ARGUMENTS_NOT_ALLOWED.on(
@@ -218,7 +216,6 @@ public class ValueArgumentsToParametersMapper {
                     if (nameReference != null) {
                         report(NAMED_PARAMETER_NOT_FOUND.on(nameReference, nameReference));
                     }
-                    unmappedArguments.add(argument);
                     setStatus(WEAK_ERROR);
                 }
                 else {
@@ -229,7 +226,6 @@ public class ValueArgumentsToParametersMapper {
                         if (nameReference != null) {
                             report(ARGUMENT_PASSED_TWICE.on(nameReference));
                         }
-                        unmappedArguments.add(argument);
                         setStatus(WEAK_ERROR);
                     }
                     else {
@@ -244,7 +240,6 @@ public class ValueArgumentsToParametersMapper {
             public ProcessorState processPositionedArgument(@NotNull ValueArgument argument) {
                 report(MIXING_NAMED_AND_POSITIONED_ARGUMENTS.on(argument.asElement()));
                 setStatus(WEAK_ERROR);
-                unmappedArguments.add(argument);
 
                 return positionedThenNamed;
             }

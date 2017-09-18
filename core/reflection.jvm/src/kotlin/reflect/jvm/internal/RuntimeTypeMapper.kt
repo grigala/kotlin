@@ -105,18 +105,14 @@ internal sealed class JvmPropertySignature {
             val nameResolver: NameResolver,
             val typeTable: TypeTable
     ) : JvmPropertySignature() {
-        private val string: String
-
-        init {
-            if (signature.hasGetter()) {
-                string = nameResolver.getString(signature.getter.name) + nameResolver.getString(signature.getter.desc)
-            }
-            else {
-                val (name, desc) =
-                        JvmProtoBufUtil.getJvmFieldSignature(proto, nameResolver, typeTable) ?:
-                        throw KotlinReflectionInternalError("No field signature for property: $descriptor")
-                string = JvmAbi.getterName(name) + getManglingSuffix() + "()" + desc
-            }
+        private val string: String = if (signature.hasGetter()) {
+            nameResolver.getString(signature.getter.name) + nameResolver.getString(signature.getter.desc)
+        }
+        else {
+            val (name, desc) =
+                    JvmProtoBufUtil.getJvmFieldSignature(proto, nameResolver, typeTable) ?:
+                    throw KotlinReflectionInternalError("No field signature for property: $descriptor")
+            JvmAbi.getterName(name) + getManglingSuffix() + "()" + desc
         }
 
         private fun getManglingSuffix(): String {
@@ -194,11 +190,11 @@ internal object RuntimeTypeMapper {
             }
             is JavaClassConstructorDescriptor -> {
                 val element = (function.source as? JavaSourceElement)?.javaElement
-                when {
+                return when {
                     element is ReflectJavaConstructor ->
-                        return JvmFunctionSignature.JavaConstructor(element.member)
+                        JvmFunctionSignature.JavaConstructor(element.member)
                     element is ReflectJavaClass && element.isAnnotationType ->
-                        return JvmFunctionSignature.FakeJavaAnnotationConstructor(element.element)
+                        JvmFunctionSignature.FakeJavaAnnotationConstructor(element.element)
                     else -> throw KotlinReflectionInternalError("Incorrect resolution sequence for Java constructor $function ($element)")
                 }
             }
@@ -208,29 +204,33 @@ internal object RuntimeTypeMapper {
 
     fun mapPropertySignature(possiblyOverriddenProperty: PropertyDescriptor): JvmPropertySignature {
         val property = DescriptorUtils.unwrapFakeOverride(possiblyOverriddenProperty).original
-        if (property is DeserializedPropertyDescriptor) {
-            val proto = property.proto
-            if (!proto.hasExtension(JvmProtoBuf.propertySignature)) {
-                // If this property has no JVM signature, it must be from built-ins
-                throw KotlinReflectionInternalError("Reflection on built-in Kotlin types is not yet fully supported. " +
-                                                    "No metadata found for $property")
-            }
-            return JvmPropertySignature.KotlinProperty(
-                    property, proto, proto.getExtension(JvmProtoBuf.propertySignature), property.nameResolver, property.typeTable
-            )
-        }
-        else if (property is JavaPropertyDescriptor) {
-            val element = (property.source as? JavaSourceElement)?.javaElement
-            when (element) {
-                is ReflectJavaField -> return JvmPropertySignature.JavaField(element.member)
-                is ReflectJavaMethod -> return JvmPropertySignature.JavaMethodProperty(
-                        element.member,
-                        ((property.setter?.source as? JavaSourceElement)?.javaElement as? ReflectJavaMethod)?.member
+        return when (property) {
+            is DeserializedPropertyDescriptor -> {
+                val proto = property.proto
+                if (!proto.hasExtension(JvmProtoBuf.propertySignature)) {
+                    // If this property has no JVM signature, it must be from built-ins
+                    throw KotlinReflectionInternalError("Reflection on built-in Kotlin types is not yet fully supported. " +
+                                                        "No metadata found for $property")
+                }
+                JvmPropertySignature.KotlinProperty(
+                        property, proto, proto.getExtension(JvmProtoBuf.propertySignature), property.nameResolver, property.typeTable
                 )
-                else -> throw KotlinReflectionInternalError("Incorrect resolution sequence for Java field $property (source = $element)")
+            }
+            is JavaPropertyDescriptor -> {
+                val element = (property.source as? JavaSourceElement)?.javaElement
+                when (element) {
+                    is ReflectJavaField -> JvmPropertySignature.JavaField(element.member)
+                    is ReflectJavaMethod -> JvmPropertySignature.JavaMethodProperty(
+                            element.member,
+                            ((property.setter?.source as? JavaSourceElement)?.javaElement as? ReflectJavaMethod)?.member
+                    )
+                    else -> throw KotlinReflectionInternalError("Incorrect resolution sequence for Java field $property (source = $element)")
+                }
+            }
+            else -> {
+                throw KotlinReflectionInternalError("Unknown origin of $property (${property.javaClass})")
             }
         }
-        else throw KotlinReflectionInternalError("Unknown origin of $property (${property.javaClass})")
     }
 
     private fun mapIntrinsicFunctionSignature(function: FunctionDescriptor): JvmFunctionSignature? {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.impl.TypeAliasConstructorDescriptor
 import org.jetbrains.kotlin.diagnostics.rendering.TabledDescriptorRenderer.newTable
 import org.jetbrains.kotlin.diagnostics.rendering.TabledDescriptorRenderer.newText
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.psi.KtNamedDeclaration
@@ -92,27 +93,33 @@ object Renderers {
     }
 
     @JvmField val DECLARATION_NAME_WITH_KIND = Renderer<DeclarationDescriptor> {
-        val declarationKindWithSpace = when (it) {
-            is PackageFragmentDescriptor -> "package "
-            is ClassDescriptor -> "${it.renderKind()} "
-            is TypeAliasDescriptor -> "typealias "
-            is ConstructorDescriptor -> "constructor "
-            is TypeAliasConstructorDescriptor -> "typealias constructor "
-            is PropertyGetterDescriptor -> "property getter "
-            is PropertySetterDescriptor -> "property setter "
-            is FunctionDescriptor -> "function "
-            is PropertyDescriptor -> "property "
+        val name = it.name.asString()
+        when (it) {
+            is PackageFragmentDescriptor -> "package '$name'"
+            is ClassDescriptor -> "${it.renderKind()} '$name'"
+            is TypeAliasDescriptor -> "typealias '$name'"
+            is TypeAliasConstructorDescriptor -> "constructor of '${it.typeAliasDescriptor.name.asString()}'"
+            is ConstructorDescriptor -> "constructor of '${it.constructedClass.name.asString()}'"
+            is PropertyGetterDescriptor -> "getter of property '${it.correspondingProperty.name.asString()}'"
+            is PropertySetterDescriptor -> "setter of property '${it.correspondingProperty.name.asString()}'"
+            is FunctionDescriptor -> "function '$name'"
+            is PropertyDescriptor -> "property '$name'"
             else -> throw AssertionError("Unexpected declaration kind: $it")
         }
-        "$declarationKindWithSpace'${it.name.asString()}'"
     }
 
-    @JvmField val NAME_OF_PARENT_OR_FILE = Renderer<DeclarationDescriptor> {
+    @JvmField val NAME_OF_CONTAINING_DECLARATION_OR_FILE = Renderer<DeclarationDescriptor> {
         if (DescriptorUtils.isTopLevelDeclaration(it) && it is DeclarationDescriptorWithVisibility && it.visibility == Visibilities.PRIVATE) {
             "file"
         }
         else {
-            "'" + it.containingDeclaration!!.name + "'"
+            val containingDeclaration = it.containingDeclaration
+            if (containingDeclaration is PackageFragmentDescriptor) {
+                containingDeclaration.fqName.asString().wrapIntoQuotes()
+            }
+            else {
+                containingDeclaration!!.name.asString().wrapIntoQuotes()
+            }
         }
     }
 
@@ -122,7 +129,7 @@ object Renderers {
 
     @JvmField val RENDER_CLASS_OR_OBJECT = Renderer {
         classOrObject: KtClassOrObject ->
-        val name = if (classOrObject.name != null) " '" + classOrObject.name + "'" else ""
+        val name = classOrObject.name?.let { " ${it.wrapIntoQuotes()}" } ?: ""
         if (classOrObject is KtClass) "Class" + name else "Object" + name
     }
 
@@ -413,13 +420,13 @@ object Renderers {
         }
 
         val explanation =
-                "Type parameter has an upper bound '" + result.typeRenderer.render(upperBound, RenderingContext.of(upperBound)) + "'" +
+                "Type parameter has an upper bound ${result.typeRenderer.render(upperBound, RenderingContext.of(upperBound)).wrapIntoQuotes()}" +
                 " that cannot be satisfied capturing 'in' projection"
 
         result.text(newText().normal(
-                "'" + typeParameter.name + "'" +
+                typeParameter.name.wrapIntoQuotes() +
                 " cannot capture " +
-                "'" + capturedTypeConstructor.typeProjection + "'. " +
+                "${capturedTypeConstructor.typeProjection.toString().wrapIntoQuotes()}. " +
                 explanation
         ))
         return result
@@ -458,7 +465,11 @@ object Renderers {
 
     private fun renderTypeBounds(typeBounds: TypeBounds, short: Boolean): String {
         val renderBound = { bound: Bound ->
-            val arrow = if (bound.kind == LOWER_BOUND) ">: " else if (bound.kind == UPPER_BOUND) "<: " else ":= "
+            val arrow = when (bound.kind) {
+                LOWER_BOUND -> ">: "
+                UPPER_BOUND -> "<: "
+                else -> ":= "
+            }
             val renderer = if (short) DescriptorRenderer.SHORT_NAMES_IN_TYPES else DescriptorRenderer.FQ_NAMES_IN_TYPES
             val renderedBound = arrow + renderer.renderType(bound.constrainingType) +  if (!bound.isProper) "*" else ""
             if (short) renderedBound else renderedBound + '(' + bound.position + ')'
@@ -492,6 +503,9 @@ object Renderers {
         append("(").append(renderTypes(inferenceErrorData.valueArgumentsTypes, context)).append(")")
     }
 
+    private fun String.wrapIntoQuotes(): String = "'$this'"
+    private fun Name.wrapIntoQuotes(): String = "'${this.asString()}'"
+
     private val WHEN_MISSING_LIMIT = 7
 
     @JvmField val RENDER_WHEN_MISSING_CASES = Renderer<List<WhenMissingCase>> {
@@ -507,6 +521,7 @@ object Renderers {
 
     @JvmField val FQ_NAMES_IN_TYPES = DescriptorRenderer.FQ_NAMES_IN_TYPES.asRenderer()
     @JvmField val COMPACT = DescriptorRenderer.COMPACT.asRenderer()
+    @JvmField val COMPACT_WITHOUT_SUPERTYPES = DescriptorRenderer.COMPACT_WITHOUT_SUPERTYPES.asRenderer()
     @JvmField val WITHOUT_MODIFIERS = DescriptorRenderer.withOptions {
         modifiers = emptySet()
     }.asRenderer()

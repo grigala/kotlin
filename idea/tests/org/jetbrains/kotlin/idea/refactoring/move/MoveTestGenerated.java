@@ -228,6 +228,12 @@ public class MoveTestGenerated extends AbstractMoveTest {
         doTest(fileName);
     }
 
+    @TestMetadata("kotlin/changePackage/headerClasses/headerClasses.test")
+    public void testKotlin_changePackage_headerClasses_HeaderClasses() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/refactoring/move/kotlin/changePackage/headerClasses/headerClasses.test");
+        doTest(fileName);
+    }
+
     @TestMetadata("kotlin/moveDirectory/moveDirectoryWithPackageDirectiveChange/moveDirectoryWithPackageDirectiveChange.test")
     public void testKotlin_moveDirectory_moveDirectoryWithPackageDirectiveChange_MoveDirectoryWithPackageDirectiveChange() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("idea/testData/refactoring/move/kotlin/moveDirectory/moveDirectoryWithPackageDirectiveChange/moveDirectoryWithPackageDirectiveChange.test");
@@ -501,6 +507,12 @@ public class MoveTestGenerated extends AbstractMoveTest {
     @TestMetadata("kotlin/moveTopLevelDeclarations/implicitInvokeCalls/differentTarget/differentTarget.test")
     public void testKotlin_moveTopLevelDeclarations_implicitInvokeCalls_differentTarget_DifferentTarget() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("idea/testData/refactoring/move/kotlin/moveTopLevelDeclarations/implicitInvokeCalls/differentTarget/differentTarget.test");
+        doTest(fileName);
+    }
+
+    @TestMetadata("kotlin/moveTopLevelDeclarations/misc/classWithInitializer/delegateInObject.test")
+    public void testKotlin_moveTopLevelDeclarations_misc_classWithInitializer_DelegateInObject() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/refactoring/move/kotlin/moveTopLevelDeclarations/misc/classWithInitializer/delegateInObject.test");
         doTest(fileName);
     }
 

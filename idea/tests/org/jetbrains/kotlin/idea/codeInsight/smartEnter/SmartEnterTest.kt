@@ -986,13 +986,11 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
 
     fun testInLambda2() = doFunTest(
             """
-            some {
-                p<caret> ->
+            some { p<caret> ->
             }
             """,
             """
-            some {
-                p ->
+            some { p ->
                 <caret>
             }
             """
@@ -1000,13 +998,11 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
 
     fun testInLambda3() = doFunTest(
             """
-            some {
-                (<caret>p: Int) : Int ->
+            some { (<caret>p: Int) : Int ->
             }
             """,
             """
-            some {
-                (p: Int) : Int ->
+            some { (p: Int) : Int ->
                 <caret>
             }
             """
@@ -1229,7 +1225,7 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
             ,
             """
             try {
-            } catch(e: Exception) {
+            } catch (e: Exception) {
                 <caret>
             }${" "}
             """
@@ -1243,7 +1239,7 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
             ,
             """
             try {
-            } catch(<caret>) {
+            } catch (<caret>) {
             }
             """
     )
@@ -1256,7 +1252,7 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
             ,
             """
             try {
-            } catch(<caret>) {
+            } catch (<caret>) {
             }
             """
     )
@@ -1269,7 +1265,7 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
             ,
             """
             try {
-            } catch(<caret>) {
+            } catch (<caret>) {
             }
             """
     )
@@ -1282,7 +1278,7 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
             ,
             """
             try {
-            } catch(e: Exception) {
+            } catch (e: Exception) {
                 <caret>
             }
             """
@@ -1297,7 +1293,7 @@ class SmartEnterTest : KotlinLightCodeInsightFixtureTestCase() {
             ,
             """
             try {
-            } catch(e: Exception) {
+            } catch (e: Exception) {
             } finally {
                 <caret>
             }

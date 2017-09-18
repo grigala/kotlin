@@ -30,7 +30,7 @@ import org.jetbrains.kotlin.name.Name
 data class IsKotlinBinary(val isKotlinBinary: Boolean, val timestamp: Long)
 
 val KOTLIN_COMPILED_FILE_ATTRIBUTE: String = "kotlin-compiled-file".apply {
-    ServiceManager.getService(FileAttributeService::class.java).register(this, 1)
+    ServiceManager.getService(FileAttributeService::class.java)?.register(this, 1)
 }
 
 val KEY = Key.create<IsKotlinBinary>(KOTLIN_COMPILED_FILE_ATTRIBUTE)
@@ -49,12 +49,17 @@ fun isKotlinWithCompatibleAbiVersion(file: VirtualFile): Boolean {
  * Checks if this file is a compiled "internal" Kotlin class, i.e. a Kotlin class (not necessarily ABI-compatible with the current plugin)
  * which should NOT be decompiled (and, as a result, shown under the library in the Project view, be searchable via Find class, etc.)
  */
-fun isKotlinInternalCompiledFile(file: VirtualFile, fileContent: ByteArray): Boolean {
+fun isKotlinInternalCompiledFile(file: VirtualFile, fileContent: ByteArray? = null): Boolean {
     if (!IDEKotlinBinaryClassCache.isKotlinJvmCompiledFile(file, fileContent)) {
         return false
     }
 
-    val innerClass = ClassFileViewProvider.isInnerClass(file, fileContent)
+    val innerClass =
+            if (fileContent == null)
+                ClassFileViewProvider.isInnerClass(file)
+            else
+                ClassFileViewProvider.isInnerClass(file, fileContent)
+
     if (innerClass) {
         return true
     }

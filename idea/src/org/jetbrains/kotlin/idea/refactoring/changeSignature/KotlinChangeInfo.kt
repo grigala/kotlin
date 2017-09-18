@@ -122,6 +122,11 @@ open class KotlinChangeInfo(
 
     fun getNewParametersCount(): Int = newParameters.size
 
+    fun hasAppendedParametersOnly(): Boolean {
+        val oldParamCount = originalBaseFunctionDescriptor.valueParameters.size
+        return newParameters.withIndex().all { (i, p) -> if (i < oldParamCount) p.oldIndex == i else p.isNewParameter }
+    }
+
     override fun getNewParameters(): Array<KotlinParameterInfo> = newParameters.toTypedArray()
 
     fun getNonReceiverParametersCount(): Int = newParameters.size - (if (receiverParameterInfo != null) 1 else 0)
@@ -288,9 +293,9 @@ open class KotlinChangeInfo(
             return signatureParameters[0].getDeclarationSignature(0, inheritedCallable).text
         }
 
-        return signatureParameters.indices
-                .map { i -> signatureParameters[i].getDeclarationSignature(i, inheritedCallable).text }
-                .joinToString(separator = ", ")
+        return signatureParameters.indices.joinToString(separator = ", ") { i ->
+            signatureParameters[i].getDeclarationSignature(i, inheritedCallable).text
+        }
     }
 
     fun renderReceiverType(inheritedCallable: KotlinCallableDefinitionUsage<*>): String? {

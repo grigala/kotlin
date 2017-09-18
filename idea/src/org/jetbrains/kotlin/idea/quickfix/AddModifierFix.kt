@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.lexer.KtModifierKeywordToken
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.lexer.KtTokens.*
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.containingClass
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
@@ -46,7 +47,7 @@ open class AddModifierFix(
 
     override fun getText(): String {
         val element = element ?: return ""
-        if (modifier in modalityModifiers) {
+        if (modifier in modalityModifiers || modifier in KtTokens.VISIBILITY_MODIFIERS) {
             return "Make ${getElementName(element)} ${modifier.value}"
         }
         return "Add '${modifier.value}' modifier"
@@ -56,6 +57,14 @@ open class AddModifierFix(
 
     override fun invoke(project: Project, editor: Editor?, file: KtFile) {
         element?.addModifier(modifier)
+
+        if (modifier == KtTokens.ABSTRACT_KEYWORD && (element is KtProperty || element is KtNamedFunction)) {
+            element?.containingClass()?.run {
+                if (!hasModifier(KtTokens.ABSTRACT_KEYWORD) && !hasModifier(KtTokens.SEALED_KEYWORD)) {
+                    addModifier(KtTokens.ABSTRACT_KEYWORD)
+                }
+            }
+        }
     }
 
     override fun isAvailable(project: Project, editor: Editor?, file: PsiFile): Boolean {
@@ -91,21 +100,24 @@ open class AddModifierFix(
             return object : KotlinSingleIntentionActionFactory() {
                 public override fun createAction(diagnostic: Diagnostic): IntentionAction? {
                     val modifierListOwner = QuickFixUtil.getParentElementOfType(diagnostic, modifierOwnerClass) ?: return null
-
-                    if (modifier == KtTokens.ABSTRACT_KEYWORD) {
-                        if (modifierListOwner is KtObjectDeclaration) return null
-                        if (modifierListOwner is KtEnumEntry) return null
-                        if (modifierListOwner is KtDeclaration && modifierListOwner !is KtClass) {
-                            val parentClassOrObject = modifierListOwner.containingClassOrObject ?: return null
-                            if (parentClassOrObject is KtObjectDeclaration) return null
-                            if (parentClassOrObject is KtEnumEntry) return null
-                        }
-                    }
-
-                    return AddModifierFix(modifierListOwner, modifier)
+                    return createIfApplicable(modifierListOwner, modifier)
                 }
             }
         }
+
+        fun createIfApplicable(modifierListOwner: KtModifierListOwner, modifier: KtModifierKeywordToken): AddModifierFix? {
+            if (modifier == ABSTRACT_KEYWORD || modifier == OPEN_KEYWORD) {
+                if (modifierListOwner is KtObjectDeclaration) return null
+                if (modifierListOwner is KtEnumEntry) return null
+                if (modifierListOwner is KtDeclaration && modifierListOwner !is KtClass) {
+                    val parentClassOrObject = modifierListOwner.containingClassOrObject ?: return null
+                    if (parentClassOrObject is KtObjectDeclaration) return null
+                    if (parentClassOrObject is KtEnumEntry) return null
+                }
+            }
+            return AddModifierFix(modifierListOwner, modifier)
+        }
+
     }
 
     object MakeClassOpenFactory : KotlinSingleIntentionActionFactory() {

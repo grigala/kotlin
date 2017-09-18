@@ -16,9 +16,9 @@
 
 package org.jetbrains.kotlin.codegen.optimization
 
+import org.jetbrains.kotlin.codegen.inline.insnText
 import org.jetbrains.kotlin.codegen.optimization.common.OptimizationBasicInterpreter
 import org.jetbrains.kotlin.codegen.optimization.common.StrictBasicValue
-import org.jetbrains.kotlin.codegen.optimization.common.insnText
 import org.jetbrains.kotlin.codegen.optimization.fixStack.peek
 import org.jetbrains.kotlin.codegen.optimization.fixStack.top
 import org.jetbrains.kotlin.codegen.optimization.transformer.MethodTransformer
@@ -113,6 +113,7 @@ class ConstantConditionEliminationMethodTransformer : MethodTransformer() {
             actions.add {
                 methodNode.instructions.run {
                     insertBefore(insn, InsnNode(Opcodes.POP))
+
                     insertBefore(insn, InsnNode(Opcodes.POP))
                     if (constCondition)
                         set(insn, JumpInsnNode(Opcodes.GOTO, insn.label))

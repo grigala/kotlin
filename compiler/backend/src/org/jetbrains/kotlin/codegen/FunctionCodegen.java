@@ -204,46 +204,6 @@ public class FunctionCodegen {
             return;
         }
 
-        boolean isOpenSuspendInClass =
-                functionDescriptor.isSuspend() &&
-                functionDescriptor.getModality() != Modality.ABSTRACT && isOverridable(functionDescriptor) &&
-                !isInterface(functionDescriptor.getContainingDeclaration()) &&
-                origin.getOriginKind() != JvmDeclarationOriginKind.CLASS_MEMBER_DELEGATION_TO_DEFAULT_IMPL;
-
-        if (isOpenSuspendInClass) {
-            MethodVisitor mv =
-                    v.newMethod(origin,
-                                flags,
-                                asmMethod.getName(),
-                                asmMethod.getDescriptor(),
-                                jvmSignature.getGenericsSignature(),
-                                getThrownExceptions(functionDescriptor, typeMapper)
-                    );
-
-            mv.visitCode();
-            mv.visitVarInsn(Opcodes.ALOAD, 0);
-            int index = 1;
-            for (Type type : asmMethod.getArgumentTypes()) {
-                mv.visitVarInsn(type.getOpcode(Opcodes.ILOAD), index);
-                index += type.getSize();
-            }
-
-            asmMethod = CoroutineCodegenUtilKt.getImplForOpenMethod(asmMethod, v.getThisName());
-
-            mv.visitMethodInsn(
-                    Opcodes.INVOKESTATIC,
-                    v.getThisName(), asmMethod.getName(), asmMethod.getDescriptor(),
-                    false
-            );
-
-            mv.visitInsn(Opcodes.ARETURN);
-            mv.visitEnd();
-
-            flags |= Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
-            flags &= ~getVisibilityAccessFlag(functionDescriptor);
-            flags |= AsmUtil.NO_FLAG_PACKAGE_PRIVATE;
-        }
-
         MethodVisitor mv =
                 strategy.wrapMethodVisitor(
                         v.newMethod(origin,
@@ -279,6 +239,79 @@ public class FunctionCodegen {
             parentBodyCodegen.addAdditionalTask(new JvmStaticInCompanionObjectGenerator(functionDescriptor, origin, state, parentBodyCodegen));
         }
 
+        boolean isOpenSuspendInClass =
+                functionDescriptor.isSuspend() &&
+                functionDescriptor.getModality() != Modality.ABSTRACT && isOverridable(functionDescriptor) &&
+                !isInterface(functionDescriptor.getContainingDeclaration()) &&
+                origin.getOriginKind() != JvmDeclarationOriginKind.CLASS_MEMBER_DELEGATION_TO_DEFAULT_IMPL;
+
+        if (isOpenSuspendInClass) {
+            mv.visitCode();
+            mv.visitVarInsn(Opcodes.ALOAD, 0);
+            int index = 1;
+            for (Type type : asmMethod.getArgumentTypes()) {
+                mv.visitVarInsn(type.getOpcode(Opcodes.ILOAD), index);
+                index += type.getSize();
+            }
+
+            Method asmMethodForOpenSuspendImpl = CoroutineCodegenUtilKt.getImplForOpenMethod(asmMethod, v.getThisName());
+            // remove generic signature as it's unnecessary for synthetic methods
+            JvmMethodSignature jvmSignatureForOpenSuspendImpl =
+                    new JvmMethodGenericSignature(
+                            asmMethodForOpenSuspendImpl,
+                            jvmSignature.getValueParameters(),
+                            null
+                    );
+
+            mv.visitMethodInsn(
+                    Opcodes.INVOKESTATIC,
+                    v.getThisName(), asmMethodForOpenSuspendImpl.getName(), asmMethodForOpenSuspendImpl.getDescriptor(),
+                    false
+            );
+
+            mv.visitInsn(Opcodes.ARETURN);
+            mv.visitEnd();
+
+            int flagsForOpenSuspendImpl = flags;
+            flagsForOpenSuspendImpl |= Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
+            flagsForOpenSuspendImpl &= ~getVisibilityAccessFlag(functionDescriptor);
+            flagsForOpenSuspendImpl |= AsmUtil.NO_FLAG_PACKAGE_PRIVATE;
+
+            MethodVisitor mvForOpenSuspendImpl = strategy.wrapMethodVisitor(
+                    v.newMethod(origin,
+                                flagsForOpenSuspendImpl,
+                                asmMethodForOpenSuspendImpl.getName(),
+                                asmMethodForOpenSuspendImpl.getDescriptor(),
+                                null,
+                                getThrownExceptions(functionDescriptor, typeMapper)
+                    ),
+                    flagsForOpenSuspendImpl, asmMethodForOpenSuspendImpl.getName(),
+                    asmMethodForOpenSuspendImpl.getDescriptor()
+            );
+
+            generateMethodBody(
+                    origin, functionDescriptor, methodContext, strategy, mvForOpenSuspendImpl, jvmSignatureForOpenSuspendImpl,
+                    staticInCompanionObject
+            );
+        }
+        else {
+            generateMethodBody(
+                    origin, functionDescriptor, methodContext, strategy, mv, jvmSignature, staticInCompanionObject
+            );
+        }
+
+    }
+
+    private void generateMethodBody(
+            @NotNull JvmDeclarationOrigin origin,
+            @NotNull FunctionDescriptor functionDescriptor,
+            @NotNull MethodContext methodContext,
+            @NotNull FunctionGenerationStrategy strategy,
+            @NotNull MethodVisitor mv,
+            @NotNull JvmMethodSignature jvmSignature,
+            boolean staticInCompanionObject
+    ) {
+        OwnerKind contextKind = methodContext.getContextKind();
         if (!state.getClassBuilderMode().generateBodies || isAbstractMethod(functionDescriptor, contextKind, state)) {
             generateLocalVariableTable(
                     mv,
@@ -588,8 +621,31 @@ public class FunctionCodegen {
             @NotNull KotlinTypeMapper typeMapper,
             int shiftForDestructuringVariables
     ) {
-        generateLocalVariablesForParameters(mv, jvmMethodSignature, thisType, methodBegin, methodEnd,
-                                            functionDescriptor.getValueParameters(),
+        if (functionDescriptor.isSuspend()) {
+            FunctionDescriptor unwrapped = CoroutineCodegenUtilKt.unwrapInitialDescriptorForSuspendFunction(
+                    functionDescriptor
+            );
+
+            if (unwrapped != functionDescriptor) {
+                generateLocalVariableTable(
+                        mv,
+                        new JvmMethodSignature(
+                               jvmMethodSignature.getAsmMethod(),
+                               jvmMethodSignature.getValueParameters().subList(
+                                       0,
+                                       jvmMethodSignature.getValueParameters().size() - 1
+                               )
+                        ),
+                        unwrapped,
+                        thisType, methodBegin, methodEnd, ownerKind, typeMapper, shiftForDestructuringVariables
+                );
+                return;
+            }
+        }
+
+        generateLocalVariablesForParameters(mv,
+                                            jvmMethodSignature,
+                                            thisType, methodBegin, methodEnd, functionDescriptor.getValueParameters(),
                                             AsmUtil.isStaticMethod(ownerKind, functionDescriptor), typeMapper, shiftForDestructuringVariables
         );
     }
@@ -779,7 +835,9 @@ public class FunctionCodegen {
         }
     }
 
-    private static String renderByteCodeIfAvailable(MethodVisitor mv) {
+    @SuppressWarnings("WeakerAccess") // Useful in debug
+    @Nullable
+    public static String renderByteCodeIfAvailable(@NotNull MethodVisitor mv) {
         String bytecode = null;
 
         if (mv instanceof TransformationMethodVisitor) {
@@ -995,12 +1053,19 @@ public class FunctionCodegen {
             capturedArgumentsCount++;
         }
 
-        int maskIndex = 0;
         List<ValueParameterDescriptor> valueParameters = functionDescriptor.getValueParameters();
-        for (int index = 0; index < valueParameters.size(); index++) {
+        assert valueParameters.size() > 0 : "Expecting value parameters to generate default function " + functionDescriptor;
+        int firstMaskIndex = frameMap.enterTemp(Type.INT_TYPE);
+        for (int index = 1; index < valueParameters.size(); index++) {
             if (index % Integer.SIZE == 0) {
-                maskIndex = frameMap.enterTemp(Type.INT_TYPE);
+                frameMap.enterTemp(Type.INT_TYPE);
             }
+        }
+        //default handler or constructor marker
+        frameMap.enterTemp(AsmTypes.OBJECT_TYPE);
+
+        for (int index = 0; index < valueParameters.size(); index++) {
+            int maskIndex = firstMaskIndex + index / Integer.SIZE;
             ValueParameterDescriptor parameterDescriptor = valueParameters.get(index);
             Type type = mappedParameters.get(capturedArgumentsCount + index).getAsmType();
 

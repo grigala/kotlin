@@ -29,7 +29,7 @@ import com.intellij.util.containers.ConcurrentWeakFactoryMap
 import com.intellij.util.containers.ContainerUtil
 import com.sun.jdi.Location
 import com.sun.jdi.ReferenceType
-import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil
+import org.jetbrains.kotlin.codegen.inline.API
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches
 import org.jetbrains.kotlin.idea.refactoring.getLineCount
@@ -146,7 +146,7 @@ private fun readClassFileImpl(project: Project,
     fun readFromOutput(isForTestClasses: Boolean): ByteArray? {
         if (!ProjectRootsUtil.isProjectSourceFile(project, file)) return null
 
-        val module = ProjectFileIndex.SERVICE.getInstance(project).getModuleForFile(file)
+        val module = ProjectFileIndex.SERVICE.getInstance(project).getModuleForFile(file) ?: return null
         val outputDir = CompilerPaths.getModuleOutputDirectory(module, /*forTests = */ isForTestClasses) ?: return null
 
         val className = fqNameWithInners.asString().replace('.', '$')
@@ -199,7 +199,7 @@ private fun findClassFileByPath(packageName: String, className: String, outputDi
 private fun readLineNumberTableMapping(bytes: ByteArray): Map<BytecodeMethodKey, Map<String, Set<Int>>> {
     val lineNumberMapping = HashMap<BytecodeMethodKey, Map<String, Set<Int>>>()
 
-    ClassReader(bytes).accept(object : ClassVisitor(InlineCodegenUtil.API) {
+    ClassReader(bytes).accept(object : ClassVisitor(API) {
         override fun visitMethod(access: Int, name: String?, desc: String?, signature: String?, exceptions: Array<out String>?): MethodVisitor? {
             if (name == null || desc == null) {
                 return null
@@ -269,9 +269,8 @@ internal fun getLocationsOfInlinedLine(type: ReferenceType, position: SourcePosi
     }
 
     val lines = inlinedLinesNumbers(line + 1, position.file.name, FqName(type.name()), type.sourceName(), project, sourceSearchScope)
-    val inlineLocations = lines.flatMap { type.locationsOfLine(it) }
 
-    return inlineLocations
+    return lines.flatMap { type.locationsOfLine(it) }
 }
 
 fun isInCrossinlineArgument(ktElement: KtElement): Boolean {
@@ -313,13 +312,11 @@ private fun inlinedLinesNumbers(
     val mappingsToInlinedFile = smap.fileMappings.filter { it.name == inlineFileName }
     val mappingIntervals = mappingsToInlinedFile.flatMap { it.lineMappings }
 
-    val mappedLines = mappingIntervals.asSequence().
+    return mappingIntervals.asSequence().
             filter { rangeMapping -> rangeMapping.hasMappingForSource(inlineLineNumber) }.
             map { rangeMapping -> rangeMapping.mapSourceToDest(inlineLineNumber) }.
             filter { line -> line != -1 }.
             toList()
-
-    return mappedLines
 }
 
 @Volatile var emulateDexDebugInTests: Boolean = false

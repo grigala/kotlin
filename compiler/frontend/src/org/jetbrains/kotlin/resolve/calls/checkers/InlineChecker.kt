@@ -51,7 +51,7 @@ internal class InlineChecker(private val descriptor: FunctionDescriptor) : CallC
 
     private val isEffectivelyPrivateApiFunction = descriptor.isEffectivelyPrivateApi
 
-    private val inlinableParameters = descriptor.valueParameters.filter { isInlinableParameter(it) }
+    private val inlinableParameters = descriptor.valueParameters.filter { InlineUtil.isInlineParameter(it) }
 
     private val inlinableKtParameters = inlinableParameters.mapNotNull { (it.source as? KotlinSourceElement)?.psi }
 
@@ -132,7 +132,7 @@ internal class InlineChecker(private val descriptor: FunctionDescriptor) : CallC
             when {
                 !checkNotInDefaultParameter(context, argumentCallee, argumentExpression) -> { /*error*/ }
 
-                InlineUtil.isInline(targetDescriptor) && isInlinableParameter(targetParameterDescriptor) ->
+                InlineUtil.isInline(targetDescriptor) && InlineUtil.isInlineParameter(targetParameterDescriptor) ->
                     if (allowsNonLocalReturns(argumentCallee) && !allowsNonLocalReturns(targetParameterDescriptor)) {
                         context.trace.report(NON_LOCAL_RETURN_NOT_ALLOWED.on(argumentExpression, argumentExpression))
                     }
@@ -155,21 +155,23 @@ internal class InlineChecker(private val descriptor: FunctionDescriptor) : CallC
 
         val varDescriptor: CallableDescriptor?
         val receiverExpression: KtExpression?
-        if (receiver is ExpressionReceiver) {
-            receiverExpression = receiver.expression
-            varDescriptor = getCalleeDescriptor(context, receiverExpression, true)
-        }
-        else if (receiver is ExtensionReceiver) {
-            val extension = receiver.declarationDescriptor
+        when (receiver) {
+            is ExpressionReceiver -> {
+                receiverExpression = receiver.expression
+                varDescriptor = getCalleeDescriptor(context, receiverExpression, true)
+            }
+            is ExtensionReceiver -> {
+                val extension = receiver.declarationDescriptor
 
-            varDescriptor = extension.extensionReceiverParameter
-            assert(varDescriptor != null) { "Extension should have receiverParameterDescriptor: " + extension }
+                varDescriptor = extension.extensionReceiverParameter
+                assert(varDescriptor != null) { "Extension should have receiverParameterDescriptor: " + extension }
 
-            receiverExpression = expression
-        }
-        else {
-            varDescriptor = null
-            receiverExpression = null
+                receiverExpression = expression
+            }
+            else -> {
+                varDescriptor = null
+                receiverExpression = null
+            }
         }
 
         if (inlinableParameters.contains(varDescriptor)) {
@@ -215,10 +217,6 @@ internal class InlineChecker(private val descriptor: FunctionDescriptor) : CallC
         if (targetDescriptor.original === descriptor) {
             context.trace.report(Errors.RECURSION_IN_INLINE.on(expression, expression, descriptor))
         }
-    }
-
-    private fun isInlinableParameter(descriptor: ParameterDescriptor): Boolean {
-        return InlineUtil.isInlineLambdaParameter(descriptor) && !descriptor.type.isMarkedNullable
     }
 
     private fun isInvokeOrInlineExtension(descriptor: CallableDescriptor): Boolean {

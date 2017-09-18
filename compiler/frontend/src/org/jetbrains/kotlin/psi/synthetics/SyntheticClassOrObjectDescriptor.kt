@@ -53,6 +53,7 @@ class SyntheticClassOrObjectDescriptor(
         outerScope: LexicalScope,
         private val modality: Modality,
         private val visibility: Visibility,
+        constructorVisibility: Visibility,
         private val kind: ClassKind,
         private val isCompanionObject: Boolean
 ) : ClassDescriptorBase(c.storageManager, containingDeclaration, name, source, false), ClassDescriptorWithResolutionScopes {
@@ -63,7 +64,7 @@ class SyntheticClassOrObjectDescriptor(
     private val resolutionScopesSupport = ClassResolutionScopesSupport(thisDescriptor, c.storageManager, { outerScope })
     private val syntheticSupertypes = mutableListOf<KotlinType>().apply { c.syntheticResolveExtension.addSyntheticSupertypes(thisDescriptor, this) }
     private val unsubstitutedMemberScope = LazyClassMemberScope(c, SyntheticClassMemberDeclarationProvider(syntheticDeclaration), this, c.trace)
-    private val unsubstitutedPrimaryConstructor = createUnsubstitutedPrimaryConstructor()
+    private val unsubstitutedPrimaryConstructor = createUnsubstitutedPrimaryConstructor(constructorVisibility)
 
     override val annotations: Annotations get() = Annotations.EMPTY
 
@@ -73,8 +74,8 @@ class SyntheticClassOrObjectDescriptor(
     override fun isCompanionObject() = isCompanionObject
     override fun isInner() = false
     override fun isData() = false
-    override fun isHeader() = false
-    override fun isImpl() = false
+    override fun isExpect() = false
+    override fun isActual() = false
 
     override fun getCompanionObjectDescriptor() = null
     override fun getTypeConstructor(): TypeConstructor = typeConstructor
@@ -104,8 +105,9 @@ class SyntheticClassOrObjectDescriptor(
 
     override fun toString(): String = "synthetic class " + name.toString() + " in " + containingDeclaration
 
-    private fun createUnsubstitutedPrimaryConstructor(): ClassConstructorDescriptor {
+    private fun createUnsubstitutedPrimaryConstructor(constructorVisibility: Visibility): ClassConstructorDescriptor {
         val constructor = DescriptorFactory.createPrimaryConstructorForObject(thisDescriptor, source)
+        constructor.visibility = constructorVisibility
         constructor.returnType = getDefaultType()
         return constructor
     }

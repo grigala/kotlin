@@ -276,9 +276,11 @@ class QualifiedExpressionResolver {
                 return true
             }
             if (doubleColonLHS && expression is KtCallExpression && expression.isWithoutValueArguments) {
-                val simpleName = expression.calleeExpression as KtSimpleNameExpression
-                result.add(QualifierPart(simpleName.getReferencedNameAsName(), simpleName, expression.typeArgumentList))
-                return true
+                val simpleName = expression.calleeExpression
+                if (simpleName is KtSimpleNameExpression) {
+                    result.add(QualifierPart(simpleName.getReferencedNameAsName(), simpleName, expression.typeArgumentList))
+                    return true
+                }
             }
             return false
         }
@@ -566,15 +568,17 @@ class QualifiedExpressionResolver {
     ) {
         if (descriptors.size > 1) {
             val visibleDescriptors = descriptors.filter { isVisible(it, shouldBeVisibleFrom, position) }
-            if (visibleDescriptors.isEmpty()) {
-                val descriptor = descriptors.first() as DeclarationDescriptorWithVisibility
-                trace.report(Errors.INVISIBLE_REFERENCE.on(referenceExpression, descriptor, descriptor.visibility, descriptor))
-            }
-            else if (visibleDescriptors.size > 1) {
-                trace.record(BindingContext.AMBIGUOUS_REFERENCE_TARGET, referenceExpression, visibleDescriptors)
-            }
-            else {
-                storeResult(trace, referenceExpression, visibleDescriptors.single(), null, position, isQualifier)
+            when {
+                visibleDescriptors.isEmpty() -> {
+                    val descriptor = descriptors.first() as DeclarationDescriptorWithVisibility
+                    trace.report(Errors.INVISIBLE_REFERENCE.on(referenceExpression, descriptor, descriptor.visibility, descriptor))
+                }
+                visibleDescriptors.size > 1 -> {
+                    trace.record(BindingContext.AMBIGUOUS_REFERENCE_TARGET, referenceExpression, visibleDescriptors)
+                }
+                else -> {
+                    storeResult(trace, referenceExpression, visibleDescriptors.single(), null, position, isQualifier)
+                }
             }
         }
         else {

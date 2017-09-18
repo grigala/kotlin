@@ -19,8 +19,11 @@ package org.jetbrains.kotlin.idea.util
 import com.intellij.ide.highlighter.ArchiveFileType
 import com.intellij.ide.highlighter.JavaClassFileType
 import com.intellij.injected.editor.VirtualFileWindow
+import com.intellij.openapi.module.Module
+import com.intellij.openapi.module.ModuleUtilCore
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.FileIndex
+import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.util.Ref
@@ -30,7 +33,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFileSystemItem
 import org.jetbrains.kotlin.idea.KotlinModuleFileType
 import org.jetbrains.kotlin.idea.caches.resolve.JsProjectDetector
-import org.jetbrains.kotlin.idea.core.script.KotlinScriptConfigurationManager
+import org.jetbrains.kotlin.idea.core.script.ScriptDependenciesManager
 import org.jetbrains.kotlin.idea.decompiler.builtIns.KotlinBuiltInFileType
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 
@@ -62,7 +65,7 @@ object ProjectRootsUtil {
         val canContainClassFiles = file.fileType == ArchiveFileType.INSTANCE || file.isDirectory
         val isBinary = file.isKotlinBinary()
 
-        val scriptConfigurationManager = if (includeScriptDependencies) KotlinScriptConfigurationManager.getInstance(project) else null
+        val scriptConfigurationManager = if (includeScriptDependencies) ScriptDependenciesManager.getInstance(project) else null
 
         if (includeLibraryClasses && (isBinary || canContainClassFiles)) {
             if (fileIndex.isInLibraryClasses(file)) return true
@@ -135,3 +138,9 @@ object ProjectRootsUtil {
         return isInContent(project, file, includeProjectSource = false, includeLibrarySource = true, includeLibraryClasses = true, includeScriptDependencies = true)
     }
 }
+
+val Module.rootManager: ModuleRootManager
+    get() = ModuleRootManager.getInstance(this)
+
+val PsiElement.module: Module?
+    get() = ModuleUtilCore.findModuleForPsiElement(this)

@@ -18,23 +18,26 @@ package org.jetbrains.kotlin.cli.common.arguments
 
 class K2JSDceArguments : CommonToolArguments() {
     companion object {
-        const val serialVersionUID = 0L
+        @JvmStatic private val serialVersionUID = 0L
     }
 
-    @field:GradleOption(DefaultValues.StringNullDefault::class)
-    @field:Argument(value = "-output-dir", valueDescription = "<path>", description = "Output directory")
-    @JvmField
-    var outputDirectory: String? = null
+    @Argument(
+            value = "-output-dir",
+            valueDescription = "<path>",
+            description = "Output directory"
+    )
+    var outputDirectory: String? by FreezableVar(null)
 
-    @field:Argument(
+    @Argument(
             value = "-keep",
             valueDescription = "<fully.qualified.name[,]>",
-            description = "List of fully-qualified names of declarations that shouldn't be eliminated")
-    @JvmField
-    var declarationsToKeep: Array<String>? = null
+            description = "List of fully-qualified names of declarations that shouldn't be eliminated"
+    )
+    var declarationsToKeep: Array<String>? by FreezableVar(null)
 
-    @field:GradleOption(DefaultValues.BooleanFalseDefault::class)
-    @field:Argument(value = "-Xprint-reachability-info", description = "Print declarations marked as reachable")
-    @JvmField
-    var printReachabilityInfo: Boolean = false
+    @Argument(
+            value = "-Xprint-reachability-info",
+            description = "Print declarations marked as reachable"
+    )
+    var printReachabilityInfo: Boolean by FreezableVar(false)
 }

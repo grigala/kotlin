@@ -132,6 +132,18 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
         doTest(fileName);
     }
 
+    @TestMetadata("doNotStoreNullForTmpInDestructuring.kt")
+    public void testDoNotStoreNullForTmpInDestructuring() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/doNotStoreNullForTmpInDestructuring.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("doNotStoreNullsForCapturedVars.kt")
+    public void testDoNotStoreNullsForCapturedVars() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/doNotStoreNullsForCapturedVars.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("falseSmartCast.kt")
     public void testFalseSmartCast() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/falseSmartCast.kt");
@@ -285,6 +297,12 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
     @TestMetadata("kt9603.kt")
     public void testKt9603() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/kt9603.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("maxStackAfterOptimizations.kt")
+    public void testMaxStackAfterOptimizations() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/maxStackAfterOptimizations.kt");
         doTest(fileName);
     }
 
@@ -764,9 +782,21 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/bytecodeText/coercionToUnitOptimization"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
         }
 
+        @TestMetadata("inRangeCheckWithConst.kt")
+        public void testInRangeCheckWithConst() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/coercionToUnitOptimization/inRangeCheckWithConst.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("kt14360.kt")
         public void testKt14360() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/coercionToUnitOptimization/kt14360.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("largeMethodWithCoercionToUnit.kt")
+        public void testLargeMethodWithCoercionToUnit() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/coercionToUnitOptimization/largeMethodWithCoercionToUnit.kt");
             doTest(fileName);
         }
 
@@ -848,6 +878,24 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
         @TestMetadata("negatedZeroCompare.kt")
         public void testNegatedZeroCompare() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/conditions/negatedZeroCompare.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("noBoxingForBoxedEqPrimitive.kt")
+        public void testNoBoxingForBoxedEqPrimitive() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/conditions/noBoxingForBoxedEqPrimitive.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("noBoxingForPrimitiveEqBoxed.kt")
+        public void testNoBoxingForPrimitiveEqBoxed() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/conditions/noBoxingForPrimitiveEqBoxed.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("noBoxingForPrimitiveEqObject.kt")
+        public void testNoBoxingForPrimitiveEqObject() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/conditions/noBoxingForPrimitiveEqObject.kt");
             doTest(fileName);
         }
 
@@ -993,6 +1041,12 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
     public static class Coroutines extends AbstractBytecodeTextTest {
         public void testAllFilesPresentInCoroutines() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/bytecodeText/coroutines"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("doNotReassignContinuation.kt")
+        public void testDoNotReassignContinuation() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/coroutines/doNotReassignContinuation.kt");
+            doTest(fileName);
         }
 
         @TestMetadata("varValueConflictsWithTable.kt")
@@ -1202,6 +1256,12 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
             doTest(fileName);
         }
 
+        @TestMetadata("forInRangeToConst.kt")
+        public void testForInRangeToConst() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/forLoop/forInRangeToConst.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("forInRangeWithImplicitReceiver.kt")
         public void testForInRangeWithImplicitReceiver() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/forLoop/forInRangeWithImplicitReceiver.kt");
@@ -1217,6 +1277,12 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
         @TestMetadata("forIntInDownTo.kt")
         public void testForIntInDownTo() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/forLoop/forIntInDownTo.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("intrinsicArrayConstructorsUseCounterLoop.kt")
+        public void testIntrinsicArrayConstructorsUseCounterLoop() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/forLoop/intrinsicArrayConstructorsUseCounterLoop.kt");
             doTest(fileName);
         }
 
@@ -1293,6 +1359,21 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
                 String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/forLoop/forInIndices/forInPrimitiveArrayIndices.kt");
                 doTest(fileName);
             }
+        }
+    }
+
+    @TestMetadata("compiler/testData/codegen/bytecodeText/hashCode")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class HashCode extends AbstractBytecodeTextTest {
+        public void testAllFilesPresentInHashCode() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/bytecodeText/hashCode"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("hashCode.kt")
+        public void testHashCode() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/hashCode/hashCode.kt");
+            doTest(fileName);
         }
     }
 
@@ -1816,6 +1897,33 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/nullCheckOptimization/trivialInstanceOf.kt");
             doTest(fileName);
         }
+
+        @TestMetadata("compiler/testData/codegen/bytecodeText/nullCheckOptimization/localLateinit")
+        @TestDataPath("$PROJECT_ROOT")
+        @RunWith(JUnit3RunnerWithInners.class)
+        public static class LocalLateinit extends AbstractBytecodeTextTest {
+            public void testAllFilesPresentInLocalLateinit() throws Exception {
+                KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/bytecodeText/nullCheckOptimization/localLateinit"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+            }
+
+            @TestMetadata("checkedAlways.kt")
+            public void testCheckedAlways() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/nullCheckOptimization/localLateinit/checkedAlways.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("checkedOnce.kt")
+            public void testCheckedOnce() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/nullCheckOptimization/localLateinit/checkedOnce.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("initialized.kt")
+            public void testInitialized() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/nullCheckOptimization/localLateinit/initialized.kt");
+                doTest(fileName);
+            }
+        }
     }
 
     @TestMetadata("compiler/testData/codegen/bytecodeText/ranges")
@@ -1826,15 +1934,84 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/bytecodeText/ranges"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
         }
 
-        @TestMetadata("inNonMatchingRange.kt")
-        public void testInNonMatchingRange() throws Exception {
-            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/inNonMatchingRange.kt");
+        @TestMetadata("ifNotInRange.kt")
+        public void testIfNotInRange() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/ifNotInRange.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("inArrayIndices.kt")
+        public void testInArrayIndices() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/inArrayIndices.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("inCharSequenceIndices.kt")
+        public void testInCharSequenceIndices() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/inCharSequenceIndices.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("inCollectionIndices.kt")
+        public void testInCollectionIndices() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/inCollectionIndices.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("inComparableRangeLiteral.kt")
+        public void testInComparableRangeLiteral() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/inComparableRangeLiteral.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("inNonMatchingRangeIntrinsified.kt")
+        public void testInNonMatchingRangeIntrinsified() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/inNonMatchingRangeIntrinsified.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("inNonMatchingRangeNotIntrinsified.kt")
+        public void testInNonMatchingRangeNotIntrinsified() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/inNonMatchingRangeNotIntrinsified.kt");
             doTest(fileName);
         }
 
         @TestMetadata("inOptimizableRange.kt")
         public void testInOptimizableRange() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/inOptimizableRange.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("inUntil.kt")
+        public void testInUntil() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/inUntil.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("noSwap2ForConstLongRangeTo.kt")
+        public void testNoSwap2ForConstLongRangeTo() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/ranges/noSwap2ForConstLongRangeTo.kt");
+            doTest(fileName);
+        }
+    }
+
+    @TestMetadata("compiler/testData/codegen/bytecodeText/sam")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class Sam extends AbstractBytecodeTextTest {
+        public void testAllFilesPresentInSam() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/bytecodeText/sam"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("samWrapperForNullInitialization.kt")
+        public void testSamWrapperForNullInitialization() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/sam/samWrapperForNullInitialization.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("samWrapperForNullableInitialization.kt")
+        public void testSamWrapperForNullableInitialization() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/sam/samWrapperForNullableInitialization.kt");
             doTest(fileName);
         }
     }
@@ -1982,6 +2159,24 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
             doTest(fileName);
         }
 
+        @TestMetadata("kt15235.kt")
+        public void testKt15235() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/stringOperations/kt15235.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt19037.kt")
+        public void testKt19037() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/stringOperations/kt19037.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("nestedConcat.kt")
+        public void testNestedConcat() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/stringOperations/nestedConcat.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("nonNullableStringPlus.kt")
         public void testNonNullableStringPlus() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/stringOperations/nonNullableStringPlus.kt");
@@ -2051,6 +2246,18 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
             doTest(fileName);
         }
 
+        @TestMetadata("kt18818.kt")
+        public void testKt18818() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/when/kt18818.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("noBoxingInDefaultWhenWithSpecialCases.kt")
+        public void testNoBoxingInDefaultWhenWithSpecialCases() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/when/noBoxingInDefaultWhenWithSpecialCases.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("qualifiedConstValsInsideWhen.kt")
         public void testQualifiedConstValsInsideWhen() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/when/qualifiedConstValsInsideWhen.kt");
@@ -2066,6 +2273,18 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
         @TestMetadata("simpleConstValsInsideWhen.kt")
         public void testSimpleConstValsInsideWhen() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/when/simpleConstValsInsideWhen.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("whenNull.kt")
+        public void testWhenNull() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/when/whenNull.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("whenZero.kt")
+        public void testWhenZero() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/when/whenZero.kt");
             doTest(fileName);
         }
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 KtBrains s.r.o.
+ * Copyright 2010-2015 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,8 +25,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.sun.jdi.AbsentInformationException
 import com.sun.jdi.ReferenceType
 import org.jetbrains.kotlin.codegen.binding.CodegenBinding.asmTypeForAnonymousClass
-import org.jetbrains.kotlin.fileClasses.NoResolveFileClassesProvider
-import org.jetbrains.kotlin.fileClasses.getFileClassInternalName
+import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.idea.debugger.breakpoints.getLambdasAtLineIfAny
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches.Companion.getOrComputeClassNames
@@ -72,7 +71,7 @@ class DebuggerClassNameProvider(
         }
     }
 
-    val inlineUsagesSearcher = InlineCallableUsagesSearcher(debugProcess, scopes)
+    private val inlineUsagesSearcher = InlineCallableUsagesSearcher(debugProcess, scopes)
 
     /**
      * Returns classes in which the given line number *is* present.
@@ -115,31 +114,32 @@ class DebuggerClassNameProvider(
 
         return when (element) {
             is KtFile -> {
-                val fileClassName = runReadAction { NoResolveFileClassesProvider.getFileClassInternalName(element) }.toJdiName()
+                val fileClassName = runReadAction { JvmFileClassUtil.getFileClassInternalName(element) }.toJdiName()
                 ComputedClassNames.Cached(fileClassName)
             }
             is KtClassOrObject -> {
                 val enclosingElementForLocal = runReadAction { KtPsiUtil.getEnclosingElementForLocalDeclaration(element) }
-                if (enclosingElementForLocal != null) { // A local class
-                    getOuterClassNamesForElement(enclosingElementForLocal)
-                }
-                else if (runReadAction { element.isObjectLiteral() }) {
-                    getOuterClassNamesForElement(element.relevantParentInReadAction)
-                }
-                else { // Guaranteed to be non-local class or object
-                    element.readAction {
-                        if (it is KtClass && runReadAction { it.isInterface() }) {
-                            val name = getNameForNonLocalClass(it)
+                when {
+                    enclosingElementForLocal != null ->
+                        // A local class
+                        getOuterClassNamesForElement(enclosingElementForLocal)
+                    runReadAction { element.isObjectLiteral() } ->
+                        getOuterClassNamesForElement(element.relevantParentInReadAction)
+                    else ->
+                        // Guaranteed to be non-local class or object
+                        element.readAction {
+                            if (it is KtClass && runReadAction { it.isInterface() }) {
+                                val name = getNameForNonLocalClass(it)
 
-                            if (name != null)
-                                Cached(listOf(name, name + JvmAbi.DEFAULT_IMPLS_SUFFIX))
-                            else
-                                ComputedClassNames.EMPTY
+                                if (name != null)
+                                    Cached(listOf(name, name + JvmAbi.DEFAULT_IMPLS_SUFFIX))
+                                else
+                                    ComputedClassNames.EMPTY
+                            }
+                            else {
+                                getNameForNonLocalClass(it)?.let { ComputedClassNames.Cached(it) } ?: ComputedClassNames.EMPTY
+                            }
                         }
-                        else {
-                            getNameForNonLocalClass(it)?.let { ComputedClassNames.Cached(it) } ?: ComputedClassNames.EMPTY
-                        }
-                    }
                 }
             }
             is KtProperty -> {
@@ -187,13 +187,12 @@ class DebuggerClassNameProvider(
 
                 val classNamesOfContainingDeclaration = getOuterClassNamesForElement(element.relevantParentInReadAction)
 
-                val nonInlineClasses: ComputedClassNames
-                if (runReadAction { element.name == null || element.isLocal }) {
-                    nonInlineClasses = classNamesOfContainingDeclaration + ComputedClassNames.Cached(
+                val nonInlineClasses: ComputedClassNames = if (runReadAction { element.name == null || element.isLocal }) {
+                    classNamesOfContainingDeclaration + ComputedClassNames.Cached(
                             asmTypeForAnonymousClass(typeMapper.bindingContext, element).internalName.toJdiName())
                 }
                 else {
-                    nonInlineClasses = classNamesOfContainingDeclaration
+                    classNamesOfContainingDeclaration
                 }
 
                 if (!findInlineUseSites || !element.isInlineInReadAction) {
@@ -268,13 +267,13 @@ private fun DebugProcess.findTargetClasses(outerClass: ReferenceType, lineAt: In
                 continue
             }
 
-            val method = location.method()
-            if (method == null || DebuggerUtils.isSynthetic(method) || method.isBridge) {
-                // skip synthetic methods
-                continue
-            }
-
             if (lineAt == locationLine) {
+                val method = location.method()
+                if (method == null || DebuggerUtils.isSynthetic(method) || method.isBridge) {
+                    // skip synthetic methods
+                    continue
+                }
+
                 targetClasses += outerClass
                 break
             }

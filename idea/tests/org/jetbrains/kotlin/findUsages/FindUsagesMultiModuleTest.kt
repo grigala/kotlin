@@ -18,6 +18,7 @@ package org.jetbrains.kotlin.findUsages
 
 import org.jetbrains.kotlin.config.JvmTarget
 import org.jetbrains.kotlin.config.TargetPlatformKind
+import org.jetbrains.kotlin.idea.stubs.createFacet
 import org.junit.Test
 
 class FindUsagesMultiModuleTest : AbstractFindUsagesMultiModuleTest() {
@@ -25,13 +26,13 @@ class FindUsagesMultiModuleTest : AbstractFindUsagesMultiModuleTest() {
     private fun doMultiPlatformTest(commonName: String = "common",
                                     implName: String = "jvm",
                                     implKind: TargetPlatformKind<*> = TargetPlatformKind.Jvm[JvmTarget.JVM_1_6]) {
-        val header = module(commonName)
-        header.createFacet(TargetPlatformKind.Common)
+        val commonModule = module(commonName)
+        commonModule.createFacet(TargetPlatformKind.Common)
 
         val jvm = module(implName)
         jvm.createFacet(implKind)
         jvm.enableMultiPlatform()
-        jvm.addDependency(header)
+        jvm.addDependency(commonModule)
 
         doFindUsagesTest()
     }

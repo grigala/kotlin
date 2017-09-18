@@ -19,10 +19,12 @@ package org.jetbrains.kotlin.idea.debugger.stepping
 import com.intellij.debugger.engine.DebugProcessImpl
 import com.intellij.debugger.engine.NamedMethodFilter
 import com.intellij.util.Range
+import com.intellij.util.SofterReference
 import com.sun.jdi.Location
+import org.jetbrains.kotlin.builtins.functions.FunctionInvokeDescriptor
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.*
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.core.getDirectlyOverriddenDeclarations
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.load.java.JvmAbi
@@ -33,24 +35,28 @@ import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypesAndPredicate
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 
 class KotlinBasicStepMethodFilter(
-        val targetDescriptor: CallableMemberDescriptor,
-        val myCallingExpressionLines: Range<Int>
+        targetDescriptor: CallableMemberDescriptor,
+        private val myCallingExpressionLines: Range<Int>
 ) : NamedMethodFilter {
-    private val myTargetMethodName = when (targetDescriptor) {
+    private val myTargetMethodName: String = when (targetDescriptor) {
         is ClassDescriptor, is ConstructorDescriptor -> "<init>"
         is PropertyAccessorDescriptor -> JvmAbi.getterName(targetDescriptor.correspondingProperty.name.asString())
         else -> targetDescriptor.name.asString()
     }
+
+    private val _targetDescriptor = SofterReference(targetDescriptor)
 
     override fun getCallingExpressionLines() = myCallingExpressionLines
 
     override fun getMethodName() = myTargetMethodName
 
     override fun locationMatches(process: DebugProcessImpl, location: Location): Boolean {
+        val targetDescriptor = _targetDescriptor.get() ?: return true
+
         val method = location.method()
         if (myTargetMethodName != method.name()) return false
 
-        val positionManager = process.positionManager ?: return false
+        val positionManager = process.positionManager
 
         val currentDescriptor = runReadAction {
             val elementAt = positionManager.getSourcePosition(location)?.elementAt
@@ -60,15 +66,21 @@ class KotlinBasicStepMethodFilter(
             }
 
             if (declaration is KtClass && method.name() == "<init>") {
-                (declaration.resolveToDescriptor() as? ClassDescriptor)?.unsubstitutedPrimaryConstructor
+                (declaration.resolveToDescriptorIfAny() as? ClassDescriptor)?.unsubstitutedPrimaryConstructor
             } else {
-                declaration?.resolveToDescriptor()
+                declaration?.resolveToDescriptorIfAny()
             }
         } ?: return false // TODO: Check that we can always find a descriptor (libraries with sources, libraries without sources)
 
         @Suppress("FoldInitializerAndIfToElvis")
         if (currentDescriptor !is CallableMemberDescriptor) return false
         if (currentDescriptor.kind != DECLARATION) return false
+
+        if (targetDescriptor is FunctionInvokeDescriptor) {
+            // There can be only one 'invoke' target at the moment so consider position as expected.
+            // Descriptors can be not-equal, say when parameter has type `(T) -> T` and lambda is `Int.() -> Int`.
+            return true
+        }
 
         if (compareDescriptors(currentDescriptor, targetDescriptor)) return true
 

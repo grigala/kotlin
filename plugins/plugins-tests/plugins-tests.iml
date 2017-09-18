@@ -16,6 +16,8 @@
     <orderEntry type="module" module-name="util" />
     <orderEntry type="library" scope="TEST" name="idea-full" level="project" />
     <orderEntry type="library" name="jps-test" level="project" />
+    <orderEntry type="library" scope="TEST" name="robolectric" level="project" />
+    <orderEntry type="library" scope="TEST" name="ant" level="project" />
     <orderEntry type="library" name="android-plugin" level="project" />
     <orderEntry type="module-library" scope="TEST">
       <library name="idea-gradle-plugin">
@@ -31,10 +33,8 @@
       </library>
     </orderEntry>
     <orderEntry type="library" scope="TEST" name="gradle-and-groovy-plugin" level="project" />
-    <orderEntry type="module" module-name="java-model-wrappers" scope="TEST" />
     <orderEntry type="module" module-name="light-classes" scope="TEST" />
     <orderEntry type="library" scope="TEST" name="junit-plugin" level="project" />
-    <orderEntry type="module" module-name="annotation-processing" scope="TEST" />
     <orderEntry type="module" module-name="build-common" scope="TEST" />
     <orderEntry type="module" module-name="jps-tests" scope="TEST" />
     <orderEntry type="module" module-name="kapt3" scope="TEST" />
@@ -42,5 +42,6 @@
     <orderEntry type="module" module-name="allopen-cli" scope="TEST" />
     <orderEntry type="module" module-name="noarg-cli" scope="TEST" />
     <orderEntry type="module" module-name="frontend.script" />
+    <orderEntry type="module" module-name="android-extensions-runtime" scope="TEST" />
   </component>
 </module>

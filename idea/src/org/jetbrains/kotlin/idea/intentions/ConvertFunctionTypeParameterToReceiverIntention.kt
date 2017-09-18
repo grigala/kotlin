@@ -23,15 +23,13 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.search.LocalSearchScope
-import com.intellij.psi.search.searches.MethodReferencesSearch
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.refactoring.util.RefactoringUIUtil
 import com.intellij.util.containers.MultiMap
-import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.core.*
 import org.jetbrains.kotlin.idea.refactoring.CallableRefactoring
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.usages.explicateReceiverOf
@@ -41,6 +39,7 @@ import org.jetbrains.kotlin.idea.refactoring.introduce.introduceVariable.KotlinI
 import org.jetbrains.kotlin.idea.references.KtReference
 import org.jetbrains.kotlin.idea.references.KtSimpleReference
 import org.jetbrains.kotlin.idea.runSynchronouslyWithProgress
+import org.jetbrains.kotlin.idea.search.usagesSearch.searchReferencesOrMethodReferences
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.psi.*
@@ -123,7 +122,11 @@ class ConvertFunctionTypeParameterToReceiverIntention : SelfTargetingRangeIntent
                     for (ref in ReferencesSearch.search(parameterToConvert, LocalSearchScope(expression))) {
                         (ref.element as? KtSimpleNameExpression)?.replace(thisRefExpr)
                     }
-                    expression.functionLiteral.valueParameterList!!.removeParameter(parameterToConvert)
+                    val lambda = expression.functionLiteral
+                    lambda.valueParameterList!!.removeParameter(parameterToConvert)
+                    if (lambda.valueParameters.isEmpty()) {
+                        lambda.arrow?.delete()
+                    }
                 }
                 return
             }
@@ -161,7 +164,7 @@ class ConvertFunctionTypeParameterToReceiverIntention : SelfTargetingRangeIntent
         }
 
         private fun generateVariable(expression: KtExpression): String {
-            var baseCallee: String = ""
+            var baseCallee = ""
             KotlinIntroduceVariableHandler.doRefactoring(project, null, expression, false, emptyList()) {
                 baseCallee = it.name!!
             }
@@ -192,8 +195,7 @@ class ConvertFunctionTypeParameterToReceiverIntention : SelfTargetingRangeIntent
                             conflicts.putValue(callable, "Can't modify $renderedCallable")
                         }
 
-                        val references = callable.toLightMethods().flatMapTo(LinkedHashSet()) { MethodReferencesSearch.search(it) }
-                        usageLoop@ for (ref in references) {
+                        usageLoop@ for (ref in callable.searchReferencesOrMethodReferences()) {
                             val refElement = ref.element ?: continue
                             when (ref) {
                                 is KtSimpleReference<*> -> processExternalUsage(conflicts, refElement, usages)
@@ -318,7 +320,7 @@ class ConvertFunctionTypeParameterToReceiverIntention : SelfTargetingRangeIntent
             val function: KtFunction
     ) {
         val isFirstParameter: Boolean get() = typeParameterIndex == 0
-        val functionDescriptor by lazy { function.resolveToDescriptor() as FunctionDescriptor }
+        val functionDescriptor by lazy { function.unsafeResolveToDescriptor() as FunctionDescriptor }
     }
 
     private fun KtTypeReference.getConversionData(): ConversionData? {

@@ -24,7 +24,7 @@ import com.intellij.util.containers.LinkedMultiMap
 import com.intellij.util.containers.MultiMap
 import org.jetbrains.kotlin.descriptors.TypeAliasDescriptor
 import org.jetbrains.kotlin.idea.analysis.analyzeInContext
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.core.CollectingNameValidator
 import org.jetbrains.kotlin.idea.core.KotlinNameSuggester
@@ -134,14 +134,13 @@ fun IntroduceTypeAliasDescriptor.validate(): IntroduceTypeAliasDescriptorWithCon
     val conflicts = MultiMap<PsiElement, String>()
 
     val originalType = originalData.originalTypeElement
-    if (name.isEmpty()) {
-        conflicts.putValue(originalType, "No name provided for type alias")
-    }
-    else if (!KotlinNameSuggester.isIdentifier(name)) {
-        conflicts.putValue(originalType, "Type alias name must be a valid identifier: $name")
-    }
-    else if (originalData.getTargetScope().findClassifier(Name.identifier(name), NoLookupLocation.FROM_IDE) != null) {
-        conflicts.putValue(originalType, "Type $name already exists in the target scope")
+    when {
+        name.isEmpty() ->
+            conflicts.putValue(originalType, "No name provided for type alias")
+        !KotlinNameSuggester.isIdentifier(name) ->
+            conflicts.putValue(originalType, "Type alias name must be a valid identifier: $name")
+        originalData.getTargetScope().findClassifier(Name.identifier(name), NoLookupLocation.FROM_IDE) != null ->
+            conflicts.putValue(originalType, "Type $name already exists in the target scope")
     }
 
     if (typeParameters.distinctBy { it.name }.size != typeParameters.size) {
@@ -158,7 +157,7 @@ fun IntroduceTypeAliasDescriptor.validate(): IntroduceTypeAliasDescriptorWithCon
 fun findDuplicates(typeAlias: KtTypeAlias): Map<KotlinPsiRange, () -> Unit> {
     val aliasName = typeAlias.name?.quoteIfNeeded() ?: return emptyMap()
     val aliasRange = typeAlias.textRange
-    val typeAliasDescriptor = typeAlias.resolveToDescriptor() as TypeAliasDescriptor
+    val typeAliasDescriptor = typeAlias.unsafeResolveToDescriptor() as TypeAliasDescriptor
 
     val unifierParameters = typeAliasDescriptor.declaredTypeParameters.map { UnifierParameter(it, null) }
     val unifier = KotlinPsiUnifier(unifierParameters)

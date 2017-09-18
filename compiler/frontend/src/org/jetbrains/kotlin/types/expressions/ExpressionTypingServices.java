@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +17,17 @@
 package org.jetbrains.kotlin.types.expressions;
 
 import com.intellij.psi.tree.IElementType;
-import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
+import org.jetbrains.kotlin.config.LanguageVersionSettings;
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor;
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor;
 import org.jetbrains.kotlin.descriptors.ScriptDescriptor;
 import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.*;
+import org.jetbrains.kotlin.resolve.calls.KotlinResolutionConfigurationKt;
 import org.jetbrains.kotlin.resolve.calls.context.ContextDependency;
 import org.jetbrains.kotlin.resolve.calls.context.ResolutionContext;
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo;
@@ -65,6 +66,11 @@ public class ExpressionTypingServices {
         this.annotationChecker = annotationChecker;
         this.statementFilter = statementFilter;
         this.expressionTypingFacade = facade;
+    }
+
+    @NotNull
+    public LanguageVersionSettings getLanguageVersionSettings() {
+        return expressionTypingComponents.languageVersionSettings;
     }
 
     @NotNull public StatementFilter getStatementFilter() {
@@ -108,7 +114,7 @@ public class ExpressionTypingServices {
             @NotNull ContextDependency contextDependency
     ) {
         ExpressionTypingContext context = ExpressionTypingContext.newContext(
-                trace, scope, dataFlowInfo, expectedType, contextDependency, statementFilter
+                trace, scope, dataFlowInfo, expectedType, contextDependency, statementFilter, getLanguageVersionSettings()
         );
         if (contextExpression != expression) {
             context = context.replaceExpressionContextProvider(arg -> arg == expression ? contextExpression : null);
@@ -150,7 +156,7 @@ public class ExpressionTypingServices {
         }
         checkFunctionReturnType(function, ExpressionTypingContext.newContext(
                 trace,
-                functionInnerScope, dataFlowInfo, expectedReturnType != null ? expectedReturnType : NO_EXPECTED_TYPE
+                functionInnerScope, dataFlowInfo, expectedReturnType != null ? expectedReturnType : NO_EXPECTED_TYPE, getLanguageVersionSettings()
         ));
     }
 
@@ -218,7 +224,7 @@ public class ExpressionTypingServices {
                                                                                        expressionTypingComponents.overloadChecker);
 
         ExpressionTypingContext context = ExpressionTypingContext.newContext(
-                trace, functionInnerScope, dataFlowInfo, NO_EXPECTED_TYPE
+                trace, functionInnerScope, dataFlowInfo, NO_EXPECTED_TYPE, getLanguageVersionSettings()
         );
         KotlinTypeInfo typeInfo = expressionTypingFacade.getTypeInfo(bodyExpression, context, function.hasBlockBody());
 
@@ -309,7 +315,12 @@ public class ExpressionTypingServices {
                 expectedType = context.expectedType;
             }
 
-            return blockLevelVisitor.getTypeInfo(statementExpression, context.replaceExpectedType(expectedType), true);
+            ContextDependency dependency = context.contextDependency;
+            if (KotlinResolutionConfigurationKt.getUSE_NEW_INFERENCE()) {
+                dependency = ContextDependency.INDEPENDENT;
+            }
+
+            return blockLevelVisitor.getTypeInfo(statementExpression, context.replaceExpectedType(expectedType).replaceContextDependency(dependency), true);
         }
         KotlinTypeInfo result = blockLevelVisitor.getTypeInfo(statementExpression, context, true);
         if (coercionStrategyForLastExpression == COERCION_TO_UNIT) {

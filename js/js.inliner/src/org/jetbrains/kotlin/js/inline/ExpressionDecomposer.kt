@@ -81,7 +81,7 @@ internal class ExpressionDecomposer private constructor(
 
         for (jsVar in vars) {
             if (jsVar in containsExtractable && prevVars.isNotEmpty()) {
-                addStatement(JsVars(prevVars, x.isMultiline))
+                addStatement(JsVars(prevVars, x.isMultiline).apply { source = prevVars.first().source })
                 prevVars = SmartList<JsVars.JsVar>()
             }
 
@@ -89,8 +89,11 @@ internal class ExpressionDecomposer private constructor(
             prevVars.add(jsVar)
         }
 
-        vars.clear()
-        vars.addAll(prevVars)
+        if (vars.size != prevVars.size) {
+            vars.clear()
+            vars.addAll(prevVars)
+            x.source = prevVars.first().source
+        }
         return false
     }
 
@@ -168,7 +171,7 @@ internal class ExpressionDecomposer private constructor(
             additionalStatements.toStatement()
         }
 
-        addStatement(JsIf(test, arg2Eval))
+        addStatement(JsIf(test, arg2Eval).also { it.source = source })
         ctx.replaceMe(tmp.nameRef)
     }
 
@@ -232,7 +235,7 @@ internal class ExpressionDecomposer private constructor(
         test = accept(test)
         if (then !in containsExtractable && otherwise !in containsExtractable) return
 
-        val tmp = Temporary()
+        val tmp = Temporary(sourceInfo = source)
         addStatement(tmp.variable)
 
         val thenBlock = withNewAdditionalStatements {
@@ -248,6 +251,7 @@ internal class ExpressionDecomposer private constructor(
         }
 
         val lazyEval = JsIf(test, thenBlock, elseBlock)
+        lazyEval.source = source
         lazyEval.synthetic = true
         addStatement(lazyEval)
         ctx.replaceMe(tmp.nameRef)
@@ -361,20 +365,23 @@ internal class ExpressionDecomposer private constructor(
         return tmp.nameRef
     }
 
-    private inner class Temporary(val value: JsExpression? = null) {
+    private inner class Temporary(val value: JsExpression? = null, val sourceInfo: Any? = null) {
         val name: JsName = JsScope.declareTemporary()
 
         val variable: JsVars = newVar(name, value).apply {
             synthetic = true
             name.staticRef = value
+            source = sourceInfo ?: value?.source
         }
 
         val nameRef: JsExpression
             get() = name.makeRef()
 
         fun assign(value: JsExpression): JsStatement {
-            val statement = JsExpressionStatement(assignment(nameRef, value)).apply { synthetic = true }
-            return statement
+            return JsExpressionStatement(assignment(nameRef, value)).apply {
+                synthetic = true
+                expression.source = sourceInfo ?: value.source
+            }
         }
     }
 

@@ -28,6 +28,8 @@ import org.jetbrains.kotlin.js.translate.general.Translation;
 import org.jetbrains.kotlin.js.translate.operation.InOperationTranslator;
 import org.jetbrains.kotlin.js.translate.utils.BindingUtils;
 import org.jetbrains.kotlin.js.translate.utils.JsAstUtils;
+import org.jetbrains.kotlin.js.translate.utils.mutator.CoercionMutator;
+import org.jetbrains.kotlin.js.translate.utils.mutator.LastExpressionMutator;
 import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.psi.psiUtil.PsiUtilsKt;
@@ -50,6 +52,9 @@ public final class WhenTranslator extends AbstractTranslator {
     @Nullable
     private final JsExpression expressionToMatch;
 
+    @Nullable
+    private final KotlinType type;
+
     private WhenTranslator(@NotNull KtWhenExpression expression, @NotNull TranslationContext context) {
         super(context);
 
@@ -57,6 +62,8 @@ public final class WhenTranslator extends AbstractTranslator {
 
         KtExpression subject = expression.getSubjectExpression();
         expressionToMatch = subject != null ? context.defineTemporary(Translation.translateAsExpression(subject, context)) : null;
+
+        type = context().bindingContext().getType(expression);
     }
 
     private JsNode translate() {
@@ -74,6 +81,7 @@ public final class WhenTranslator extends AbstractTranslator {
 
             if (resultIf == null) {
                 currentIf = JsAstUtils.newJsIf(translateConditions(entry, context()), statement);
+                currentIf.setSource(entry);
                 resultIf = currentIf;
             }
             else {
@@ -83,6 +91,7 @@ public final class WhenTranslator extends AbstractTranslator {
                 }
                 JsBlock conditionsBlock = new JsBlock();
                 JsIf nextIf = JsAstUtils.newJsIf(translateConditions(entry, context().innerBlock(conditionsBlock)), statement);
+                nextIf.setSource(entry);
                 JsStatement statementToAdd = JsAstUtils.mergeStatementInBlockIfNeeded(nextIf, conditionsBlock);
                 currentIf.setElseStatement(statementToAdd);
                 currentIf = nextIf;
@@ -104,13 +113,18 @@ public final class WhenTranslator extends AbstractTranslator {
     }
 
     @NotNull
-    private static JsStatement translateEntryExpression(
+    private JsStatement translateEntryExpression(
             @NotNull KtWhenEntry entry,
             @NotNull TranslationContext context,
             @NotNull JsBlock block) {
         KtExpression expressionToExecute = entry.getExpression();
         assert expressionToExecute != null : "WhenEntry should have whenExpression to execute.";
-        return Translation.translateAsStatement(expressionToExecute, context, block);
+        JsStatement result = Translation.translateAsStatement(expressionToExecute, context, block);
+        if (type != null) {
+            return LastExpressionMutator.mutateLastExpression(result, new CoercionMutator(type, context));
+        }
+
+        return result;
     }
 
     @NotNull
@@ -147,6 +161,7 @@ public final class WhenTranslator extends AbstractTranslator {
             JsNameRef result = (JsNameRef) rightExpression;
             JsIf ifStatement = JsAstUtils.newJsIf(leftExpression, JsAstUtils.assignment(result, new JsBooleanLiteral(true)).makeStmt(),
                                                   rightContext.getCurrentBlock());
+            ifStatement.setSource(condition);
             context.addStatementToCurrentBlock(ifStatement);
             return result;
         }

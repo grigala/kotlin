@@ -27,19 +27,21 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.builtins.PrimitiveType;
 import org.jetbrains.kotlin.codegen.binding.CalculatedClosure;
 import org.jetbrains.kotlin.codegen.context.CodegenContext;
+import org.jetbrains.kotlin.codegen.intrinsics.HashCode;
 import org.jetbrains.kotlin.codegen.intrinsics.IntrinsicMethods;
 import org.jetbrains.kotlin.codegen.serialization.JvmStringTable;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
+import org.jetbrains.kotlin.config.JvmTarget;
 import org.jetbrains.kotlin.config.LanguageVersionSettingsImpl;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.load.java.JavaVisibilities;
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames;
+import org.jetbrains.kotlin.name.ClassId;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.protobuf.MessageLite;
 import org.jetbrains.kotlin.renderer.DescriptorRenderer;
-import org.jetbrains.kotlin.resolve.DeprecationUtilKt;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.annotations.AnnotationUtilKt;
 import org.jetbrains.kotlin.resolve.inline.InlineUtil;
@@ -137,16 +139,16 @@ public class AsmUtil {
         return primitiveTypeByBoxedType.get(boxedType);
     }
 
+    public static boolean isBoxedTypeOf(@NotNull Type boxedType, @NotNull Type unboxedType) {
+        return unboxPrimitiveTypeOrNull(boxedType) == unboxedType;
+    }
+
     public static boolean isIntPrimitive(Type type) {
         return type == Type.INT_TYPE || type == Type.SHORT_TYPE || type == Type.BYTE_TYPE || type == Type.CHAR_TYPE;
     }
 
-    public static boolean isNumberPrimitiveOrBoolean(Type type) {
-        return isNumberPrimitive(type) || type.getSort() == Type.BOOLEAN;
-    }
-
-    public static boolean isNumberPrimitive(Type type) {
-        return isIntPrimitive(type) || type == Type.FLOAT_TYPE || type == Type.DOUBLE_TYPE || type == Type.LONG_TYPE;
+    public static boolean isIntOrLongPrimitive(Type type) {
+        return isIntPrimitive(type) || type == Type.LONG_TYPE;
     }
 
     public static boolean isPrimitive(Type type) {
@@ -200,7 +202,7 @@ public class AsmUtil {
     }
 
     public static int getMethodAsmFlags(FunctionDescriptor functionDescriptor, OwnerKind kind, GenerationState state) {
-        int flags = getCommonCallableFlags(functionDescriptor);
+        int flags = getCommonCallableFlags(functionDescriptor, state);
 
         for (AnnotationCodegen.JvmFlagAnnotation flagAnnotation : AnnotationCodegen.METHOD_FLAGS) {
             if (flagAnnotation.hasAnnotation(functionDescriptor.getOriginal())) {
@@ -241,17 +243,11 @@ public class AsmUtil {
         return flags;
     }
 
-    public static int getCommonCallableFlags(FunctionDescriptor functionDescriptor) {
+    public static int getCommonCallableFlags(FunctionDescriptor functionDescriptor, @NotNull GenerationState state) {
         int flags = getVisibilityAccessFlag(functionDescriptor);
         flags |= getVarargsFlag(functionDescriptor);
         flags |= getDeprecatedAccessFlag(functionDescriptor);
-        if (DeprecationUtilKt.isDeprecatedHidden(functionDescriptor, LanguageVersionSettingsImpl.DEFAULT)
-            || functionDescriptor instanceof PropertyAccessorDescriptor
-               && DeprecationUtilKt.isDeprecatedHidden(
-                       ((PropertyAccessorDescriptor) functionDescriptor).getCorrespondingProperty(),
-                       LanguageVersionSettingsImpl.DEFAULT
-               )
-        ) {
+        if (state.getDeprecationProvider().isDeprecatedHidden(functionDescriptor)) {
             flags |= ACC_SYNTHETIC;
         }
         return flags;
@@ -351,7 +347,9 @@ public class AsmUtil {
         DeclarationDescriptor containingDeclaration = memberDescriptor.getContainingDeclaration();
         Visibility memberVisibility = memberDescriptor.getVisibility();
 
-        if (isEffectivelyInlineOnly(memberDescriptor)) return ACC_PRIVATE;
+        if (isEffectivelyInlineOnly(memberDescriptor)) {
+            return ACC_PRIVATE;
+        }
 
         if (memberVisibility == Visibilities.LOCAL && memberDescriptor instanceof CallableMemberDescriptor) {
             return ACC_PUBLIC;
@@ -512,7 +510,7 @@ public class AsmUtil {
         });
     }
 
-    static void genHashCode(MethodVisitor mv, InstructionAdapter iv, Type type) {
+    static void genHashCode(MethodVisitor mv, InstructionAdapter iv, Type type, JvmTarget jvmTarget) {
         if (type.getSort() == Type.ARRAY) {
             Type elementType = correctElementType(type);
             if (elementType.getSort() == Type.OBJECT || elementType.getSort() == Type.ARRAY) {
@@ -525,16 +523,6 @@ public class AsmUtil {
         else if (type.getSort() == Type.OBJECT) {
             iv.invokevirtual("java/lang/Object", "hashCode", "()I", false);
         }
-        else if (type.getSort() == Type.LONG) {
-            genLongHashCode(mv, iv);
-        }
-        else if (type.getSort() == Type.DOUBLE) {
-            iv.invokestatic("java/lang/Double", "doubleToLongBits", "(D)J", false);
-            genLongHashCode(mv, iv);
-        }
-        else if (type.getSort() == Type.FLOAT) {
-            iv.invokestatic("java/lang/Float", "floatToIntBits", "(F)I", false);
-        }
         else if (type.getSort() == Type.BOOLEAN) {
             Label end = new Label();
             iv.dup();
@@ -543,8 +531,24 @@ public class AsmUtil {
             iv.iconst(1);
             iv.mark(end);
         }
-        else { // byte short char int
-            // do nothing
+        else {
+            if (JvmTarget.JVM_1_6 == jvmTarget) {
+                if (type.getSort() == Type.LONG) {
+                    genLongHashCode(mv, iv);
+                }
+                else if (type.getSort() == Type.DOUBLE) {
+                    iv.invokestatic("java/lang/Double", "doubleToLongBits", "(D)J", false);
+                    genLongHashCode(mv, iv);
+                }
+                else if (type.getSort() == Type.FLOAT) {
+                    iv.invokestatic("java/lang/Float", "floatToIntBits", "(F)I", false);
+                }
+                else { // byte short char int
+                    // do nothing
+                }
+            } else {
+                HashCode.Companion.invokeHashCode(iv, type);
+            }
         }
     }
 
@@ -649,8 +653,23 @@ public class AsmUtil {
         // currently when resuming a suspend function we pass default values instead of real arguments (i.e. nulls for references)
         if (descriptor.isSuspend()) return;
 
-        // Private method is not accessible from other classes, no assertions needed
-        if (getVisibilityAccessFlag(descriptor) == ACC_PRIVATE) return;
+        if (getVisibilityAccessFlag(descriptor) == ACC_PRIVATE) {
+            // Private method is not accessible from other classes, no assertions needed,
+            // unless we have a private operator function, in which we should generate a parameter assertion for an extension receiver.
+
+            // HACK: this provides "fail fast" behavior for operator functions.
+            // Such functions can be invoked in operator conventions desugaring,
+            // which is currently done on ad hoc basis in ExpressionCodegen.
+
+            if (state.isReceiverAssertionsDisabled()) return;
+            if (descriptor.isOperator()) {
+                ReceiverParameterDescriptor receiverParameter = descriptor.getExtensionReceiverParameter();
+                if (receiverParameter != null) {
+                    genParamAssertion(v, state.getTypeMapper(), frameMap, receiverParameter, "$receiver");
+                }
+            }
+            return;
+        }
 
         ReceiverParameterDescriptor receiverParameter = descriptor.getExtensionReceiverParameter();
         if (receiverParameter != null) {
@@ -666,18 +685,19 @@ public class AsmUtil {
             @NotNull InstructionAdapter v,
             @NotNull KotlinTypeMapper typeMapper,
             @NotNull FrameMap frameMap,
-            @NotNull CallableDescriptor parameter,
+            @NotNull ParameterDescriptor parameter,
             @NotNull String name
     ) {
-        KotlinType type = parameter.getReturnType();
-        if (type == null || isNullableType(type)) return;
+        KotlinType type = parameter.getType();
+        if (isNullableType(type)) return;
 
         int index = frameMap.getIndex(parameter);
         Type asmType = typeMapper.mapType(type);
         if (asmType.getSort() == Type.OBJECT || asmType.getSort() == Type.ARRAY) {
             v.load(index, asmType);
             v.visitLdcInsn(name);
-            v.invokestatic(IntrinsicMethods.INTRINSICS_CLASS_NAME, "checkParameterIsNotNull",
+            String checkMethod = "checkParameterIsNotNull";
+            v.invokestatic(IntrinsicMethods.INTRINSICS_CLASS_NAME, checkMethod,
                            "(Ljava/lang/Object;Ljava/lang/String;)V", false);
         }
     }
@@ -700,7 +720,7 @@ public class AsmUtil {
                 if (innerType.getSort() == Type.OBJECT || innerType.getSort() == Type.ARRAY) {
                     v.dup();
                     v.visitLdcInsn(runtimeAssertionInfo.getMessage());
-                    v.invokestatic("kotlin/jvm/internal/Intrinsics", "checkExpressionValueIsNotNull",
+                    v.invokestatic(IntrinsicMethods.INTRINSICS_CLASS_NAME, "checkExpressionValueIsNotNull",
                                    "(Ljava/lang/Object;Ljava/lang/String;)V", false);
                 }
                 StackValue.coerce(innerType, type, v);
@@ -790,6 +810,16 @@ public class AsmUtil {
         }
     }
 
+    public static void pop2(@NotNull MethodVisitor v, @NotNull Type type) {
+        if (type.getSize() == 2) {
+            v.visitInsn(Opcodes.POP2);
+            v.visitInsn(Opcodes.POP2);
+        }
+        else {
+            v.visitInsn(Opcodes.POP2);
+        }
+    }
+
     public static void dup(@NotNull InstructionAdapter v, @NotNull Type type) {
         dup(v, type.getSize());
     }
@@ -800,6 +830,22 @@ public class AsmUtil {
         }
         else if (size == 1) {
             v.dup();
+        }
+        else {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    public static void dupx(@NotNull InstructionAdapter v, @NotNull Type type) {
+        dupx(v, type.getSize());
+    }
+
+    private static void dupx(@NotNull InstructionAdapter v, int size) {
+        if (size == 2) {
+            v.dup2X2();
+        }
+        else if (size == 1) {
+            v.dupX1();
         }
         else {
             throw new UnsupportedOperationException();
@@ -859,6 +905,11 @@ public class AsmUtil {
     @NotNull
     public static Type asmTypeByFqNameWithoutInnerClasses(@NotNull FqName fqName) {
         return Type.getObjectType(internalNameByFqNameWithoutInnerClasses(fqName));
+    }
+
+    @NotNull
+    public static Type asmTypeByClassId(@NotNull ClassId classId) {
+        return Type.getObjectType(classId.asString().replace('.', '$'));
     }
 
     @NotNull

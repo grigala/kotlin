@@ -28,12 +28,10 @@ import com.intellij.openapi.roots.LibraryOrderEntry
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.roots.OrderRootType
 import com.intellij.openapi.roots.libraries.Library
-import com.intellij.util.PathUtil.getLocalFile
 import com.intellij.util.text.VersionComparatorUtil
 import org.jetbrains.kotlin.idea.KotlinPluginUtil
-import org.jetbrains.kotlin.idea.framework.*
-import org.jetbrains.kotlin.idea.util.application.runWriteAction
-import java.io.IOException
+import org.jetbrains.kotlin.idea.framework.JavaRuntimeDetectionUtil
+import org.jetbrains.kotlin.idea.framework.JsLibraryStdDetectionUtil
 import javax.swing.event.HyperlinkEvent
 
 data class VersionedLibrary(val library: Library, val version: String?, val usedInModules: Collection<Module>)
@@ -59,18 +57,15 @@ fun findOutdatedKotlinLibraries(project: Project): List<VersionedLibrary> {
 }
 
 fun getOutdatedRuntimeLibraryVersion(library: Library): String? {
-    val libraryVersionProperties = getKotlinLibraryVersionProperties(library) ?: return null
-
-    val libraryVersion = libraryVersionProperties.versionString
-
+    val libraryVersion = getKotlinLibraryVersion(library) ?: return null
     val runtimeVersion = bundledRuntimeVersion()
 
     return if (isRuntimeOutdated(libraryVersion, runtimeVersion)) libraryVersion else null
 }
 
-private fun getKotlinLibraryVersionProperties(library: Library) =
-        getLibraryProperties(JavaRuntimePresentationProvider.getInstance(), library) ?:
-        getLibraryProperties(JSLibraryStdPresentationProvider.getInstance(), library)
+private fun getKotlinLibraryVersion(library: Library): String? =
+        JavaRuntimeDetectionUtil.getJavaRuntimeVersion(library) ?:
+        JsLibraryStdDetectionUtil.getJsLibraryStdVersion(library)
 
 fun findKotlinRuntimeLibrary(module: Module, predicate: (Library) -> Boolean = ::isKotlinRuntime): Library? {
     val orderEntries = ModuleRootManager.getInstance(module).orderEntries.filterIsInstance<LibraryOrderEntry>()
@@ -85,7 +80,7 @@ fun isKotlinJavaRuntime(library: Library) =
         JavaRuntimeDetectionUtil.getRuntimeJar(library.getFiles(OrderRootType.CLASSES).asList()) != null
 
 fun isKotlinJsRuntime(library: Library) =
-        JsLibraryStdDetectionUtil.getJsStdLibJar(library.getFiles(OrderRootType.CLASSES).asList()) != null
+        JsLibraryStdDetectionUtil.hasJsStdlibJar(library)
 
 fun collectModulesWithOutdatedRuntime(libraries: List<VersionedLibrary>): List<Module> =
     libraries.flatMap { it.usedInModules }
@@ -115,17 +110,19 @@ fun notifyOutdatedKotlinRuntime(project: Project, outdatedLibraries: Collection<
     Notifications.Bus.notify(Notification(OUTDATED_RUNTIME_GROUP_DISPLAY_ID, "Outdated Kotlin Runtime", message,
                                           NotificationType.WARNING, NotificationListener { notification, event ->
         if (event.eventType == HyperlinkEvent.EventType.ACTIVATED) {
-            if ("update" == event.description) {
-                val outdatedLibraries = findOutdatedKotlinLibraries(project).map { it.library }
-                ApplicationManager.getApplication().invokeLater {
-                    updateLibraries(project, outdatedLibraries)
+            when {
+                "update" == event.description -> {
+                    val outdatedLibraries = findOutdatedKotlinLibraries(project).map { it.library }
+                    ApplicationManager.getApplication().invokeLater {
+                        updateLibraries(project, outdatedLibraries)
+                    }
                 }
-            }
-            else if ("ignore" == event.description) {
-                PropertiesComponent.getInstance(project).setValue(SUPPRESSED_PROPERTY_NAME, pluginVersion)
-            }
-            else {
-                throw AssertionError()
+                "ignore" == event.description -> {
+                    PropertiesComponent.getInstance(project).setValue(SUPPRESSED_PROPERTY_NAME, pluginVersion)
+                }
+                else -> {
+                    throw AssertionError()
+                }
             }
             notification.expire()
         }

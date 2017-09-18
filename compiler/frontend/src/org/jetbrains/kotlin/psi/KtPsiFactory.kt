@@ -69,14 +69,13 @@ class KtPsiFactory @JvmOverloads constructor(private val project: Project, val m
         return (createExpression("a?.b") as KtSafeQualifiedExpression).operationTokenNode
     }
 
-    private fun doCreateExpression(text: String): KtExpression {
-        //TODO: '\n' below if important - some strange code indenting problems appear without it
-        val expression = createProperty("val x =\n$text").initializer ?: error("Failed to create expression from text: '$text'")
-        return expression
+    private fun doCreateExpression(text: String): KtExpression? {
+        //NOTE: '\n' below is important - some strange code indenting problems appear without it
+        return createProperty("val x =\n$text").initializer
     }
 
     fun createExpression(text: String): KtExpression {
-        val expression = doCreateExpression(text)
+        val expression = doCreateExpression(text) ?: error("Failed to create expression from text: '$text'")
         assert(expression.text == text) {
             "Failed to create expression from text: '$text', resulting expression's text was: '${expression.text}'"
         }
@@ -84,7 +83,7 @@ class KtPsiFactory @JvmOverloads constructor(private val project: Project, val m
     }
 
     fun createExpressionIfPossible(text: String): KtExpression? {
-        val expression = doCreateExpression(text)
+        val expression = doCreateExpression(text) ?: return null
         return if (expression.text == text) expression else null
     }
 
@@ -262,6 +261,18 @@ class KtPsiFactory @JvmOverloads constructor(private val project: Project, val m
         return getter
     }
 
+    fun createPropertySetter(expression: KtExpression): KtPropertyAccessor {
+        val property = if (expression is KtBlockExpression)
+            createProperty("val x get() = 1\nset(value) {\n field = value\n }")
+        else
+            createProperty("val x get() = 1\nset(value) = TODO()")
+        val setter = property.setter!!
+        val bodyExpression = setter.bodyExpression!!
+
+        bodyExpression.replace(expression)
+        return setter
+    }
+
     fun createDestructuringDeclaration(text: String): KtDestructuringDeclaration {
         return (createFunction("fun foo() {$text}").bodyExpression as KtBlockExpression).statements.first() as KtDestructuringDeclaration
     }
@@ -275,14 +286,12 @@ class KtPsiFactory @JvmOverloads constructor(private val project: Project, val m
         val file = createFile(text)
         val declarations = file.declarations
         assert(declarations.size == 1) { "${declarations.size} declarations in $text" }
-        @Suppress("UNCHECKED_CAST")
-        val result = declarations.first() as TDeclaration
-        return result
+        return declarations.first() as TDeclaration
     }
 
-    fun createNameIdentifier(name: String): PsiElement {
-        return createProperty(name, null, false).nameIdentifier!!
-    }
+    fun createNameIdentifier(name: String) = createNameIdentifierIfPossible(name)!!
+
+    fun createNameIdentifierIfPossible(name: String) = createProperty(name, null, false).nameIdentifier
 
     fun createSimpleName(name: String): KtSimpleNameExpression {
         return createProperty(name, null, false, name).initializer as KtSimpleNameExpression
@@ -661,13 +670,13 @@ class KtPsiFactory @JvmOverloads constructor(private val project: Project, val m
             assert(name != CONSTRUCTOR_NAME || target == Target.CONSTRUCTOR)
 
             sb.append(name)
-            when (target) {
+            state = when (target) {
                 Target.FUNCTION, Target.CONSTRUCTOR -> {
                     sb.append("(")
-                    state = State.FIRST_PARAM
+                    State.FIRST_PARAM
                 }
                 else ->
-                    state = State.TYPE_CONSTRAINTS
+                    State.TYPE_CONSTRAINTS
             }
 
             return this

@@ -72,10 +72,13 @@ import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.KotlinLanguage
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.getJavaMemberDescriptor
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.core.*
 import org.jetbrains.kotlin.idea.core.util.showYesNoCancelDialog
+import org.jetbrains.kotlin.idea.highlighter.markers.actualsForExpected
+import org.jetbrains.kotlin.idea.highlighter.markers.liftToExpected
 import org.jetbrains.kotlin.idea.intentions.RemoveCurlyBracesFromTemplateIntention
 import org.jetbrains.kotlin.idea.j2k.IdeaJavaToKotlinServices
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.KotlinValVar
@@ -194,7 +197,7 @@ fun PsiElement.getExtractionContainers(strict: Boolean = true, includeAll: Boole
     fun getEnclosingDeclaration(element: PsiElement, strict: Boolean): PsiElement? {
         return (if (strict) element.parents else element.parentsWithSelf)
                 .filter {
-                    (it is KtDeclarationWithBody && it !is KtFunctionLiteral)
+                    (it is KtDeclarationWithBody && it !is KtFunctionLiteral && !(it is KtNamedFunction && it.name == null))
                     || it is KtAnonymousInitializer
                     || it is KtClassBody
                     || it is KtFile
@@ -576,7 +579,7 @@ fun createJavaField(property: KtNamedDeclaration, targetClass: PsiClass): PsiFie
 }
 
 fun createJavaClass(klass: KtClass, targetClass: PsiClass?, forcePlainClass: Boolean = false): PsiClass {
-    val kind = if (forcePlainClass) ClassKind.CLASS else (klass.resolveToDescriptor() as ClassDescriptor).kind
+    val kind = if (forcePlainClass) ClassKind.CLASS else (klass.unsafeResolveToDescriptor() as ClassDescriptor).kind
 
     val factory = PsiElementFactory.SERVICE.getInstance(klass.project)
     val className = klass.name!!
@@ -781,7 +784,7 @@ fun KtExpression.removeTemplateEntryBracesIfPossible(): KtExpression {
 }
 
 fun dropOverrideKeywordIfNecessary(element: KtNamedDeclaration) {
-    val callableDescriptor = element.resolveToDescriptor(BodyResolveMode.PARTIAL) as? CallableDescriptor ?: return
+    val callableDescriptor = element.resolveToDescriptorIfAny() as? CallableDescriptor ?: return
     if (callableDescriptor.overriddenDescriptors.isEmpty()) {
         element.removeModifier(KtTokens.OVERRIDE_KEYWORD)
     }
@@ -875,15 +878,15 @@ fun checkSuperMethods(
         val exitCode = showYesNoCancelDialog(
                 CHECK_SUPER_METHODS_YES_NO_DIALOG,
                 declaration.project, message, IdeBundle.message("title.warning"), Messages.getQuestionIcon(), Messages.YES)
-        when (exitCode) {
-            Messages.YES -> return overriddenElementsToDescriptor.keys.toList()
-            Messages.NO -> return listOf(declaration)
-            else -> return emptyList()
+        return when (exitCode) {
+            Messages.YES -> overriddenElementsToDescriptor.keys.toList()
+            Messages.NO -> listOf(declaration)
+            else -> emptyList()
         }
     }
 
 
-    val declarationDescriptor = declaration.resolveToDescriptor() as CallableDescriptor
+    val declarationDescriptor = declaration.unsafeResolveToDescriptor() as CallableDescriptor
 
     if (declarationDescriptor is LocalVariableDescriptor) return listOf(declaration)
 
@@ -951,7 +954,7 @@ fun checkSuperMethodsWithPopup(
             .setResizable(false)
             .setRequestFocus(true)
             .setItemChoosenCallback {
-                val value = list.selectedValue as? String ?: return@setItemChoosenCallback
+                val value = list.selectedValue ?: return@setItemChoosenCallback
                 val chosenElements = if (value == renameBase) deepestSuperMethods + declaration else listOf(declaration)
                 action(chosenElements)
             }
@@ -962,4 +965,15 @@ fun checkSuperMethodsWithPopup(
 fun KtNamedDeclaration.isCompanionMemberOf(klass: KtClassOrObject): Boolean {
     val containingObject = containingClassOrObject as? KtObjectDeclaration ?: return false
     return containingObject.isCompanion() && containingObject.containingClassOrObject == klass
+}
+
+internal fun KtDeclaration.withExpectedActuals(): List<KtDeclaration> {
+    val expect = liftToExpected() ?: return listOf(this)
+    val actuals = expect.actualsForExpected()
+    return listOf(expect) + actuals
+}
+
+internal fun KtDeclaration.resolveToExpectedDescriptorIfPossible(): DeclarationDescriptor {
+    val descriptor = unsafeResolveToDescriptor()
+    return descriptor.liftToExpected() ?: descriptor
 }

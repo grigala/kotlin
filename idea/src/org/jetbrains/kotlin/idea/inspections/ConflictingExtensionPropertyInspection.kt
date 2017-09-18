@@ -30,12 +30,11 @@ import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.ui.GuiUtils
-import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.core.targetDescriptors
 import org.jetbrains.kotlin.idea.imports.importableFqName
@@ -50,9 +49,9 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.renderer.render
+import org.jetbrains.kotlin.resolve.DeprecationResolver
 import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.calls.model.isReallySuccess
-import org.jetbrains.kotlin.resolve.isHiddenInResolution
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.resolve.scopes.SyntheticScopes
 import org.jetbrains.kotlin.resolve.scopes.collectSyntheticExtensionProperties
@@ -76,7 +75,7 @@ class ConflictingExtensionPropertyInspection : AbstractKotlinInspection(), Clean
                     val conflictingExtension = conflictingSyntheticExtension(propertyDescriptor, syntheticScopes) ?: return
 
                     // don't report on hidden declarations
-                    if (propertyDescriptor.isHiddenInResolution(resolutionFacade.frontendService<LanguageVersionSettings>())) return
+                    if (resolutionFacade.frontendService<DeprecationResolver>().isHiddenInResolution(propertyDescriptor)) return
 
                     val fixes = createFixes(property, conflictingExtension, isOnTheFly)
 
@@ -114,12 +113,12 @@ class ConflictingExtensionPropertyInspection : AbstractKotlinInspection(), Clean
     }
 
     private fun checkGetterBodyIsGetMethodCall(getter: KtPropertyAccessor, getMethod: FunctionDescriptor): Boolean {
-        if (getter.hasBlockBody()) {
+        return if (getter.hasBlockBody()) {
             val statement = (getter.bodyExpression as? KtBlockExpression)?.statements?.singleOrNull() ?: return false
-            return (statement as? KtReturnExpression)?.returnedExpression.isGetMethodCall(getMethod)
+            (statement as? KtReturnExpression)?.returnedExpression.isGetMethodCall(getMethod)
         }
         else {
-            return getter.bodyExpression.isGetMethodCall(getMethod)
+            getter.bodyExpression.isGetMethodCall(getMethod)
         }
     }
 
@@ -134,20 +133,18 @@ class ConflictingExtensionPropertyInspection : AbstractKotlinInspection(), Clean
         }
     }
 
-    private fun KtExpression?.isGetMethodCall(getMethod: FunctionDescriptor): Boolean {
-        when (this) {
-            is KtCallExpression -> {
-                val resolvedCall = getResolvedCall(analyze())
-                return resolvedCall != null && resolvedCall.isReallySuccess() && resolvedCall.resultingDescriptor.original == getMethod.original
-            }
-
-            is KtQualifiedExpression -> {
-                val receiver = receiverExpression
-                return receiver is KtThisExpression && receiver.labelQualifier == null && selectorExpression.isGetMethodCall(getMethod)
-            }
-
-            else -> return false
+    private fun KtExpression?.isGetMethodCall(getMethod: FunctionDescriptor): Boolean = when (this) {
+        is KtCallExpression -> {
+            val resolvedCall = getResolvedCall(analyze())
+            resolvedCall != null && resolvedCall.isReallySuccess() && resolvedCall.resultingDescriptor.original == getMethod.original
         }
+
+        is KtQualifiedExpression -> {
+            val receiver = receiverExpression
+            receiver is KtThisExpression && receiver.labelQualifier == null && selectorExpression.isGetMethodCall(getMethod)
+        }
+
+        else -> false
     }
 
     private fun KtExpression?.isSetMethodCall(setMethod: FunctionDescriptor, valueParameterName: Name): Boolean {
@@ -168,7 +165,7 @@ class ConflictingExtensionPropertyInspection : AbstractKotlinInspection(), Clean
     }
 
     private fun createFixes(property: KtProperty, conflictingExtension: SyntheticJavaPropertyDescriptor, isOnTheFly: Boolean): Array<IntentionWrapper> {
-        val fixes = if (isSameAsSynthetic(property, conflictingExtension)) {
+        return if (isSameAsSynthetic(property, conflictingExtension)) {
             val fix1 = IntentionWrapper(DeleteRedundantExtensionAction(property), property.containingFile)
             // don't add the second fix when on the fly to allow code cleanup
             val fix2 = if (isOnTheFly)
@@ -180,7 +177,6 @@ class ConflictingExtensionPropertyInspection : AbstractKotlinInspection(), Clean
         else {
             emptyArray()
         }
-        return fixes
     }
 
     private class DeleteRedundantExtensionAction(property: KtProperty) : KotlinQuickFixAction<KtProperty>(property) {
@@ -193,7 +189,7 @@ class ConflictingExtensionPropertyInspection : AbstractKotlinInspection(), Clean
 
         override fun invoke(project: Project, editor: Editor?, file: KtFile) {
             val declaration = element ?: return
-            val fqName = declaration.resolveToDescriptor(BodyResolveMode.PARTIAL).importableFqName
+            val fqName = declaration.unsafeResolveToDescriptor(BodyResolveMode.PARTIAL).importableFqName
             if (fqName != null) {
                 ProgressManager.getInstance().run(
                         object : Task.Modal(project, "Searching for imports to delete", true) {
@@ -242,15 +238,15 @@ class ConflictingExtensionPropertyInspection : AbstractKotlinInspection(), Clean
         //TODO: move into PSI?
         private fun KtNamedDeclaration.addAnnotationWithLineBreak(annotationEntry: KtAnnotationEntry): KtAnnotationEntry {
             val newLine = KtPsiFactory(this).createNewLine()
-            if (modifierList != null) {
+            return if (modifierList != null) {
                 val result = addAnnotationEntry(annotationEntry)
                 modifierList!!.addAfter(newLine, result)
-                return result
+                result
             }
             else {
                 val result = addAnnotationEntry(annotationEntry)
                 addAfter(newLine, modifierList)
-                return result
+                result
             }
         }
     }

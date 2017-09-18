@@ -34,7 +34,7 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.analyzeFully
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.codeInsight.shorten.addDelayedImportRequest
 import org.jetbrains.kotlin.idea.imports.importableFqName
@@ -430,7 +430,7 @@ fun postProcessMoveUsages(
 
 var KtFile.updatePackageDirective: Boolean? by UserDataProperty(Key.create("UPDATE_PACKAGE_DIRECTIVE"))
 
-sealed class OuterInstanceReferenceUsageInfo(element: PsiElement, val isIndirectOuter: Boolean) : UsageInfo(element) {
+sealed class OuterInstanceReferenceUsageInfo(element: PsiElement, private val isIndirectOuter: Boolean) : UsageInfo(element) {
     open fun reportConflictIfAny(conflicts: MultiMap<PsiElement, String>): Boolean {
         val element = element ?: return false
 
@@ -453,7 +453,7 @@ sealed class OuterInstanceReferenceUsageInfo(element: PsiElement, val isIndirect
     class ImplicitReceiver(
             callElement: KtElement,
             isIndirectOuter: Boolean,
-            val isDoubleReceiver: Boolean
+            private val isDoubleReceiver: Boolean
     ) : OuterInstanceReferenceUsageInfo(callElement, isIndirectOuter) {
         val callElement: KtElement?
             get() = element as? KtElement
@@ -484,7 +484,7 @@ fun traverseOuterInstanceReferences(member: KtNamedDeclaration, stopAtFirst: Boo
 
     val context = member.analyzeFully()
     val containingClassOrObject = member.containingClassOrObject ?: return false
-    val outerClassDescriptor = containingClassOrObject.resolveToDescriptor() as ClassDescriptor
+    val outerClassDescriptor = containingClassOrObject.unsafeResolveToDescriptor() as ClassDescriptor
     var found = false
     member.accept(
             object : PsiRecursiveElementWalkingVisitor() {

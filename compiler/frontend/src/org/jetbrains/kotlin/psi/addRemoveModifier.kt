@@ -83,10 +83,11 @@ internal fun addModifier(modifierList: KtModifierList, modifier: KtModifierKeywo
         }
         return
     }
-    if (modifierToReplace != null) {
+    if (modifierToReplace != null && modifierList.firstChild == modifierList.lastChild) {
         modifierToReplace.replace(newModifier)
     }
     else {
+        modifierToReplace?.delete()
         val newModifierOrder = MODIFIERS_ORDER.indexOf(modifier)
 
         fun placeAfter(child: PsiElement): Boolean {
@@ -129,15 +130,26 @@ private val MODIFIERS_TO_REPLACE = mapOf(
         PROTECTED_KEYWORD to listOf(PUBLIC_KEYWORD, PRIVATE_KEYWORD, INTERNAL_KEYWORD),
         PRIVATE_KEYWORD to listOf(PUBLIC_KEYWORD, PROTECTED_KEYWORD, INTERNAL_KEYWORD),
         INTERNAL_KEYWORD to listOf(PUBLIC_KEYWORD, PROTECTED_KEYWORD, PRIVATE_KEYWORD),
-        HEADER_KEYWORD to listOf(IMPL_KEYWORD),
-        IMPL_KEYWORD to listOf(HEADER_KEYWORD)
+        HEADER_KEYWORD to listOf(IMPL_KEYWORD, ACTUAL_KEYWORD, EXPECT_KEYWORD),
+        IMPL_KEYWORD to listOf(HEADER_KEYWORD, EXPECT_KEYWORD, ACTUAL_KEYWORD),
+        EXPECT_KEYWORD to listOf(IMPL_KEYWORD, ACTUAL_KEYWORD, HEADER_KEYWORD),
+        ACTUAL_KEYWORD to listOf(HEADER_KEYWORD, EXPECT_KEYWORD, IMPL_KEYWORD)
 )
 
 private val MODIFIERS_ORDER = listOf(PUBLIC_KEYWORD, PROTECTED_KEYWORD, PRIVATE_KEYWORD, INTERNAL_KEYWORD,
-                                     FINAL_KEYWORD, OPEN_KEYWORD, ABSTRACT_KEYWORD, SEALED_KEYWORD, ANNOTATION_KEYWORD,
-                                     OVERRIDE_KEYWORD,
+                                     HEADER_KEYWORD, IMPL_KEYWORD, EXPECT_KEYWORD, ACTUAL_KEYWORD,
+                                     FINAL_KEYWORD, OPEN_KEYWORD, ABSTRACT_KEYWORD, SEALED_KEYWORD,
                                      CONST_KEYWORD,
+                                     EXTERNAL_KEYWORD,
+                                     OVERRIDE_KEYWORD,
                                      LATEINIT_KEYWORD,
+                                     TAILREC_KEYWORD,
+                                     VARARG_KEYWORD,
                                      SUSPEND_KEYWORD,
                                      INNER_KEYWORD,
-                                     ENUM_KEYWORD, COMPANION_KEYWORD, INFIX_KEYWORD, OPERATOR_KEYWORD, DATA_KEYWORD)
+                                     ENUM_KEYWORD, ANNOTATION_KEYWORD,
+                                     COMPANION_KEYWORD,
+                                     INLINE_KEYWORD,
+                                     INFIX_KEYWORD,
+                                     OPERATOR_KEYWORD,
+                                     DATA_KEYWORD)

@@ -72,6 +72,8 @@ internal class PropertiesHighlightingVisitor(holder: AnnotationHolder, bindingCo
             elementToHighlight: PsiElement,
             descriptor: PropertyDescriptor) {
 
+        if (applyHighlighterExtensions(elementToHighlight, descriptor)) return
+
         val attributesKey = when {
             descriptor.isDynamic() ->
                 DYNAMIC_PROPERTY_CALL

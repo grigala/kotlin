@@ -33,6 +33,7 @@ val NULLABLE_ANNOTATIONS = listOf(
 )
 
 val JAVAX_NONNULL_ANNOTATION = FqName("javax.annotation.Nonnull")
+val JAVAX_CHECKFORNULL_ANNOTATION = FqName("javax.annotation.CheckForNull")
 
 val NOT_NULL_ANNOTATIONS = listOf(
         JvmAnnotationNames.JETBRAINS_NOT_NULL_ANNOTATION,
@@ -52,10 +53,3 @@ val READ_ONLY_ANNOTATIONS = listOf(
 val MUTABLE_ANNOTATIONS = listOf(
         JvmAnnotationNames.JETBRAINS_MUTABLE_ANNOTATION
 )
-
-// When these annotations appear on a declaration, they are copied to the _type_ of the declaration, becoming type annotations
-// See also DescriptorRendererOptions#excludedTypeAnnotationClasses
-val ANNOTATIONS_COPIED_TO_TYPES: Set<FqName> = listOf(
-        NULLABLE_ANNOTATIONS, NOT_NULL_ANNOTATIONS, READ_ONLY_ANNOTATIONS, MUTABLE_ANNOTATIONS,
-        listOf(JAVAX_NONNULL_ANNOTATION)
-).flatMap { it }.toSet()

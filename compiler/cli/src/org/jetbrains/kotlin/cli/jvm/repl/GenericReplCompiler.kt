@@ -26,7 +26,14 @@ import org.jetbrains.kotlin.codegen.ClassBuilderFactories
 import org.jetbrains.kotlin.codegen.KotlinCodegenFacade
 import org.jetbrains.kotlin.codegen.state.GenerationState
 import org.jetbrains.kotlin.config.CompilerConfiguration
+import org.jetbrains.kotlin.psi.KtBlockExpression
+import org.jetbrains.kotlin.psi.KtExpression
+import org.jetbrains.kotlin.psi.KtScript
+import org.jetbrains.kotlin.psi.KtScriptInitializer
+import org.jetbrains.kotlin.psi.psiUtil.getChildOfType
+import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.script.KotlinScriptDefinition
+import org.jetbrains.kotlin.script.ScriptDependenciesProvider
 import java.io.File
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.write
@@ -61,7 +68,7 @@ open class GenericReplCompiler(disposable: Disposable,
                 Pair(compilerState.lastLineState!!.psiFile, compilerState.lastLineState!!.errorHolder)
             }
 
-            val newDependencies = scriptDefinition.getDependenciesFor(psiFile, checker.environment.project, compilerState.lastDependencies)
+            val newDependencies = ScriptDependenciesProvider.getInstance(checker.environment.project).getScriptDependencies(psiFile)
             var classpathAddendum: List<File>? = null
             if (compilerState.lastDependencies != newDependencies) {
                 compilerState.lastDependencies = newDependencies
@@ -96,12 +103,24 @@ open class GenericReplCompiler(disposable: Disposable,
             val generatedClassname = makeScriptBaseName(codeLine)
             compilerState.history.push(LineId(codeLine), scriptDescriptor)
 
+            val expression = psiFile.getChildOfType<KtScript>()?.
+                    getChildOfType<KtBlockExpression>()?.
+                    getChildOfType<KtScriptInitializer>()?.
+                    getChildOfType<KtExpression>()
+
+            val type = expression?.let {
+                compilerState.analyzerEngine.trace.bindingContext.getType(it)
+            }?.let {
+                DescriptorRenderer.FQ_NAMES_IN_TYPES.renderType(it)
+            }
+
             return ReplCompileResult.CompiledClasses(LineId(codeLine),
                                                      compilerState.history.map { it.id },
                                                      generatedClassname,
                                                      generationState.factory.asList().map { CompiledClassData(it.relativePath, it.asByteArray()) },
                                                      generationState.replSpecific.hasResult,
-                                                     classpathAddendum ?: emptyList())
+                                                     classpathAddendum ?: emptyList(),
+                                                     type)
         }
     }
 

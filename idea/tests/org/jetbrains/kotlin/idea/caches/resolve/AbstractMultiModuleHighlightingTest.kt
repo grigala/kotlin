@@ -19,25 +19,31 @@ package org.jetbrains.kotlin.idea.caches.resolve
 import com.intellij.openapi.module.Module
 import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime
 import org.jetbrains.kotlin.config.TargetPlatformKind
-import org.jetbrains.kotlin.idea.project.PluginJetFilesProvider
+import org.jetbrains.kotlin.idea.framework.CommonLibraryKind
 import org.jetbrains.kotlin.idea.stubs.AbstractMultiHighlightingTest
-import org.jetbrains.kotlin.idea.test.PluginTestCaseBase
-import org.junit.Assert
+import org.jetbrains.kotlin.idea.stubs.createFacet
+import org.jetbrains.kotlin.test.TestJdkKind
 
 abstract class AbstractMultiModuleHighlightingTest : AbstractMultiHighlightingTest() {
 
-    override val testPath = PluginTestCaseBase.getTestDataPathBase() + "/multiModuleHighlighting/"
+    protected open fun checkHighlightingInAllFiles(
+            shouldCheckFile: () -> Boolean = { !file.text.contains("// !CHECK_HIGHLIGHTING") }
+    ) {
+        checkFiles(shouldCheckFile) {
+            checkHighlighting(myEditor, true, false)
+        }
+    }
 
     protected fun doMultiPlatformTest(
             vararg platforms: TargetPlatformKind<*>,
             withStdlibCommon: Boolean = false,
             configureModule: (Module, TargetPlatformKind<*>) -> Unit = { _, _ -> },
-            useFullJdk: Boolean = false
+            jdk: TestJdkKind = TestJdkKind.MOCK_JDK
     ) {
-        val commonModule = module("common", useFullJdk = useFullJdk)
+        val commonModule = module("common", jdk)
         commonModule.createFacet(TargetPlatformKind.Common)
         if (withStdlibCommon) {
-            commonModule.addLibrary(ForTestCompileRuntime.stdlibCommonForTests())
+            commonModule.addLibrary(ForTestCompileRuntime.stdlibCommonForTests(), kind = CommonLibraryKind)
         }
 
         for (platform in platforms) {
@@ -46,7 +52,7 @@ abstract class AbstractMultiModuleHighlightingTest : AbstractMultiHighlightingTe
                 is TargetPlatformKind.JavaScript -> "js"
                 else -> error("Unsupported platform: $platform")
             }
-            val platformModule = module(path, useFullJdk = useFullJdk)
+            val platformModule = module(path, jdk)
             platformModule.createFacet(platform)
             platformModule.enableMultiPlatform()
             platformModule.addDependency(commonModule)
@@ -54,17 +60,5 @@ abstract class AbstractMultiModuleHighlightingTest : AbstractMultiHighlightingTe
         }
 
         checkHighlightingInAllFiles()
-    }
-
-    protected fun checkHighlightingInAllFiles(nameFilter: (fileName: String) -> Boolean = { true }) {
-        var atLeastOneFile = false
-        PluginJetFilesProvider.allFilesInProject(myProject!!).forEach { file ->
-            if (nameFilter(file.name) && !file.text.contains("// !CHECK_HIGHLIGHTING")) {
-                atLeastOneFile = true
-                configureByExistingFile(file.virtualFile!!)
-                checkHighlighting(myEditor, true, false)
-            }
-        }
-        Assert.assertTrue(atLeastOneFile)
     }
 }

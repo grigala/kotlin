@@ -16,18 +16,32 @@
 
 package org.jetbrains.kotlin.idea.inspections
 
-import com.intellij.codeInspection.*
+import com.intellij.codeInspection.IntentionWrapper
+import com.intellij.codeInspection.ProblemHighlightType
+import com.intellij.codeInspection.ProblemsHolder
+import com.intellij.codeInspection.ex.EntryPointsManager
+import com.intellij.codeInspection.ex.EntryPointsManagerBase
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiNameIdentifierOwner
 import com.intellij.psi.PsiReference
-import com.intellij.psi.search.LocalSearchScope
+import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.psi.search.PsiSearchHelper
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.util.Processor
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptorWithVisibility
+import org.jetbrains.kotlin.descriptors.EffectiveVisibility
+import org.jetbrains.kotlin.descriptors.effectiveVisibility
+import org.jetbrains.kotlin.idea.core.toDescriptor
+import org.jetbrains.kotlin.idea.core.isInheritable
+import org.jetbrains.kotlin.idea.core.isOverridable
 import org.jetbrains.kotlin.idea.quickfix.AddModifierFix
 import org.jetbrains.kotlin.idea.refactoring.isConstructorDeclaredProperty
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.*
+import org.jetbrains.kotlin.resolve.jvm.annotations.hasJvmFieldAnnotation
+import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
+import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 
 class MemberVisibilityCanPrivateInspection : AbstractKotlinInspection() {
 
@@ -56,23 +70,61 @@ class MemberVisibilityCanPrivateInspection : AbstractKotlinInspection() {
         }
     }
 
-
-    private fun canBePrivate(declaration: KtDeclaration): Boolean {
+    private fun canBePrivate(declaration: KtNamedDeclaration): Boolean {
         if (declaration.hasModifier(KtTokens.PRIVATE_KEYWORD) || declaration.hasModifier(KtTokens.OVERRIDE_KEYWORD)) return false
+
+        val descriptor = (declaration.toDescriptor() as? DeclarationDescriptorWithVisibility) ?: return false
+        when (descriptor.effectiveVisibility()) {
+            EffectiveVisibility.Private, EffectiveVisibility.Local -> return false
+        }
+
         val classOrObject = declaration.containingClassOrObject ?: return false
+        if (classOrObject.isAnnotation()) return false
+
         val inheritable = classOrObject is KtClass && classOrObject.isInheritable()
         if (!inheritable && declaration.hasModifier(KtTokens.PROTECTED_KEYWORD)) return false //reported by ProtectedInFinalInspection
         if (declaration.isOverridable()) return false
+
+        if (descriptor.hasJvmFieldAnnotation()) return false
+        val entryPointsManager = EntryPointsManager.getInstance(declaration.project) as EntryPointsManagerBase
+        if (UnusedSymbolInspection.checkAnnotatedUsingPatterns(descriptor,
+                                                               with (entryPointsManager) {
+                                                                   additionalAnnotations + ADDITIONAL_ANNOTATIONS
+                                                               })) return false
+
+        val psiSearchHelper = PsiSearchHelper.SERVICE.getInstance(declaration.project)
+        val useScope = declaration.useScope
+        val name = declaration.name ?: return false
+        if (useScope is GlobalSearchScope) {
+            when (psiSearchHelper.isCheapEnoughToSearch(name, useScope, null, null)) {
+                PsiSearchHelper.SearchCostResult.TOO_MANY_OCCURRENCES -> return false
+                PsiSearchHelper.SearchCostResult.ZERO_OCCURRENCES -> return false
+                PsiSearchHelper.SearchCostResult.FEW_OCCURRENCES -> {
+                }
+            }
+        }
+
         var otherUsageFound = false
         var inClassUsageFound = false
-        ReferencesSearch.search(declaration, declaration.useScope).forEach(Processor<PsiReference> {
+        ReferencesSearch.search(declaration, useScope).forEach(Processor<PsiReference> {
             val usage = it.element
             if (classOrObject != usage.getParentOfType<KtClassOrObject>(false)) {
                 otherUsageFound = true
                 false
-            } else {
-                inClassUsageFound = true
-                true
+            }
+            else {
+                val function = usage.getParentOfType<KtCallableDeclaration>(false)
+                val insideInlineFun = function?.modifierList?.let {
+                    it.hasModifier(KtTokens.INLINE_KEYWORD) && !function.isPrivate()
+                } ?: false
+                if (insideInlineFun) {
+                    otherUsageFound = true
+                    false
+                }
+                else {
+                    inClassUsageFound = true
+                    true
+                }
             }
         })
         return inClassUsageFound && !otherUsageFound
@@ -85,9 +137,9 @@ class MemberVisibilityCanPrivateInspection : AbstractKotlinInspection() {
             else -> "Property"
         }
         val nameElement = (declaration as? PsiNameIdentifierOwner)?.nameIdentifier ?: return
-        holder.registerProblem(nameElement,
-                               "$member '${declaration.name}' can be private",
-                               ProblemHighlightType.WEAK_WARNING,
-                               IntentionWrapper(AddModifierFix(modifierListOwner, KtTokens.PRIVATE_KEYWORD), declaration.containingFile))
+        holder.registerProblem(declaration.visibilityModifier() ?: nameElement,
+                               "$member '${declaration.getName()}' can be private",
+                               ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
+                               IntentionWrapper(AddModifierFix(modifierListOwner, KtTokens.PRIVATE_KEYWORD), declaration.containingKtFile))
     }
 }

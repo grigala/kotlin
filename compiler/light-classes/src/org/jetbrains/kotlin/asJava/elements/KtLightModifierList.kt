@@ -30,9 +30,9 @@ import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationWithTarget
 import org.jetbrains.kotlin.descriptors.annotations.KotlinTarget
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.isPropertyParameter
 import org.jetbrains.kotlin.resolve.AnnotationChecker
-import org.jetbrains.kotlin.resolve.descriptorUtil.annotationClass
-import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameUnsafe
+import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.source.getPsi
 
 abstract class KtLightModifierList<out T : KtLightElement<KtModifierListOwner, PsiModifierListOwner>>(protected val owner: T)
@@ -101,7 +101,7 @@ private fun lightAnnotationsForEntries(lightModifierList: KtLightModifierList<*>
 
     return getAnnotationDescriptors(annotatedKtDeclaration, lightModifierListOwner)
             .mapNotNull { descriptor ->
-                val fqName = descriptor.annotationClass?.fqNameUnsafe?.asString() ?: return@mapNotNull null
+                val fqName = descriptor.fqName?.asString() ?: return@mapNotNull null
                 val entry = descriptor.source.getPsi() as? KtAnnotationEntry ?: return@mapNotNull null
                 Pair(fqName, entry)
             }
@@ -117,8 +117,19 @@ private fun lightAnnotationsForEntries(lightModifierList: KtLightModifierList<*>
             }
 }
 
-private fun getAnnotationDescriptors(declaration: KtDeclaration?, annotatedLightElement: KtLightElement<*, *>): List<AnnotationDescriptor> {
-    val descriptor = declaration?.let { LightClassGenerationSupport.getInstance(it.project).resolveToDescriptor(it) }
+private fun getAnnotationDescriptors(declaration: KtDeclaration, annotatedLightElement: KtLightElement<*, *>): List<AnnotationDescriptor> {
+    val context = LightClassGenerationSupport.getInstance(declaration.project).analyze(declaration)
+
+    val descriptor = if (declaration is KtParameter && declaration.isPropertyParameter()) {
+        if (annotatedLightElement is KtLightParameter && annotatedLightElement.method.isConstructor)
+            context[BindingContext.VALUE_PARAMETER, declaration]
+        else
+            context[BindingContext.PRIMARY_CONSTRUCTOR_PARAMETER, declaration]
+    }
+    else {
+        context[BindingContext.DECLARATION_TO_DESCRIPTOR, declaration]
+    }
+
     val annotatedDescriptor = when {
         descriptor is ClassDescriptor && annotatedLightElement is KtLightMethod && annotatedLightElement.isConstructor -> descriptor.unsubstitutedPrimaryConstructor
         descriptor !is PropertyDescriptor || annotatedLightElement !is KtLightMethod -> descriptor
@@ -127,9 +138,9 @@ private fun getAnnotationDescriptors(declaration: KtDeclaration?, annotatedLight
         else -> descriptor
     } ?: return emptyList()
 
-    return annotatedDescriptor.annotations.getAllAnnotations().
-            filter { it.matches(annotatedLightElement) }.
-            map { it.annotation }
+    return annotatedDescriptor.annotations.getAllAnnotations()
+            .filter { it.matches(annotatedLightElement) }
+            .map { it.annotation }
 }
 
 private fun hasAnnotationsInSource(declaration: KtDeclaration): Boolean {
@@ -145,12 +156,17 @@ private fun hasAnnotationsInSource(declaration: KtDeclaration): Boolean {
 }
 
 private fun AnnotationWithTarget.matches(annotated: KtLightElement<*, *>): Boolean {
-    if (annotated !is KtLightFieldImpl.KtLightFieldForDeclaration) return true
+    if (annotated is KtLightFieldImpl.KtLightFieldForDeclaration) {
+        if (target == AnnotationUseSiteTarget.FIELD) return true
 
-    if (target == AnnotationUseSiteTarget.FIELD) return true
+        if (target != null) return false
 
-    if (target != null) return false
+        val declarationSiteTargets = AnnotationChecker.applicableTargetSet(annotation)
+        return KotlinTarget.FIELD in declarationSiteTargets && KotlinTarget.PROPERTY !in declarationSiteTargets
+    }
+    else if (annotated is KtLightParameter && annotated.method.isSetter) {
+        return target == AnnotationUseSiteTarget.SETTER_PARAMETER
+    }
 
-    val declarationSiteTargets = AnnotationChecker.applicableTargetSet(annotation)
-    return KotlinTarget.FIELD in declarationSiteTargets && KotlinTarget.PROPERTY !in declarationSiteTargets
+    return true
 }

@@ -61,7 +61,7 @@ abstract class AbstractKotlinKapt3Test : CodegenTestCase() {
         val generationState = GenerationUtils.compileFiles(myFiles.psiFiles, myEnvironment, classBuilderFactory)
 
         val logger = KaptLogger(isVerbose = true, messageCollector = messageCollector)
-        val kaptContext = KaptContext(logger, generationState.bindingContext, classBuilderFactory.compiledClasses,
+        val kaptContext = KaptContext(logger, generationState.project, generationState.bindingContext, classBuilderFactory.compiledClasses,
                                       classBuilderFactory.origins, generationState, processorOptions = emptyMap())
         try {
             check(kaptContext, txtFile, wholeFile)
@@ -87,7 +87,7 @@ abstract class AbstractKotlinKapt3Test : CodegenTestCase() {
 
 abstract class AbstractClassFileToSourceStubConverterTest : AbstractKotlinKapt3Test() {
     internal companion object {
-        private val KOTLIN_METADATA_GROUP = "[a-z0-9]+ = \\{.+?\\}"
+        private val KOTLIN_METADATA_GROUP = "[a-z0-9]+ = (\\{.+?\\}|[0-9]+)"
         private val KOTLIN_METADATA_REGEX = "@kotlin\\.Metadata\\(($KOTLIN_METADATA_GROUP)(, $KOTLIN_METADATA_GROUP)*\\)".toRegex()
 
         fun removeMetadataAnnotationContents(s: String): String = s.replace(KOTLIN_METADATA_REGEX, "@kotlin.Metadata()")
@@ -124,10 +124,10 @@ abstract class AbstractKotlinKaptContextTest : AbstractKotlinKapt3Test() {
         val sourceOutputDir = Files.createTempDirectory("kaptRunner").toFile()
         try {
             kaptContext.doAnnotationProcessing(emptyList(), listOf(JavaKaptContextTest.simpleProcessor()),
-                                              compileClasspath = PathUtil.getJdkClassesRootsFromCurrentJre() + PathUtil.getKotlinPathsForIdeaPlugin().stdlibPath,
-                                              annotationProcessingClasspath = emptyList(), annotationProcessors = "",
-                                              sourcesOutputDir = sourceOutputDir, classesOutputDir = sourceOutputDir,
-                                              additionalSources = compilationUnits, withJdk = true)
+                                               compileClasspath = PathUtil.getJdkClassesRootsFromCurrentJre() + PathUtil.kotlinPathsForIdeaPlugin.stdlibPath,
+                                               annotationProcessingClasspath = emptyList(), annotationProcessors = "",
+                                               sourcesOutputDir = sourceOutputDir, classesOutputDir = sourceOutputDir,
+                                               additionalSources = compilationUnits, withJdk = true)
 
             val javaFiles = sourceOutputDir.walkTopDown().filter { it.isFile && it.extension == "java" }
             val actualRaw = javaFiles.sortedBy { it.name }.joinToString(FILE_SEPARATOR) { it.name + ":\n\n" + it.readText() }

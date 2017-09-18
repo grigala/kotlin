@@ -39,7 +39,7 @@ abstract class TargetPlatform(val platformName: String) {
 
     abstract val multiTargetPlatform: MultiTargetPlatform
 
-    object Default : TargetPlatform("Default") {
+    object Common : TargetPlatform("Default") {
         private val defaultImports = LockBasedStorageManager().createMemoizedFunction<Boolean, List<ImportPath>> {
             includeKotlinComparisons ->
             ArrayList<ImportPath>().apply {
@@ -97,8 +97,8 @@ private val DEFAULT_CALL_CHECKERS = listOf(
         DeprecatedCallChecker, CallReturnsArrayOfNothingChecker(), InfixCallChecker(), OperatorCallChecker(),
         ConstructorHeaderCallChecker, ProtectedConstructorCallChecker, ApiVersionCallChecker,
         CoroutineSuspendCallChecker, BuilderFunctionsCallChecker, DslScopeViolationCallChecker, MissingDependencyClassChecker,
-        CallableReferenceCompatibilityChecker(),
-        UnderscoreUsageChecker
+        CallableReferenceCompatibilityChecker(), LateinitIntrinsicApplicabilityChecker,
+        UnderscoreUsageChecker, AssigningNamedArgumentToVarargChecker()
 )
 private val DEFAULT_TYPE_CHECKERS = emptyList<AdditionalTypeChecker>()
 private val DEFAULT_CLASSIFIER_USAGE_CHECKERS = listOf(

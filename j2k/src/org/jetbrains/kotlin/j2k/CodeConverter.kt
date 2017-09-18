@@ -83,7 +83,7 @@ class CodeConverter(
         val explicitType = type.takeIf { settings.specifyLocalVariableTypeByDefault || converter.shouldDeclareVariableType(variable, type, isVal) }
         return LocalVariable(variable.declarationIdentifier(),
                              converter.convertAnnotations(variable),
-                             converter.convertModifiers(variable, false),
+                             converter.convertModifiers(variable, false, false),
                              explicitType,
                              convertExpression(variable.initializer, variable.type),
                              isVal).assignPrototype(variable)
@@ -129,6 +129,11 @@ class CodeConverter(
                         }
                     }
                     convertedExpression = LiteralExpression(text)
+                }
+                else if (expectedTypeStr == "long") {
+                    if (expression.parent is PsiBinaryExpression) {
+                        convertedExpression = LiteralExpression("${convertedExpression.canonicalCode()}L")
+                    }
                 }
                 else if (expectedTypeStr == "char") {
                     convertedExpression = MethodCallExpression.buildNonNull(convertedExpression, "toChar")

@@ -17,11 +17,8 @@
 package org.jetbrains.kotlin.jvm.compiler
 
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.util.io.ZipUtil
-import org.jetbrains.kotlin.cli.AbstractCliTest
 import org.jetbrains.kotlin.cli.WrongBytecodeVersionTest
 import org.jetbrains.kotlin.cli.common.CLICompiler
-import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.common.messages.AnalyzerWithCompilerReport
 import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
 import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
@@ -29,7 +26,11 @@ import org.jetbrains.kotlin.cli.js.K2JSCompiler
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
-import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil
+import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime
+import org.jetbrains.kotlin.codegen.inline.GENERATE_SMAP
+import org.jetbrains.kotlin.codegen.inline.remove
+import org.jetbrains.kotlin.codegen.optimization.common.asSequence
+import org.jetbrains.kotlin.codegen.optimization.common.intConstant
 import org.jetbrains.kotlin.config.KotlinCompilerVersion.TEST_IS_PRE_RELEASE_SYSTEM_PROPERTY
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.PackageViewDescriptor
@@ -38,84 +39,26 @@ import org.jetbrains.kotlin.load.kotlin.JvmMetadataVersion
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.DescriptorUtils.isObject
 import org.jetbrains.kotlin.resolve.lazy.JvmResolveUtil
-import org.jetbrains.kotlin.test.*
+import org.jetbrains.kotlin.test.ConfigurationKind
+import org.jetbrains.kotlin.test.KotlinTestUtils
+import org.jetbrains.kotlin.test.MockLibraryUtil
+import org.jetbrains.kotlin.test.TestJdkKind
 import org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator.validateAndCompareDescriptorWithFile
 import org.jetbrains.kotlin.utils.JsMetadataVersion
-import org.jetbrains.org.objectweb.asm.ClassReader
-import org.jetbrains.org.objectweb.asm.ClassVisitor
-import org.jetbrains.org.objectweb.asm.ClassWriter
-import org.jetbrains.org.objectweb.asm.Opcodes
+import org.jetbrains.org.objectweb.asm.*
+import org.jetbrains.org.objectweb.asm.tree.AbstractInsnNode
+import org.jetbrains.org.objectweb.asm.tree.MethodInsnNode
+import org.jetbrains.org.objectweb.asm.tree.MethodNode
 import java.io.File
+import java.net.URLClassLoader
 import java.util.jar.JarEntry
 import java.util.jar.JarFile
-import java.util.regex.Pattern
 import java.util.zip.ZipOutputStream
 import kotlin.experimental.xor
 
-class CompileKotlinAgainstCustomBinariesTest : TestCaseWithTmpdir() {
-    private val testDataDirectory: File
-        get() = File(TEST_DATA_PATH, getTestName(true))
-
-    private fun getTestDataFileWithExtension(extension: String): File {
-        return File(testDataDirectory, "${getTestName(true)}.$extension")
-    }
-
-    /**
-     * Compiles all sources (.java and .kt) under the directory named [libraryName] to [destination].
-     * [destination] should be either a path to the directory under [tmpdir], or a path to the resulting .jar file (also under [tmpdir]).
-     * Kotlin sources are compiled first, and there should be no errors or warnings. Java sources are compiled next.
-     *
-     * @return [destination]
-     */
-    private fun compileLibrary(
-            libraryName: String,
-            destination: File = File(tmpdir, "$libraryName.jar"),
-            additionalOptions: List<String> = emptyList(),
-            vararg extraClassPath: File
-    ): File {
-        val javaFiles = FileUtil.findFilesByMask(JAVA_FILES, File(testDataDirectory, libraryName))
-        val kotlinFiles = FileUtil.findFilesByMask(KOTLIN_FILES, File(testDataDirectory, libraryName))
-        assert(javaFiles.isNotEmpty() || kotlinFiles.isNotEmpty()) { "There should be either .kt or .java files in the directory" }
-
-        val isJar = destination.name.endsWith(".jar")
-
-        val outputDir = if (isJar) File(tmpdir, "output-$libraryName") else destination
-        if (kotlinFiles.isNotEmpty()) {
-            val output = compileKotlin(libraryName, outputDir, extraClassPath.toList(), K2JVMCompiler(), additionalOptions, expectedFileName = null)
-            assertEquals(normalizeOutput("" to ExitCode.OK), normalizeOutput(output))
-        }
-
-        if (javaFiles.isNotEmpty()) {
-            outputDir.mkdirs()
-            KotlinTestUtils.compileJavaFiles(javaFiles, listOf("-d", outputDir.path))
-        }
-
-        if (isJar) {
-            destination.delete()
-            ZipOutputStream(destination.outputStream()).use { zip ->
-                ZipUtil.addDirToZipRecursively(zip, destination, outputDir, "", null, null)
-            }
-        }
-
-        return destination
-    }
-
-    /**
-     * Compiles all .kt sources under the directory named [libraryName] to a file named "[libraryName].js" in [tmpdir]
-     *
-     * @return the path to the corresponding .meta.js file, i.e. "[libraryName].meta.js"
-     */
-    private fun compileJsLibrary(libraryName: String): File {
-        val destination = File(tmpdir, "$libraryName.js")
-        val output = compileKotlin(libraryName, destination, compiler = K2JSCompiler(), expectedFileName = null)
-        assertEquals(normalizeOutput("" to ExitCode.OK), normalizeOutput(output))
-        return File(tmpdir, "$libraryName.meta.js")
-    }
-
-    private fun normalizeOutput(output: Pair<String, ExitCode>): String {
-        return AbstractCliTest.getNormalizedCompilerOutput(output.first, output.second, testDataDirectory.path)
-                .replace(FileUtil.toSystemIndependentName(tmpdir.absolutePath), "\$TMP_DIR\$")
-    }
+class CompileKotlinAgainstCustomBinariesTest : AbstractKotlinCompilerIntegrationTest() {
+    override val testDataPath: String
+        get() = "compiler/testData/compileKotlinAgainstCustomBinaries/"
 
     private fun doTestWithTxt(vararg extraClassPath: File) {
         validateAndCompareDescriptorWithFile(
@@ -143,49 +86,6 @@ class CompileKotlinAgainstCustomBinariesTest : TestCaseWithTmpdir() {
 
     private fun analyzeAndGetAllDescriptors(vararg extraClassPath: File): Collection<DeclarationDescriptor> =
             DescriptorUtils.getAllDescriptors(analyzeFileToPackageView(*extraClassPath).memberScope)
-
-    private fun compileKotlin(
-            fileName: String,
-            output: File,
-            classpath: List<File> = emptyList(),
-            compiler: CLICompiler<*> = K2JVMCompiler(),
-            additionalOptions: List<String> = emptyList(),
-            expectedFileName: String? = "output.txt"
-    ): Pair<String, ExitCode> {
-        val args = mutableListOf<String>()
-        val sourceFile = File(testDataDirectory, fileName)
-        assert(sourceFile.exists()) { "Source file does not exist: ${sourceFile.absolutePath}" }
-        args.add(sourceFile.path)
-
-        if (compiler is K2JSCompiler) {
-            if (classpath.isNotEmpty()) {
-                args.add("-libraries")
-                args.add(classpath.joinToString(File.pathSeparator))
-            }
-            args.add("-output")
-            args.add(output.path)
-            args.add("-meta-info")
-        }
-        else if (compiler is K2JVMCompiler) {
-            if (classpath.isNotEmpty()) {
-                args.add("-classpath")
-                args.add(classpath.joinToString(File.pathSeparator))
-            }
-            args.add("-d")
-            args.add(output.path)
-        }
-        else {
-            throw UnsupportedOperationException(compiler.toString())
-        }
-
-        args.addAll(additionalOptions)
-
-        val result = AbstractCliTest.executeCompilerGrabOutput(compiler, args)
-        if (expectedFileName != null) {
-            KotlinTestUtils.assertEqualsToFile(File(testDataDirectory, expectedFileName), normalizeOutput(result))
-        }
-        return result
-    }
 
     private fun doTestBrokenLibrary(libraryName: String, vararg pathsToDelete: String) {
         // This function compiles a library, then deletes one class file and attempts to compile a Kotlin source against
@@ -433,7 +333,7 @@ class CompileKotlinAgainstCustomBinariesTest : TestCaseWithTmpdir() {
             *E
         """.trimIndent() + "\n"
 
-        if (InlineCodegenUtil.GENERATE_SMAP) {
+        if (GENERATE_SMAP) {
             assertEquals(expected, debugInfo)
         }
         else {
@@ -461,7 +361,7 @@ class CompileKotlinAgainstCustomBinariesTest : TestCaseWithTmpdir() {
     fun testInnerClassPackageConflict() {
         val output = compileLibrary("library", destination = File(tmpdir, "library"))
         File(testDataDirectory, "library/test/Foo/x.txt").copyTo(File(output, "test/Foo/x.txt"))
-        MockLibraryUtil.createJarFile(tmpdir, output, null, "library", false)
+        MockLibraryUtil.createJarFile(tmpdir, output, "library")
         compileKotlin("source.kt", tmpdir, listOf(File(tmpdir, "library.jar")))
     }
 
@@ -489,10 +389,65 @@ class CompileKotlinAgainstCustomBinariesTest : TestCaseWithTmpdir() {
         compileKotlin("source.kt", tmpdir, listOf(library))
     }
 
+    fun testObsoleteInlineSuspend() {
+        val version = intArrayOf(1, 0, 1) // legacy coroutines metadata
+        val options = listOf("-Xcoroutines=enable")
+        val library = transformJar(
+                compileLibrary("library", additionalOptions = options),
+                { _, bytes ->
+                    val (resultBytes, removedCounter) = stripSuspensionMarksToImitateLegacyCompiler(
+                        WrongBytecodeVersionTest.transformMetadataInClassFile(bytes) { name, _ ->
+                            if (name == JvmAnnotationNames.BYTECODE_VERSION_FIELD_NAME) version else null
+                        })
+                    // we expect 4 instructions to be removed in this test library
+                    assertEquals(4, removedCounter)
+                    resultBytes
+                })
+        compileKotlin("source.kt", tmpdir, listOf(library), K2JVMCompiler(),
+                      additionalOptions = options)
+        val classLoader = URLClassLoader(arrayOf(library.toURI().toURL(), tmpdir.toURI().toURL()),
+                                         ForTestCompileRuntime.runtimeJarClassLoader())
+        @Suppress("UNCHECKED_CAST")
+        val result = classLoader
+                .loadClass("SourceKt")
+                .getDeclaredMethod("run")
+                .invoke(null) as Array<String>
+        assertEquals(result[0], result[1])
+    }
+
     companion object {
-        private val TEST_DATA_PATH = "compiler/testData/compileKotlinAgainstCustomBinaries/"
-        private val KOTLIN_FILES = Pattern.compile(".*\\.kt$")
-        private val JAVA_FILES = Pattern.compile(".*\\.java$")
+        // compiler before 1.1.4 version  did not include suspension marks into bytecode.
+        private fun stripSuspensionMarksToImitateLegacyCompiler(bytes: ByteArray): Pair<ByteArray, Int> {
+            val writer = ClassWriter(0)
+            var removedCounter = 0
+            ClassReader(bytes).accept(object : ClassVisitor(Opcodes.ASM5, writer) {
+                override fun visitMethod(access: Int, name: String?, desc: String?, signature: String?, exceptions: Array<out String>?): MethodVisitor {
+                    val superMV = super.visitMethod(access, name, desc, signature, exceptions)
+                    return object : MethodNode(Opcodes.ASM5, access, name, desc, signature, exceptions) {
+                        override fun visitEnd() {
+                            val removeList = instructions.asSequence()
+                                    .flatMap { suspendMarkerInsns(it).asSequence() }.toList()
+                            remove(removeList)
+                            removedCounter += removeList.size
+                            accept(superMV)
+                        }
+                    }
+                }
+            }, 0)
+            return writer.toByteArray() to removedCounter
+        }
+
+        // KLUDGE: here is a simplified copy of compiler's logic for suspend markers
+
+        private fun suspendMarkerInsns(insn: AbstractInsnNode): List<AbstractInsnNode> =
+            if (insn is MethodInsnNode
+                && insn.opcode == Opcodes.INVOKESTATIC
+                && insn.owner == "kotlin/jvm/internal/InlineMarker"
+                && insn.name == "mark"
+                && insn.previous.intConstant in 0..1) listOf(insn, insn.previous)
+            else emptyList()
+
+        // -----
 
         private fun copyJarFileWithoutEntry(jarPath: File, vararg entriesToDelete: String): File =
                 transformJar(jarPath, { _, bytes -> bytes }, entriesToDelete.toSet())

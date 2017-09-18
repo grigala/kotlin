@@ -75,7 +75,7 @@ sealed class DoubleColonLHS(val type: KotlinType) {
      *     (Obj)::class       // not an object qualifier (can only be treated as an expression, not as a type)
      *     { Obj }()::class   // not an object qualifier
      */
-    class Expression(typeInfo: KotlinTypeInfo, val isObjectQualifier: Boolean) : DoubleColonLHS(typeInfo.type!!) {
+    class Expression(val typeInfo: KotlinTypeInfo, val isObjectQualifier: Boolean) : DoubleColonLHS(typeInfo.type!!) {
         val dataFlowInfo: DataFlowInfo = typeInfo.dataFlowInfo
     }
 
@@ -330,7 +330,7 @@ class DoubleColonExpressionResolver(
         return Pair(false, null)
     }
 
-    private fun resolveDoubleColonLHS(doubleColonExpression: KtDoubleColonExpression, c: ExpressionTypingContext): DoubleColonLHS? {
+    internal fun resolveDoubleColonLHS(doubleColonExpression: KtDoubleColonExpression, c: ExpressionTypingContext): DoubleColonLHS? {
         val resultForExpr = tryResolveLHS(doubleColonExpression, c, this::shouldTryResolveLHSAsExpression, this::resolveExpressionOnLHS)
         if (resultForExpr != null) {
             val lhs = resultForExpr.lhs
@@ -528,7 +528,9 @@ class DoubleColonExpressionResolver(
                     resolvedCall?.resultingDescriptor ?: return null
                 }
                 else {
-                    context.trace.report(UNRESOLVED_REFERENCE.on(expression.callableReference, expression.callableReference))
+                    if (lhs != null || expression.isEmptyLHS) {
+                        context.trace.report(UNRESOLVED_REFERENCE.on(expression.callableReference, expression.callableReference))
+                    }
                     return null
                 }
 
@@ -544,13 +546,17 @@ class DoubleColonExpressionResolver(
         return type
     }
 
-    private fun checkReferenceIsToAllowedMember(
+    internal fun checkReferenceIsToAllowedMember(
             descriptor: CallableDescriptor, trace: BindingTrace, expression: KtCallableReferenceExpression
     ) {
         val simpleName = expression.callableReference
-        if (expression.isEmptyLHS &&
-            (descriptor.dispatchReceiverParameter != null || descriptor.extensionReceiverParameter != null)) {
-            trace.report(CALLABLE_REFERENCE_TO_MEMBER_OR_EXTENSION_WITH_EMPTY_LHS.on(simpleName))
+        if (!languageVersionSettings.supportsFeature(LanguageFeature.CallableReferencesToClassMembersWithEmptyLHS)) {
+            if (expression.isEmptyLHS &&
+                (descriptor.dispatchReceiverParameter != null || descriptor.extensionReceiverParameter != null)) {
+                trace.report(UNSUPPORTED_FEATURE.on(
+                        simpleName, LanguageFeature.CallableReferencesToClassMembersWithEmptyLHS to languageVersionSettings
+                ))
+            }
         }
         if (descriptor is ConstructorDescriptor && DescriptorUtils.isAnnotationClass(descriptor.containingDeclaration)) {
             trace.report(CALLABLE_REFERENCE_TO_ANNOTATION_CONSTRUCTOR.on(simpleName))
@@ -568,7 +574,7 @@ class DoubleColonExpressionResolver(
         return original.extensionReceiverParameter != null && original.dispatchReceiverParameter != null
     }
 
-    private fun bindFunctionReference(expression: KtCallableReferenceExpression, type: KotlinType, context: ResolutionContext<*>) {
+    internal fun bindFunctionReference(expression: KtCallableReferenceExpression, type: KotlinType, context: ResolutionContext<*>) {
         val functionDescriptor = AnonymousFunctionDescriptor(
                 context.scope.ownerDescriptor,
                 Annotations.EMPTY,
@@ -588,10 +594,10 @@ class DoubleColonExpressionResolver(
         context.trace.record(BindingContext.FUNCTION, expression, functionDescriptor)
     }
 
-    private fun bindPropertyReference(expression: KtCallableReferenceExpression, referenceType: KotlinType, context: ResolutionContext<*>) {
+    internal fun bindPropertyReference(expression: KtCallableReferenceExpression, referenceType: KotlinType, context: ResolutionContext<*>) {
         val localVariable = LocalVariableDescriptor(
-                context.scope.ownerDescriptor, Annotations.EMPTY, Name.special("<anonymous>"), referenceType, /* mutable = */ false,
-                /* isDelegated = */ false, expression.toSourceElement()
+                context.scope.ownerDescriptor, Annotations.EMPTY, Name.special("<anonymous>"), referenceType,
+                expression.toSourceElement()
         )
 
         context.trace.record(BindingContext.VARIABLE, expression, localVariable)
@@ -680,10 +686,13 @@ class DoubleColonExpressionResolver(
     ): OverloadResolutionResults<CallableDescriptor>? {
         val reference = expression.callableReference
 
-        val lhsType =
-                lhs?.type ?:
-                return tryResolveRHSWithReceiver("resolve callable reference with empty LHS", null, reference, c, mode)
+        val lhsType = lhs?.type
+        if (lhsType == null) {
+            if (!expression.isEmptyLHS) return null
+
+            return tryResolveRHSWithReceiver("resolve callable reference with empty LHS", null, reference, c, mode)
                        ?.apply { commitTrace() }?.results
+        }
 
         val resultSequence = buildSequence {
             when (lhs) {

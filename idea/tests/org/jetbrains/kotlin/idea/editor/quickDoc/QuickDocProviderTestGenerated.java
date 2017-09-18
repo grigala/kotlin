@@ -36,6 +36,12 @@ public class QuickDocProviderTestGenerated extends AbstractQuickDocProviderTest 
         KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/testData/editor/quickDoc"), Pattern.compile("^([^_]+)\\.[^\\.]*$"), TargetBackend.ANY, true);
     }
 
+    @TestMetadata("AnonymousObjectLocalVariable.kt")
+    public void testAnonymousObjectLocalVariable() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/editor/quickDoc/AnonymousObjectLocalVariable.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("AtConstantWithUnderscore.kt")
     public void testAtConstantWithUnderscore() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("idea/testData/editor/quickDoc/AtConstantWithUnderscore.kt");
@@ -171,6 +177,18 @@ public class QuickDocProviderTestGenerated extends AbstractQuickDocProviderTest 
     @TestMetadata("OnEnumDeclaration.kt")
     public void testOnEnumDeclaration() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("idea/testData/editor/quickDoc/OnEnumDeclaration.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("OnEnumEntry.kt")
+    public void testOnEnumEntry() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/editor/quickDoc/OnEnumEntry.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("OnEnumEntryUsage.kt")
+    public void testOnEnumEntryUsage() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("idea/testData/editor/quickDoc/OnEnumEntryUsage.kt");
         doTest(fileName);
     }
 

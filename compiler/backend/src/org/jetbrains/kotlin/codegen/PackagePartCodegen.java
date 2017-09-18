@@ -30,9 +30,9 @@ import org.jetbrains.kotlin.descriptors.VariableDescriptor;
 import org.jetbrains.kotlin.descriptors.annotations.Annotated;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationsImpl;
-import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.load.kotlin.header.KotlinClassHeader;
 import org.jetbrains.kotlin.psi.*;
+import org.jetbrains.kotlin.psi.psiUtil.PsiUtilsKt;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.serialization.DescriptorSerializer;
 import org.jetbrains.kotlin.serialization.ProtoBuf;
@@ -89,7 +89,7 @@ public class PackagePartCodegen extends MemberCodegen<KtFile> {
     @Override
     protected void generateBody() {
         for (KtDeclaration declaration : element.getDeclarations()) {
-            if (declaration.hasModifier(KtTokens.HEADER_KEYWORD)) continue;
+            if (PsiUtilsKt.hasExpectModifier(declaration)) continue;
 
             if (declaration instanceof KtNamedFunction || declaration instanceof KtProperty || declaration instanceof KtTypeAlias) {
                 genSimpleMember(declaration);
@@ -119,9 +119,11 @@ public class PackagePartCodegen extends MemberCodegen<KtFile> {
             }
         }
 
-        DescriptorSerializer serializer =
-                DescriptorSerializer.createTopLevel(new JvmSerializerExtension(v.getSerializationBindings(), state));
-        ProtoBuf.Package packageProto = serializer.packagePartProto(element.getPackageFqName(), members).build();
+        JvmSerializerExtension extension = new JvmSerializerExtension(v.getSerializationBindings(), state);
+        DescriptorSerializer serializer = DescriptorSerializer.createTopLevel(extension);
+        ProtoBuf.Package.Builder builder = serializer.packagePartProto(element.getPackageFqName(), members);
+        extension.serializeJvmPackage(builder, packagePartType);
+        ProtoBuf.Package packageProto = builder.build();
 
         WriteAnnotationUtilKt.writeKotlinMetadata(v, state, KotlinClassHeader.Kind.FILE_FACADE, 0, av -> {
             writeAnnotationData(av, serializer, packageProto);
@@ -130,7 +132,7 @@ public class PackagePartCodegen extends MemberCodegen<KtFile> {
     }
 
     @Override
-    protected void generateSyntheticParts() {
+    protected void generateSyntheticPartsAfterBody() {
         generateSyntheticAccessors();
     }
 }

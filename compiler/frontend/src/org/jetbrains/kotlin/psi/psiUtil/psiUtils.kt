@@ -23,8 +23,11 @@ import com.intellij.psi.search.PsiSearchScopeUtil
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.diagnostics.DiagnosticUtils
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtFileAnnotationList
+import org.jetbrains.kotlin.psi.KtModifierList
+import org.jetbrains.kotlin.psi.KtModifierListOwner
 import java.util.*
 
 // NOTE: in this file we collect only LANGUAGE INDEPENDENT methods working with PSI and not modifying it
@@ -49,10 +52,7 @@ fun PsiElement.siblings(forward: Boolean = true, withItself: Boolean = true): Se
                 override fun hasNext(): Boolean = next != null
                 override fun next(): PsiElement {
                     val result = next ?: throw NoSuchElementException()
-                    if (forward)
-                        next = result.nextSibling
-                    else
-                        next = result.prevSibling
+                    next = if (forward) result.nextSibling else result.prevSibling
                     return result
                 }
             }
@@ -382,4 +382,10 @@ fun <E : PsiElement> E.createSmartPointer(): SmartPsiElementPointer<E> =
 fun PsiElement.before(element: PsiElement) = textRange.endOffset <= element.textRange.startOffset
 
 inline fun <reified T : PsiElement> PsiElement.getLastParentOfTypeInRow() = parents.takeWhile { it is T }.lastOrNull() as? T
+
+fun KtModifierListOwner.hasExpectModifier() = hasModifier(KtTokens.HEADER_KEYWORD) || hasModifier(KtTokens.EXPECT_KEYWORD)
+fun KtModifierList.hasExpectModifier() = hasModifier(KtTokens.HEADER_KEYWORD) || hasModifier(KtTokens.EXPECT_KEYWORD)
+
+fun KtModifierListOwner.hasActualModifier() = hasModifier(KtTokens.IMPL_KEYWORD) || hasModifier(KtTokens.ACTUAL_KEYWORD)
+fun KtModifierList.hasActualModifier() = hasModifier(KtTokens.IMPL_KEYWORD) || hasModifier(KtTokens.ACTUAL_KEYWORD)
 

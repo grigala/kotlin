@@ -19,21 +19,27 @@ package org.jetbrains.kotlin.serialization.js.ast
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.js.backend.ast.*
 import org.jetbrains.kotlin.js.backend.ast.metadata.*
+import org.jetbrains.kotlin.js.backend.ast.metadata.SpecialFunction
 import org.jetbrains.kotlin.serialization.js.ast.JsAstProtoBuf.*
 import org.jetbrains.kotlin.serialization.js.ast.JsAstProtoBuf.BinaryOperation.Type.*
 import org.jetbrains.kotlin.serialization.js.ast.JsAstProtoBuf.UnaryOperation.Type.*
+import java.io.File
 import java.io.OutputStream
 import java.util.*
 import org.jetbrains.kotlin.resolve.inline.InlineStrategy as KotlinInlineStrategy
 
-class JsAstSerializer {
+class JsAstSerializer(private val pathResolver: (File) -> String) {
     private val nameTableBuilder = NameTable.newBuilder()
     private val stringTableBuilder = StringTable.newBuilder()
     private val nameMap = mutableMapOf<JsName, Int>()
     private val stringMap = mutableMapOf<String, Int>()
     private val fileStack: Deque<String> = ArrayDeque()
+    private val importedNames = mutableSetOf<JsName>()
 
     fun serialize(fragment: JsProgramFragment, output: OutputStream) {
+        val namesBySignature = fragment.nameBindings.associate { it.key to it.name }
+        importedNames.clear()
+        importedNames += fragment.imports.map { namesBySignature[it.key]!! }
         serialize(fragment).writeTo(output)
     }
 
@@ -385,7 +391,7 @@ class JsAstSerializer {
                 val name = nameRef.name
                 val qualifier = nameRef.qualifier
                 if (name != null) {
-                    if (qualifier != null || (nameRef.inlineStrategy?.isInline ?: false)) {
+                    if (qualifier != null || nameRef.inlineStrategy?.isInline == true) {
                         val nameRefBuilder = NameReference.newBuilder()
                         nameRefBuilder.nameId = serialize(name)
                         if (qualifier != null) {
@@ -434,6 +440,7 @@ class JsAstSerializer {
         with (visitor.builder) {
             synthetic = expression.synthetic
             sideEffects = map(expression.sideEffects)
+            expression.localAlias?.let { localAlias = serialize(it) }
         }
 
         return visitor.builder.build()
@@ -546,11 +553,30 @@ class JsAstSerializer {
         KotlinInlineStrategy.NOT_INLINE -> InlineStrategy.NOT_INLINE
     }
 
-    private fun serialize(name: JsName) = nameMap.getOrPut(name) {
-        val result = nameTableBuilder.entryCount
+    private fun map(specialFunction: SpecialFunction) = when (specialFunction) {
+        SpecialFunction.DEFINE_INLINE_FUNCTION -> JsAstProtoBuf.SpecialFunction.DEFINE_INLINE_FUNCTION
+        SpecialFunction.WRAP_FUNCTION -> JsAstProtoBuf.SpecialFunction.WRAP_FUNCTION
+        SpecialFunction.TO_BOXED_CHAR -> JsAstProtoBuf.SpecialFunction.TO_BOXED_CHAR
+        SpecialFunction.UNBOX_CHAR -> JsAstProtoBuf.SpecialFunction.UNBOX_CHAR
+    }
+
+    private fun serialize(name: JsName): Int = nameMap.getOrPut(name) {
         val builder = Name.newBuilder()
         builder.identifier = serialize(name.ident)
         builder.temporary = name.isTemporary
+        name.localAlias?.let {
+            builder.localNameId = serialize(it)
+        }
+
+        if (name.imported && name !in importedNames) {
+            builder.imported = true
+        }
+
+        name.specialFunction?.let {
+            builder.specialFunction = map(it)
+        }
+
+        val result = nameTableBuilder.entryCount
         nameTableBuilder.addEntry(builder)
         result
     }
@@ -567,9 +593,9 @@ class JsAstSerializer {
         if (location != null) {
             val lastFile = fileStack.peek()
             val newFile = location.file
-            fileChanged = lastFile != newFile && newFile != null
+            fileChanged = lastFile != newFile
             if (fileChanged) {
-                fileConsumer(serialize(newFile!!))
+                fileConsumer(serialize(newFile))
                 fileStack.push(location.file)
             }
             val locationBuilder = Location.newBuilder()
@@ -588,7 +614,7 @@ class JsAstSerializer {
     private fun extractLocation(node: JsNode): JsLocation? {
         val source = node.source
         return when (source) {
-            is JsLocation -> source
+            is JsLocationWithSource -> source.asSimpleLocation()
             is PsiElement -> extractLocation(source)
             else -> null
         }
@@ -598,7 +624,7 @@ class JsAstSerializer {
         val file = element.containingFile
         val document = file.viewProvider.document!!
 
-        val path = file.viewProvider.virtualFile.path
+        val path = pathResolver(File(file.viewProvider.virtualFile.path))
 
         val startOffset = element.node.startOffset
         val startLine = document.getLineNumber(startOffset)

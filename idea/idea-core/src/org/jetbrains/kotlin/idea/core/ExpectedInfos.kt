@@ -343,12 +343,11 @@ class ExpectedInfos(
         }
 
         val tail = if (argumentName == null) {
-            if (parameter == parameters.last())
-                rparenthTail
-            else if (parameters.dropWhile { it != parameter }.drop(1).any(::needCommaForParameter))
-                Tail.COMMA
-            else
-                null
+            when {
+                parameter == parameters.last() -> rparenthTail
+                parameters.dropWhile { it != parameter }.drop(1).any(::needCommaForParameter) -> Tail.COMMA
+                else -> null
+            }
         }
         else {
             namedArgumentTail(argumentToParameter, argumentName, descriptor)
@@ -404,12 +403,11 @@ class ExpectedInfos(
     private fun namedArgumentTail(argumentToParameter: Map<ValueArgument, ValueParameterDescriptor>, argumentName: Name, descriptor: FunctionDescriptor): Tail? {
         val usedParameterNames = (argumentToParameter.values.map { it.name } + listOf(argumentName)).toSet()
         val notUsedParameters = descriptor.valueParameters.filter { it.name !in usedParameterNames }
-        return if (notUsedParameters.isEmpty())
-            Tail.RPARENTH // named arguments no supported for []
-        else if (notUsedParameters.all { it.hasDefaultValue() })
-            null
-        else
-            Tail.COMMA
+        return when {
+            notUsedParameters.isEmpty() -> Tail.RPARENTH // named arguments no supported for []
+            notUsedParameters.all { it.hasDefaultValue() } -> null
+            else -> Tail.COMMA
+        }
     }
 
     private fun calculateForEqAndAssignment(expressionWithType: KtExpression): Collection<ExpectedInfo>? {
@@ -502,9 +500,9 @@ class ExpectedInfos(
         if (expressionWithType != block.statements.last()) return null
 
         val functionLiteral = block.parent as? KtFunctionLiteral
-        if (functionLiteral != null) {
+        return if (functionLiteral != null) {
             val literalExpression = functionLiteral.parent as KtLambdaExpression
-            return calculate(literalExpression)
+            calculate(literalExpression)
                     .mapNotNull { it.fuzzyType }
                     .filter { it.type.isFunctionType }
                     .map {
@@ -513,7 +511,7 @@ class ExpectedInfos(
                     }
         }
         else {
-            return calculate(block).map { ExpectedInfo(it.filter, it.expectedName, null) }
+            calculate(block).map { ExpectedInfo(it.filter, it.expectedName, null) }
         }
     }
 
@@ -570,7 +568,6 @@ class ExpectedInfos(
             }
 
             is PropertyGetterDescriptor -> {
-                if (descriptor !is PropertyGetterDescriptor) return null
                 val property = descriptor.correspondingProperty
                 ExpectedInfo.createForReturnValue(returnTypeToUse(property, hasExplicitReturnType), property)
             }
@@ -592,7 +589,7 @@ class ExpectedInfos(
         if (expressionWithType != forExpression.loopRange) return null
 
         val loopVar = forExpression.loopParameter
-        val loopVarType = if (loopVar != null && loopVar.typeReference != null)
+        val loopVarType = if (loopVar?.typeReference != null)
             (bindingContext[BindingContext.DECLARATION_TO_DESCRIPTOR, loopVar] as VariableDescriptor).type.takeUnless { it.isError }
         else
             null

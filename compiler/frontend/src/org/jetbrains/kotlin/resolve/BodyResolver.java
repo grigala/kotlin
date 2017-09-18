@@ -166,8 +166,8 @@ public class BodyResolver {
             @NotNull KtSecondaryConstructor constructor,
             @NotNull ClassConstructorDescriptor descriptor
     ) {
-        if (descriptor.isHeader() || isEffectivelyExternal(descriptor)) {
-            // For header and external classes, we do not resolve constructor delegation calls because they are prohibited
+        if (descriptor.isExpect() || isEffectivelyExternal(descriptor)) {
+            // For expected and external classes, we do not resolve constructor delegation calls because they are prohibited
             return DataFlowInfo.Companion.getEMPTY();
         }
 
@@ -328,7 +328,7 @@ public class BodyResolver {
                 OverloadResolutionResults<FunctionDescriptor> results = callResolver.resolveFunctionCall(
                         trace, scopeForConstructor,
                         CallMaker.makeConstructorCallWithoutTypeArguments(call), NO_EXPECTED_TYPE, outerDataFlowInfo, false);
-                if (results.isSuccess()) {
+                if (results.isSingleResult()) {
                     KotlinType supertype = results.getResultingDescriptor().getReturnType();
                     recordSupertype(typeReference, supertype);
                     ClassDescriptor classDescriptor = TypeUtils.getClassDescriptor(supertype);
@@ -367,7 +367,7 @@ public class BodyResolver {
                     descriptor.getUnsubstitutedPrimaryConstructor() != null &&
                     superClass.getKind() != ClassKind.INTERFACE &&
                     !superClass.getConstructors().isEmpty() &&
-                    !descriptor.isHeader() && !isEffectivelyExternal(descriptor) &&
+                    !descriptor.isExpect() && !isEffectivelyExternal(descriptor) &&
                     !ErrorUtils.isError(superClass)
                 ) {
                     trace.report(SUPERTYPE_NOT_INITIALIZED.on(specifier));
@@ -428,7 +428,7 @@ public class BodyResolver {
         assert enumEntryDescriptor.getKind() == ClassKind.ENUM_ENTRY : "Enum entry expected: " + enumEntryDescriptor;
         ClassDescriptor enumClassDescriptor = (ClassDescriptor) enumEntryDescriptor.getContainingDeclaration();
         if (enumClassDescriptor.getKind() != ClassKind.ENUM_CLASS) return;
-        if (enumClassDescriptor.isHeader()) return;
+        if (enumClassDescriptor.isExpect()) return;
 
         List<ClassConstructorDescriptor> applicableConstructors = DescriptorUtilsKt.getConstructorForEmptyArgumentsList(enumClassDescriptor);
         if (applicableConstructors.size() != 1) {
@@ -608,7 +608,7 @@ public class BodyResolver {
         KtExpression body = anonymousInitializer.getBody();
         if (body != null) {
             PreliminaryDeclarationVisitor.Companion.createForDeclaration(
-                    (KtDeclaration) anonymousInitializer.getParent().getParent(), trace);
+                    (KtDeclaration) anonymousInitializer.getParent().getParent(), trace, languageVersionSettings);
             expressionTypingServices.getTypeInfo(
                     scopeForInitializers, body, NO_EXPECTED_TYPE, outerDataFlowInfo, trace, /*isStatement = */true
             );
@@ -617,8 +617,8 @@ public class BodyResolver {
         if (classDescriptor.getConstructors().isEmpty()) {
             trace.report(ANONYMOUS_INITIALIZER_IN_INTERFACE.on(anonymousInitializer));
         }
-        if (classDescriptor.isHeader()) {
-            trace.report(HEADER_DECLARATION_WITH_BODY.on(anonymousInitializer));
+        if (classDescriptor.isExpect()) {
+            trace.report(EXPECTED_DECLARATION_WITH_BODY.on(anonymousInitializer));
         }
     }
 
@@ -680,7 +680,7 @@ public class BodyResolver {
     ) {
         computeDeferredType(propertyDescriptor.getReturnType());
 
-        PreliminaryDeclarationVisitor.Companion.createForDeclaration(property, trace);
+        PreliminaryDeclarationVisitor.Companion.createForDeclaration(property, trace, languageVersionSettings);
         KtExpression initializer = property.getInitializer();
         LexicalScope propertyHeaderScope = ScopeUtils.makeScopeForPropertyHeader(getScopeForProperty(c, property), propertyDescriptor);
 
@@ -851,7 +851,7 @@ public class BodyResolver {
             // Creates wrapper scope for header resolution if necessary (see resolveSecondaryConstructorBody)
             @Nullable Function1<LexicalScope, LexicalScope> headerScopeFactory
     ) {
-        PreliminaryDeclarationVisitor.Companion.createForDeclaration(function, trace);
+        PreliminaryDeclarationVisitor.Companion.createForDeclaration(function, trace, languageVersionSettings);
         LexicalScope innerScope = FunctionDescriptorUtil.getFunctionInnerScope(scope, functionDescriptor, trace, overloadChecker);
         List<KtParameter> valueParameters = function.getValueParameters();
         List<ValueParameterDescriptor> valueParameterDescriptors = functionDescriptor.getValueParameters();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import org.jetbrains.kotlin.resolve.scopes.MemberScope
 import org.jetbrains.kotlin.types.Variance
 
 class MainFunctionDetector {
-    private val getFunctionDescriptor: (KtNamedFunction) -> FunctionDescriptor
+    private val getFunctionDescriptor: (KtNamedFunction) -> FunctionDescriptor?
 
     /** Assumes that the function declaration is already resolved and the descriptor can be found in the `bindingContext`.  */
     constructor(bindingContext: BindingContext) {
@@ -38,7 +38,7 @@ class MainFunctionDetector {
         }
     }
 
-    constructor(functionResolver: (KtNamedFunction) -> FunctionDescriptor) {
+    constructor(functionResolver: (KtNamedFunction) -> FunctionDescriptor?) {
         this.getFunctionDescriptor = functionResolver
     }
 
@@ -46,12 +46,21 @@ class MainFunctionDetector {
         return findMainFunction(declarations) != null
     }
 
-    fun isMain(function: KtNamedFunction): Boolean {
+    @JvmOverloads
+    fun isMain(function: KtNamedFunction, checkJvmStaticAnnotation: Boolean = true): Boolean {
         if (function.isLocal) {
             return false
         }
 
-        if (function.valueParameters.size != 1 || !function.typeParameters.isEmpty()) {
+
+        var parametersCount = function.valueParameters.size
+        if (function.receiverTypeReference != null) parametersCount++
+
+        if (parametersCount != 1) {
+            return false
+        }
+
+        if (!function.typeParameters.isEmpty()) {
             return false
         }
 
@@ -61,11 +70,12 @@ class MainFunctionDetector {
         }
 
         /* Psi only check for kotlin.jvm.jvmStatic annotation */
-        if (!function.isTopLevel && !hasAnnotationWithExactNumberOfArguments(function, 0)) {
+        if (checkJvmStaticAnnotation && !function.isTopLevel && !hasAnnotationWithExactNumberOfArguments(function, 0)) {
             return false
         }
 
-        return isMain(getFunctionDescriptor(function))
+        val functionDescriptor = getFunctionDescriptor(function) ?: return false
+        return isMain(functionDescriptor, checkJvmStaticAnnotation)
     }
 
     fun getMainFunction(module: ModuleDescriptor): FunctionDescriptor? = getMainFunction(module, module.getPackage(FqName.ROOT))
@@ -90,18 +100,19 @@ class MainFunctionDetector {
 
     companion object {
 
-        fun isMain(descriptor: DeclarationDescriptor): Boolean {
+        fun isMain(descriptor: DeclarationDescriptor, checkJvmStaticAnnotation: Boolean = true): Boolean {
             if (descriptor !is FunctionDescriptor) return false
 
             if (getJVMFunctionName(descriptor) != "main") {
                 return false
             }
 
-            val parameters = descriptor.valueParameters
+            val parameters = descriptor.valueParameters.mapTo(mutableListOf()) { it.type }
+            descriptor.extensionReceiverParameter?.type?.let {parameters += it}
+
             if (parameters.size != 1 || !descriptor.typeParameters.isEmpty()) return false
 
-            val parameter = parameters[0]
-            val parameterType = parameter.type
+            val parameterType = parameters[0]
             if (!KotlinBuiltIns.isArray(parameterType)) return false
 
             val typeArguments = parameterType.arguments
@@ -123,7 +134,7 @@ class MainFunctionDetector {
             val containingDeclaration = descriptor.containingDeclaration
             return containingDeclaration is ClassDescriptor
                    && containingDeclaration.kind.isSingleton
-                   && descriptor.hasJvmStaticAnnotation()
+                   && (descriptor.hasJvmStaticAnnotation() || !checkJvmStaticAnnotation)
         }
 
         private fun getJVMFunctionName(functionDescriptor: FunctionDescriptor): String {

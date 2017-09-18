@@ -16,8 +16,8 @@
 
 package org.jetbrains.kotlin.android.actions
 
-import com.android.tools.idea.gradle.GradleSyncState
-import com.android.tools.idea.gradle.project.GradleSyncListener
+import com.android.tools.idea.gradle.project.sync.GradleSyncListener
+import com.android.tools.idea.gradle.project.sync.GradleSyncState
 import com.intellij.history.core.RevisionsCollector
 import com.intellij.history.core.revisions.Revision
 import com.intellij.history.integration.LocalHistoryImpl
@@ -194,8 +194,7 @@ class NewKotlinActivityAction: AnAction(KotlinIcons.ACTIVITY) {
         val project = e.project
         if (project == null || project.isDisposed) return null
         val module = LangDataKeys.MODULE.getData(e.dataContext)
-        val facet = if (module != null) AndroidFacet.getInstance(module) else null
-        return facet
+        return if (module != null) AndroidFacet.getInstance(module) else null
     }
 
     private fun isVisible(facet: AndroidFacet): Boolean {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
+ * Copyright 2010-2017 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,10 @@ import gnu.trove.THashSet
 import gnu.trove.TObjectHashingStrategy
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
+import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
 import org.jetbrains.kotlin.descriptors.ScriptDescriptor
 import org.jetbrains.kotlin.descriptors.Visibilities
+import org.jetbrains.kotlin.descriptors.synthetic.SyntheticMemberDescriptor
 import org.jetbrains.kotlin.resolve.DescriptorEquivalenceForOverrides
 import org.jetbrains.kotlin.resolve.OverridingUtil
 import org.jetbrains.kotlin.resolve.calls.context.CheckArgumentTypesMode
@@ -30,13 +32,13 @@ import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.TypeUtils
 import java.util.*
 
-class OverloadingConflictResolver<C : Any>(
+open class OverloadingConflictResolver<C : Any>(
         private val builtIns: KotlinBuiltIns,
         private val specificityComparator: TypeSpecificityComparator,
         private val getResultingDescriptor: (C) -> CallableDescriptor,
         private val createEmptyConstraintSystem: () -> SimpleConstraintSystem,
         private val createFlatSignature: (C) -> FlatSignature<C>,
-        private val getVariableCandidates: (C) -> C?, // vor variable WithInvoke
+        private val getVariableCandidates: (C) -> C?, // for variable WithInvoke
         private val isFromSources: (CallableDescriptor) -> Boolean
 ) {
 
@@ -70,7 +72,22 @@ class OverloadingConflictResolver<C : Any>(
         }
 
         val noEquivalentCalls = filterOutEquivalentCalls(fixedCandidates)
-        val noOverrides = OverridingUtil.filterOverrides(noEquivalentCalls) { it.resultingDescriptor }
+        val noOverrides = OverridingUtil.filterOverrides(noEquivalentCalls) { a, b ->
+            val aDescriptor = a.resultingDescriptor
+            val bDescriptor = b.resultingDescriptor
+            // Here we'd like to handle situation when we have two synthetic descriptors as in syntheticSAMExtensions.kt
+
+            // Without this, we'll pick all synthetic descriptors as they don't have overridden descriptors and
+            // then report ambiguity, which isn't very convenient
+            if (aDescriptor is SyntheticMemberDescriptor<*> && bDescriptor is SyntheticMemberDescriptor<*>) {
+                val aBaseDescriptor = aDescriptor.baseDescriptorForSynthetic
+                val bBaseDescriptor = bDescriptor.baseDescriptorForSynthetic
+                if (aBaseDescriptor is CallableMemberDescriptor && bBaseDescriptor is CallableMemberDescriptor) {
+                    return@filterOverrides Pair(aBaseDescriptor, bBaseDescriptor)
+                }
+            }
+            Pair(aDescriptor, bDescriptor)
+        }
         if (noOverrides.size == 1) {
             return noOverrides
         }
@@ -130,12 +147,11 @@ class OverloadingConflictResolver<C : Any>(
                 candidates.firstOrNull()
             else when (checkArgumentsMode) {
                 CheckArgumentTypesMode.CHECK_CALLABLE_TYPE ->
-                    uniquifyCandidatesSet(candidates).filter {
-                        isDefinitelyMostSpecific(it, candidates) {
-                            call1, call2 ->
+                    uniquifyCandidatesSet(candidates).singleOrNull {
+                        isDefinitelyMostSpecific(it, candidates) { call1, call2 ->
                             isNotLessSpecificCallableReference(call1.resultingDescriptor, call2.resultingDescriptor)
                         }
-                    }.singleOrNull()
+                    }
 
                 CheckArgumentTypesMode.CHECK_VALUE_ARGUMENTS ->
                     findMaximallySpecificCall(candidates, discriminateGenerics, isDebuggerContext)
@@ -247,8 +263,8 @@ class OverloadingConflictResolver<C : Any>(
             if (isGeneric1 && isGeneric2) return false
         }
 
-        if (!call1.isHeader && call2.isHeader) return true
-        if (call1.isHeader && !call2.isHeader) return false
+        if (!call1.isExpect && call2.isExpect) return true
+        if (call1.isExpect && !call2.isExpect) return false
 
         return createEmptyConstraintSystem().isSignatureNotLessSpecific(call1, call2, SpecificityComparisonWithNumerics, specificityComparator)
     }

@@ -39,7 +39,7 @@ class LineCollector : RecursiveJsVisitor() {
                 val document = file.viewProvider.document!!
                 document.getLineNumber(offset)
             }
-            is JsLocation -> {
+            is JsLocationWithSource -> {
                 source.startLine
             }
             else -> null
@@ -57,20 +57,17 @@ class LineCollector : RecursiveJsVisitor() {
     }
 
     override fun visitExpressionStatement(x: JsExpressionStatement) {
-        val expression = x.expression
-        if (expression is JsFunction) {
-            expression.accept(this)
-        }
-        else {
-            withStatement(x) {
-                super.visitExpressionStatement(x)
-            }
+        withStatement(x) {
+            handleNodeLocation(x.expression)
+            lineNumbersByStatement[x]?.add(-1)
+            x.expression.acceptChildren(this)
         }
     }
 
     override fun visitIf(x: JsIf) {
         withStatement(x) {
             handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             x.ifExpression.accept(this)
         }
         x.thenStatement.accept(this)
@@ -80,6 +77,7 @@ class LineCollector : RecursiveJsVisitor() {
     override fun visitWhile(x: JsWhile) {
         withStatement(x) {
             handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             x.condition.accept(this)
         }
         x.body.accept(this)
@@ -87,14 +85,15 @@ class LineCollector : RecursiveJsVisitor() {
 
     override fun visitDoWhile(x: JsDoWhile) {
         withStatement(x) {
-            handleNodeLocation(x)
+            x.body.accept(this)
             x.condition.accept(this)
         }
-        x.body.accept(this)
     }
 
     override fun visitFor(x: JsFor) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             x.initExpression?.accept(this)
             x.initVars?.accept(this)
             x.condition?.accept(this)
@@ -117,26 +116,42 @@ class LineCollector : RecursiveJsVisitor() {
 
     override fun visitReturn(x: JsReturn) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             super.visitReturn(x)
         }
     }
 
     override fun visitVars(x: JsVars) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             super.visitVars(x)
         }
     }
 
     override fun visit(x: JsSwitch) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             x.expression.accept(this)
+            x.cases.forEach { accept(it) }
         }
-        x.cases.forEach { accept(it) }
     }
 
     override fun visitThrow(x: JsThrow) {
         withStatement(x) {
+            handleNodeLocation(x)
+            lineNumbersByStatement[x]?.add(-1)
             super.visitThrow(x)
+        }
+    }
+
+    override fun visitTry(x: JsTry) {
+        withStatement(x) {
+            x.tryBlock.acceptChildren(this)
+            x.catches?.forEach { accept(it) }
+            x.finallyBlock?.acceptChildren(this)
         }
     }
 
