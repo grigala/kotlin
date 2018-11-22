@@ -17,7 +17,6 @@
 package org.jetbrains.kotlin.idea.intentions.loopToCallChain.result
 
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
-import org.jetbrains.kotlin.descriptors.VariableDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.intentions.loopToCallChain.*
@@ -40,7 +39,10 @@ abstract class SumTransformationBase(
             call
         }
         else {
-            KtPsiFactory(call).createExpressionByPattern("$0 + $1", initialization.initializer, call)
+            KtPsiFactory(call).createExpressionByPattern(
+                    "$0 + $1", initialization.initializer, call,
+                    reformat = chainedCallGenerator.reformat
+            )
         }
     }
 
@@ -68,7 +70,7 @@ abstract class SumTransformationBase(
             val value = statement.right ?: return null
 
             val valueType = value.typeWithSmartCast()?.toSupportedType() ?: return null
-            val sumType = (variableInitialization.variable.resolveToDescriptorIfAny() as? VariableDescriptor)?.type?.toSupportedType() ?: return null
+            val sumType = variableInitialization.variable.resolveToDescriptorIfAny()?.type?.toSupportedType() ?: return null
 
             val conversionFunctionName = when (sumType) {
                 SupportedType.INT -> {
@@ -95,7 +97,7 @@ abstract class SumTransformationBase(
             }
 
             val byExpression = if (conversionFunctionName != null)
-                KtPsiFactory(value).createExpressionByPattern("$0.$conversionFunctionName()", value)
+                KtPsiFactory(value).createExpressionByPattern("$0.$conversionFunctionName()", value, reformat = state.reformat)
             else
                 value
 
@@ -171,7 +173,7 @@ class SumByTransformation(
         get() = "$functionName{}"
 
     override fun generateCall(chainedCallGenerator: ChainedCallGenerator): KtExpression {
-        val lambda = generateLambda(inputVariable, byExpression)
+        val lambda = generateLambda(inputVariable, byExpression, chainedCallGenerator.reformat)
         return chainedCallGenerator.generate("$functionName $0:'{}'", lambda)
     }
 }

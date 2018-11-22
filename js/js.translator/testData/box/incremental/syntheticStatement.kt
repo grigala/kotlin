@@ -1,5 +1,5 @@
-// EXPECTED_REACHABLE_NODES: 992
-/// FILE: a.kt
+// EXPECTED_REACHABLE_NODES: 1282
+// FILE: a.kt
 
 fun a() = "["
 

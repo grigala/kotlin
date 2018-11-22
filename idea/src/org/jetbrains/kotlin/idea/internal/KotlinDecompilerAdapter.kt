@@ -1,23 +1,17 @@
 /*
- * Copyright 2010-2016 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.idea.internal
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
@@ -25,27 +19,50 @@ import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.ex.dummy.DummyFileSystem
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.NotNullableUserDataProperty
 
 fun showDecompiledCode(sourceFile: KtFile) {
-    val decompilerService = KotlinDecompilerService.getInstance() ?: return
-    val decompiledCode = decompilerService.decompile(sourceFile)
-    if (decompiledCode == null) {
-        Messages.showErrorDialog("Cannot decompile ${sourceFile.name}", "Decompiler error")
-        return
-    }
+    ProgressManager.getInstance().run(KotlinBytecodeDecompilerTask(sourceFile))
+}
 
-    runWriteAction {
-        val root = getOrCreateDummyRoot()
-        val decompiledFileName = FileUtil.getNameWithoutExtension(sourceFile.name) + ".decompiled.java"
-        val result = DummyFileSystem.getInstance().createChildFile(null, root, decompiledFileName)
-        VfsUtil.saveText(result, decompiledCode)
+class KotlinBytecodeDecompilerTask(val file: KtFile) : Task.Backgroundable(file.project, "Decompile kotlin bytecode") {
+    override fun run(indicator: ProgressIndicator) {
+        val decompilerService = KotlinDecompilerService.getInstance() ?: return
 
-        OpenFileDescriptor(sourceFile.project, result).navigate(true)
+        indicator.text = "Decompiling ${file.name}"
+
+        val decompiledText = try {
+            decompilerService.decompile(file)
+        } catch (e: DecompileFailedException) {
+            null
+        }
+
+        ApplicationManager.getApplication().invokeLater {
+            runWriteAction {
+                if (!file.isValid || file.project.isDisposed) return@runWriteAction
+
+                if (decompiledText == null) {
+                    Messages.showErrorDialog("Cannot decompile ${file.name}", "Decompiler error")
+                    return@runWriteAction
+                }
+
+                val root: VirtualFile = getOrCreateDummyRoot()
+                val decompiledFileName = FileUtil.getNameWithoutExtension(file.name) + ".decompiled.java"
+                val result = DummyFileSystem.getInstance().createChildFile(null, root, decompiledFileName)
+                VfsUtil.saveText(result, decompiledText)
+
+                result.isKotlinDecompiledFile = true
+
+                OpenFileDescriptor(file.project, result).navigate(true)
+            }
+        }
     }
 }
 
 val KOTLIN_DECOMPILED_FOLDER = "kotlinDecompiled"
 val KOTLIN_DECOMPILED_ROOT = "dummy://$KOTLIN_DECOMPILED_FOLDER"
+
+var VirtualFile.isKotlinDecompiledFile: Boolean by NotNullableUserDataProperty(Key.create("IS_KOTLIN_DECOMPILED_FILE"), false)
 
 fun getOrCreateDummyRoot(): VirtualFile =
     VirtualFileManager.getInstance().refreshAndFindFileByUrl(KOTLIN_DECOMPILED_ROOT) ?:

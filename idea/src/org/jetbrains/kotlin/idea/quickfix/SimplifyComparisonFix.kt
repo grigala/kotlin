@@ -21,12 +21,12 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.diagnostics.DiagnosticWithParameters2
+import org.jetbrains.kotlin.idea.core.replaced
+import org.jetbrains.kotlin.idea.inspections.ConstantConditionIfInspection
 import org.jetbrains.kotlin.idea.intentions.SimplifyBooleanWithConstantsIntention
-import org.jetbrains.kotlin.psi.KtBinaryExpression
-import org.jetbrains.kotlin.psi.KtExpression
-import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.psi.KtPsiFactory
+import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
+import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 
 class SimplifyComparisonFix(element: KtExpression, val value: Boolean) : KotlinQuickFixAction<KtExpression>(element) {
     override fun getFamilyName() = "Simplify $element to '$value'"
@@ -35,15 +35,19 @@ class SimplifyComparisonFix(element: KtExpression, val value: Boolean) : KotlinQ
 
     override fun invoke(project: Project, editor: Editor?, file: KtFile) {
         val element = element ?: return
-        val parent = element.parent
         val replacement = KtPsiFactory(element).createExpression("$value")
-        element.replace(replacement)
+        val result = element.replaced(replacement)
 
-        val booleanExpression = parent.getNonStrictParentOfType<KtBinaryExpression>() ?: return
+        val booleanExpression = result.getNonStrictParentOfType<KtBinaryExpression>()
         val simplifyIntention = SimplifyBooleanWithConstantsIntention()
-        if (simplifyIntention.isApplicableTo(booleanExpression)) {
+        if (booleanExpression != null && simplifyIntention.isApplicableTo(booleanExpression)) {
             simplifyIntention.applyTo(booleanExpression, editor)
+        } else {
+            simplifyIntention.removeRedundantAssertion(result)
         }
+
+        val ifExpression = result.getStrictParentOfType<KtIfExpression>()?.takeIf { it.condition == result }
+        if (ifExpression != null) ConstantConditionIfInspection.applyFixIfSingle(ifExpression)
     }
 
     companion object : KotlinSingleIntentionActionFactory() {

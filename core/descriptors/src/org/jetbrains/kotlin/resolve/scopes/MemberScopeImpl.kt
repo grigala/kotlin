@@ -25,9 +25,11 @@ import org.jetbrains.kotlin.utils.alwaysTrue
 abstract class MemberScopeImpl : MemberScope {
     override fun getContributedClassifier(name: Name, location: LookupLocation): ClassifierDescriptor? = null
 
-    override fun getContributedVariables(name: Name, location: LookupLocation): Collection<PropertyDescriptor> = emptyList()
+    override fun getContributedVariables(name: Name, location: LookupLocation): Collection<@JvmWildcard PropertyDescriptor> =
+        emptyList()
 
-    override fun getContributedFunctions(name: Name, location: LookupLocation): Collection<SimpleFunctionDescriptor> = emptyList()
+    override fun getContributedFunctions(name: Name, location: LookupLocation): Collection<@JvmWildcard SimpleFunctionDescriptor> =
+        emptyList()
 
     override fun getContributedDescriptors(kindFilter: DescriptorKindFilter,
                                            nameFilter: (Name) -> Boolean): Collection<DeclarationDescriptor> = emptyList()
@@ -41,6 +43,8 @@ abstract class MemberScopeImpl : MemberScope {
             getContributedDescriptors(
                     DescriptorKindFilter.VARIABLES, alwaysTrue()
             ).filterIsInstance<VariableDescriptor>().mapTo(mutableSetOf()) { it.name }
+
+    override fun getClassifierNames(): Set<Name>? = null
 
     // This method should not be implemented here by default: every scope class has its unique structure pattern
     abstract override fun printScopeStructure(p: Printer)

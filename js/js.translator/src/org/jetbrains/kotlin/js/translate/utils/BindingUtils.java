@@ -28,9 +28,9 @@ import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
+import org.jetbrains.kotlin.resolve.calls.util.FakeCallableDescriptorForTypeAliasObject;
 import org.jetbrains.kotlin.resolve.constants.CompileTimeConstant;
 import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator;
-import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeUtils;
 
@@ -49,14 +49,15 @@ public final class BindingUtils {
     private BindingUtils() {
     }
 
+    @SuppressWarnings("unchecked")
     @NotNull
-    static private <E extends PsiElement, D extends DeclarationDescriptor>
-    D getDescriptorForExpression(@NotNull BindingContext context, @NotNull E expression, Class<D> descriptorClass) {
+    private static <E extends PsiElement, D extends DeclarationDescriptor> D getDescriptorForExpression(
+            @NotNull BindingContext context, @NotNull E expression, Class<D> descriptorClass
+    ) {
         DeclarationDescriptor descriptor = context.get(BindingContext.DECLARATION_TO_DESCRIPTOR, expression);
         assert descriptor != null;
         assert descriptorClass.isInstance(descriptor)
                 : message(expression, expression.toString() + " expected to have of type" + descriptorClass.toString());
-        //noinspection unchecked
         return (D) descriptor;
     }
 
@@ -130,6 +131,9 @@ public final class BindingUtils {
             }
             return classDescriptor;
         }
+        else if (descriptor instanceof FakeCallableDescriptorForTypeAliasObject) {
+            return ((FakeCallableDescriptorForTypeAliasObject) descriptor).getReferencedObject();
+        }
         else {
             return descriptor;
         }
@@ -178,24 +182,10 @@ public final class BindingUtils {
 
     @NotNull
     public static KtExpression getDefaultArgument(@NotNull ValueParameterDescriptor parameterDescriptor) {
-        ValueParameterDescriptor descriptorWhichDeclaresDefaultValue =
-                getOriginalDescriptorWhichDeclaresDefaultValue(parameterDescriptor);
-        KtParameter psiParameter = getParameterForDescriptor(descriptorWhichDeclaresDefaultValue);
+        KtParameter psiParameter = getParameterForDescriptor(parameterDescriptor);
         KtExpression defaultValue = psiParameter.getDefaultValue();
         assert defaultValue != null : message(parameterDescriptor, "No default value found in PSI");
         return defaultValue;
-    }
-
-    private static ValueParameterDescriptor getOriginalDescriptorWhichDeclaresDefaultValue(
-            @NotNull ValueParameterDescriptor parameterDescriptor
-    ) {
-        ValueParameterDescriptor result = parameterDescriptor;
-        assert DescriptorUtilsKt.hasDefaultValue(result) : message(parameterDescriptor, "Unsupplied parameter must have default value");
-        // TODO: this seems incorrect, as the default value may come from _not the first_ overridden parameter
-        while (!result.declaresDefaultValue()) {
-            result = result.getOverriddenDescriptors().iterator().next();
-        }
-        return result;
     }
 
     @NotNull

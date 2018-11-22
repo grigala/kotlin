@@ -29,12 +29,13 @@ import com.intellij.openapi.updateSettings.impl.UpdateChecker;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.search.searches.IndexPatternSearch;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.idea.debugger.filter.DebuggerFiltersUtilKt;
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinTodoSearcher;
 import org.jetbrains.kotlin.utils.PathUtil;
 
 import java.io.File;
 import java.io.IOException;
+
+import static org.jetbrains.kotlin.idea.TestResourceBundleKt.registerAdditionalResourceBundleInTests;
 
 public class PluginStartupComponent implements ApplicationComponent {
     private static final Logger LOG = Logger.getInstance(PluginStartupComponent.class);
@@ -53,13 +54,11 @@ public class PluginStartupComponent implements ApplicationComponent {
 
     @Override
     public void initComponent() {
-        registerPathVariable();
-
         if (ApplicationManager.getApplication().isUnitTestMode()) {
-            ThreadTrackerPatcherForTeamCityTesting.INSTANCE.patchThreadTracker();
+            registerAdditionalResourceBundleInTests();
         }
 
-        DebuggerFiltersUtilKt.addKotlinStdlibDebugFilterIfNeeded();
+        registerPathVariable();
 
         try {
             // API added in 15.0.2
@@ -80,6 +79,11 @@ public class PluginStartupComponent implements ApplicationComponent {
         });
 
         ServiceManager.getService(IndexPatternSearch.class).registerExecutor(new KotlinTodoSearcher());
+
+        KotlinPluginCompatibilityVerifier.checkCompatibility();
+
+        //todo[Sedunov]: wait for fix in platform to avoid misunderstood from Java newbies (also ConfigureKotlinInTempDirTest)
+        //KotlinSdkType.Companion.setUpIfNeeded();
     }
 
     private static void registerPathVariable() {

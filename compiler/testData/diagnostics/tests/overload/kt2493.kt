@@ -1,3 +1,4 @@
+// !WITH_NEW_INFERENCE
 interface A
 interface B
 
@@ -12,8 +13,8 @@ class BImpl: B
 
 class C: A, B
 
-fun main(args: Array<String>) {
+fun main() {
     AImpl().f()
     BImpl().f()
-    C().<!CANNOT_COMPLETE_RESOLVE!>f<!>()
+    C().<!NI;OVERLOAD_RESOLUTION_AMBIGUITY, OI;CANNOT_COMPLETE_RESOLVE!>f<!>()
 }

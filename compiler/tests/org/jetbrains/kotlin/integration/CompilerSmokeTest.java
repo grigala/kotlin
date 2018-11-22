@@ -16,6 +16,8 @@
 
 package org.jetbrains.kotlin.integration;
 
+import org.jetbrains.kotlin.cli.AbstractCliTest;
+
 import java.io.File;
 
 public class CompilerSmokeTest extends CompilerSmokeTestBase {
@@ -41,6 +43,41 @@ public class CompilerSmokeTest extends CompilerSmokeTestBase {
         run("hello.run", "-cp", jar, "Hello.HelloKt");
     }
 
+    public void testHelloAppSuspendMain() throws Exception {
+        String jar = tmpdir.getAbsolutePath() + File.separator + "hello.jar";
+
+        assertEquals("compilation failed", 0, runCompiler("hello.compile", "-include-runtime", "hello.kt", "-d", jar));
+        run("hello.run", "-cp", jar, "Hello.HelloKt", "O", "K");
+    }
+
+    public void testHelloAppSuspendMainInMultifile() throws Exception {
+        String jar = tmpdir.getAbsolutePath() + File.separator + "hello.jar";
+
+        assertEquals("compilation failed", 0, runCompiler("hello.compile", "-include-runtime", "hello.kt", "-d", jar));
+        run("hello.run", "-cp", jar, "Hello.Foo", "O", "K");
+    }
+
+    public void testHelloAppParameterlessMain() throws Exception {
+        String jar = tmpdir.getAbsolutePath() + File.separator + "hello.jar";
+
+        assertEquals("compilation failed", 0, runCompiler("hello.compile", "-include-runtime", "hello.kt", "-d", jar));
+        run("hello.run", "-cp", jar, "Hello.HelloKt");
+    }
+
+    public void testHelloAppOldAndParameterlessMain() throws Exception {
+        String jar = tmpdir.getAbsolutePath() + File.separator + "hello.jar";
+
+        assertEquals("compilation failed", 0, runCompiler("hello.compile", "-include-runtime", "hello.kt", "-d", jar));
+        run("hello.run", "-cp", jar, "Hello.HelloKt");
+    }
+
+    public void testHelloAppSuspendParameterlessMain() throws Exception {
+        String jar = tmpdir.getAbsolutePath() + File.separator + "hello.jar";
+
+        assertEquals("compilation failed", 0, runCompiler("hello.compile", "-include-runtime", "hello.kt", "-d", jar));
+        run("hello.run", "-cp", jar, "Hello.HelloKt", "O", "K");
+    }
+
     public void testCompilationFailed() throws Exception {
         String jar = tmpdir.getAbsolutePath() + File.separator + "smoke.jar";
 
@@ -59,10 +96,6 @@ public class CompilerSmokeTest extends CompilerSmokeTestBase {
 
     public void testScriptDashedArgs() throws Exception {
         runCompiler("script", "-script", "script.kts", "--", "hi", "-name", "Marty", "--", "there");
-    }
-
-    public void testScriptWithClasspath() throws Exception {
-        runCompiler("script", "-cp", new File("lib/javax.inject.jar").getAbsolutePath(), "-script", "script.kts");
     }
 
     public void testScriptException() throws Exception {
@@ -88,5 +121,14 @@ public class CompilerSmokeTest extends CompilerSmokeTestBase {
 
     public void testPrintVersion() throws Exception {
         runCompiler("test.compile", "-version");
+    }
+
+    public void testBuildFile() throws Exception {
+        File buildXml = new File(getTestDataDir(), "build.xml");
+        runCompiler(
+                "buildFile.compile",
+                AbstractCliTest.replacePathsInBuildXml("-Xbuild-file=" + buildXml, getTestDataDir(), tmpdir.getPath())
+        );
+        run("buildFile.run", "-cp", tmpdir.getAbsolutePath(), "MainKt");
     }
 }

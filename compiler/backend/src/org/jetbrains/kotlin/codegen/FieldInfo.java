@@ -1,27 +1,18 @@
 /*
- * Copyright 2010-2015 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.codegen;
 
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.CompanionObjectMapping;
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper;
 import org.jetbrains.kotlin.descriptors.ClassDescriptor;
 import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.org.objectweb.asm.Type;
 
 import static org.jetbrains.kotlin.resolve.DescriptorUtils.isNonCompanionObject;
@@ -34,37 +25,60 @@ public class FieldInfo {
         }
 
         if (isNonCompanionObject(classDescriptor) || CompanionObjectMapping.INSTANCE.isMappedIntrinsicCompanionObject(classDescriptor)) {
-            return createSingletonViaInstance(classDescriptor, typeMapper);
+            return createSingletonViaInstance(classDescriptor, typeMapper, JvmAbi.INSTANCE_FIELD);
         }
 
         ClassDescriptor ownerDescriptor = DescriptorUtils.getParentOfType(classDescriptor, ClassDescriptor.class);
         assert ownerDescriptor != null : "Owner not found for class: " + classDescriptor;
-        Type ownerType = typeMapper.mapType(ownerDescriptor);
-        return new FieldInfo(ownerType, typeMapper.mapType(classDescriptor), classDescriptor.getName().asString(), true);
+        Type ownerType = typeMapper.mapClass(ownerDescriptor);
+        KotlinType fieldKotlinType = classDescriptor.getDefaultType();
+        Type fieldType = typeMapper.mapType(fieldKotlinType);
+        return new FieldInfo(ownerType, fieldType, fieldKotlinType, classDescriptor.getName().asString(), true);
     }
 
     @NotNull
     public static FieldInfo createSingletonViaInstance(
             @NotNull ClassDescriptor classDescriptor,
-            @NotNull KotlinTypeMapper typeMapper
+            @NotNull KotlinTypeMapper typeMapper,
+            @NotNull String name
     ) {
-        Type type = typeMapper.mapType(classDescriptor);
-        return new FieldInfo(type, type, JvmAbi.INSTANCE_FIELD, true);
+        Type owner = typeMapper.mapClass(classDescriptor);
+        KotlinType fieldKotlinType = classDescriptor.getDefaultType();
+        Type fieldType = typeMapper.mapType(fieldKotlinType);
+        return new FieldInfo(owner, fieldType, fieldKotlinType, name, true);
     }
 
     @NotNull
     public static FieldInfo createForHiddenField(@NotNull Type owner, @NotNull Type fieldType, @NotNull String fieldName) {
-        return new FieldInfo(owner, fieldType, fieldName, false);
+        return createForHiddenField(owner, fieldType, null, fieldName);
+    }
+
+    @NotNull
+    public static FieldInfo createForHiddenField(
+            @NotNull Type owner,
+            @NotNull Type fieldType,
+            @Nullable KotlinType fieldKotlinType,
+            @NotNull String fieldName
+    ) {
+        return new FieldInfo(owner, fieldType, fieldKotlinType, fieldName, false);
     }
 
     private final Type fieldType;
+    private final KotlinType fieldKotlinType;
     private final Type ownerType;
     private final String fieldName;
     private final boolean isStatic;
 
-    private FieldInfo(@NotNull Type ownerType, @NotNull Type fieldType, @NotNull String fieldName, boolean isStatic) {
+    private FieldInfo(
+            @NotNull Type ownerType,
+            @NotNull Type fieldType,
+            @Nullable KotlinType fieldKotlinType,
+            @NotNull String fieldName,
+            boolean isStatic
+    ) {
         this.ownerType = ownerType;
         this.fieldType = fieldType;
+        this.fieldKotlinType = fieldKotlinType;
         this.fieldName = fieldName;
         this.isStatic = isStatic;
     }
@@ -72,6 +86,11 @@ public class FieldInfo {
     @NotNull
     public Type getFieldType() {
         return fieldType;
+    }
+
+    @Nullable
+    public KotlinType getFieldKotlinType() {
+        return fieldKotlinType;
     }
 
     @NotNull

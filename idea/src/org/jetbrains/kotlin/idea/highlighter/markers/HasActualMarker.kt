@@ -16,76 +16,72 @@
 
 package org.jetbrains.kotlin.idea.highlighter.markers
 
-import com.intellij.codeInsight.daemon.impl.PsiElementListNavigator
 import com.intellij.ide.util.DefaultPsiElementCellRenderer
-import org.jetbrains.kotlin.descriptors.*
-import org.jetbrains.kotlin.idea.caches.resolve.findModuleDescriptor
-import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
+import com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.analyzer.ModuleInfo
+import org.jetbrains.kotlin.descriptors.ModuleDescriptor
+import org.jetbrains.kotlin.idea.caches.project.ModuleSourceInfo
+import org.jetbrains.kotlin.idea.core.isAndroidModule
 import org.jetbrains.kotlin.idea.core.toDescriptor
-import org.jetbrains.kotlin.idea.highlighter.allImplementingCompatibleModules
+import org.jetbrains.kotlin.idea.util.actualsForExpected
 import org.jetbrains.kotlin.psi.KtDeclaration
-import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import org.jetbrains.kotlin.resolve.MultiTargetPlatform
-import org.jetbrains.kotlin.resolve.checkers.ExpectedActualDeclarationChecker
 import org.jetbrains.kotlin.resolve.descriptorUtil.module
 import org.jetbrains.kotlin.resolve.getMultiTargetPlatform
-import java.awt.event.MouseEvent
 
-fun ModuleDescriptor.hasActualsFor(descriptor: MemberDescriptor) =
-        actualsFor(descriptor).isNotEmpty()
-
-fun ModuleDescriptor.actualsFor(descriptor: MemberDescriptor, checkCompatible: Boolean = true): List<DeclarationDescriptor> =
-        with(ExpectedActualDeclarationChecker) {
-            if (checkCompatible) {
-                descriptor.findCompatibleActualForExpected(this@actualsFor)
-            }
-            else {
-                descriptor.findAnyActualForExpected(this@actualsFor)
-            }
-        }
+private fun ModuleDescriptor?.getMultiTargetPlatformName(): String? {
+    if (this == null) return null
+    val moduleInfo = getCapability(ModuleInfo.Capability) as? ModuleSourceInfo
+    if (moduleInfo != null && moduleInfo.module.isAndroidModule()) {
+        return "Android"
+    }
+    val platform = getMultiTargetPlatform() ?: return null
+    return when (platform) {
+        is MultiTargetPlatform.Specific ->
+            platform.platform
+        MultiTargetPlatform.Common ->
+            "common"
+    }
+}
 
 fun getPlatformActualTooltip(declaration: KtDeclaration): String? {
-    val descriptor = declaration.toDescriptor() as? MemberDescriptor ?: return null
-    val commonModuleDescriptor = declaration.containingKtFile.findModuleDescriptor()
+    val actualDeclarations = declaration.actualsForExpected()
+    if (actualDeclarations.isEmpty()) return null
 
-    val platformModulesWithActuals = commonModuleDescriptor.allImplementingCompatibleModules.filter {
-        it.hasActualsFor(descriptor)
-    }
-    if (platformModulesWithActuals.isEmpty()) return null
-
-    return platformModulesWithActuals.joinToString(prefix = "Has actuals in ") {
-        (it.getMultiTargetPlatform() as MultiTargetPlatform.Specific).platform
-    }
+    return actualDeclarations.asSequence()
+        .mapNotNull { it.toDescriptor()?.module }
+        .groupBy { it.getMultiTargetPlatformName() }
+        .filter { (platform, _) -> platform != null }
+        .entries
+        .joinToString(prefix = "Has actuals in ") { (platform, modules) ->
+            val modulesSuffix = if (modules.size <= 1) "" else " (${modules.size} modules)"
+            if (platform == null) {
+                throw AssertionError("Platform should not be null")
+            }
+            platform + modulesSuffix
+        }
 }
 
-fun navigateToPlatformActual(e: MouseEvent?, declaration: KtDeclaration) {
-    val actuals = declaration.actualsForExpected()
-    if (actuals.isEmpty()) return
+fun KtDeclaration.allNavigatableActualDeclarations(): Set<KtDeclaration> =
+    actualsForExpected() + findMarkerBoundDeclarations().flatMap { it.actualsForExpected() }
 
-    val renderer = DefaultPsiElementCellRenderer()
-    PsiElementListNavigator.openTargets(e,
-                                        actuals.toTypedArray(),
-                                        "Choose actual for ${declaration.name}",
-                                        "Actuals for ${declaration.name}",
-                                        renderer)
+class ActualExpectedPsiElementCellRenderer : DefaultPsiElementCellRenderer() {
+    override fun getContainerText(element: PsiElement?, name: String?) = ""
 }
 
-private fun DeclarationDescriptor.actualsForExpected(): Collection<DeclarationDescriptor> {
-    if (this is MemberDescriptor) {
-        if (!this.isExpect) return emptyList()
+fun KtDeclaration.navigateToActualTitle() = "Choose actual for $name"
 
-        return module.allImplementingCompatibleModules.flatMap { it.actualsFor(this) }
-    }
+fun KtDeclaration.navigateToActualUsagesTitle() = "Actuals for $name"
 
-    if (this is ValueParameterDescriptor) {
-        return containingDeclaration.actualsForExpected().mapNotNull { (it as? CallableDescriptor)?.valueParameters?.getOrNull(index) }
-    }
-
-    return emptyList()
-}
-
-internal fun KtDeclaration.actualsForExpected(): Set<KtDeclaration> {
-    return unsafeResolveToDescriptor().actualsForExpected().mapNotNullTo(LinkedHashSet()) {
-        DescriptorToSourceUtils.descriptorToDeclaration(it) as? KtDeclaration
+fun buildNavigateToActualDeclarationsPopup(element: PsiElement?): NavigationPopupDescriptor? {
+    return element?.markerDeclaration?.let {
+        val navigatableActualDeclarations = it.allNavigatableActualDeclarations()
+        if (navigatableActualDeclarations.isEmpty()) return null
+        return NavigationPopupDescriptor(
+            navigatableActualDeclarations,
+            it.navigateToActualTitle(),
+            it.navigateToActualUsagesTitle(),
+            ActualExpectedPsiElementCellRenderer()
+        )
     }
 }

@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.jvm.compiler
 
 import com.intellij.openapi.util.io.FileUtil
+import org.jetbrains.kotlin.cli.AbstractCliTest
 import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import java.io.File
@@ -30,19 +31,20 @@ class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
             name: String,
             modulePath: List<File> = emptyList(),
             addModules: List<String> = emptyList(),
+            additionalKotlinArguments: List<String> = emptyList(),
             manifest: Manifest? = null
     ): File {
-        val jdk9Home = KotlinTestUtils.getJdk9HomeIfPossible() ?: return File("<test-skipped>")
-
         val paths = (modulePath + ForTestCompileRuntime.runtimeJarForTests()).joinToString(separator = File.pathSeparator) { it.path }
 
         val kotlinOptions = mutableListOf(
-                "-jdk-home", jdk9Home.path,
-                "-Xmodule-path=$paths"
+            "-jdk-home", KotlinTestUtils.getJdk9Home().path,
+            "-jvm-target", "1.8",
+            "-Xmodule-path=$paths"
         )
         if (addModules.isNotEmpty()) {
             kotlinOptions += "-Xadd-modules=${addModules.joinToString()}"
         }
+        kotlinOptions += additionalKotlinArguments
 
         return compileLibrary(
                 name,
@@ -81,21 +83,6 @@ class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
         assertEquals("'jar' did not finish successfully", 0, process.exitValue())
 
         return destination
-    }
-
-    private fun java9BuildVersion(): Int? {
-        val jdk9Home = KotlinTestUtils.getJdk9HomeIfPossible() ?: return null
-        val process = ProcessBuilder().command(File(jdk9Home, "bin/java").path, "--version").start()
-        val lines = process.inputStream.use {
-            it.reader().readLines().also {
-                process.waitFor()
-            }
-        }
-        if (process.exitValue() != 0) return null
-        val line = lines.getOrNull(1) ?: return null
-
-        val result = ".*\\(build 9(-ea)?\\+(\\d+)\\)".toRegex().matchEntire(line)?.groupValues ?: return null
-        return result[2].toIntOrNull()
     }
 
     // -------------------------------------------------------
@@ -174,11 +161,10 @@ class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
     fun testSpecifyPathToModuleInfoInArguments() {
         val a = module("moduleA")
 
-        val jdk9Home = KotlinTestUtils.getJdk9HomeIfPossible() ?: return
         val kotlinOptions = mutableListOf(
-                "$testDataDirectory/someOtherDirectoryWithTheActualModuleInfo/module-info.java",
-                "-jdk-home", jdk9Home.path,
-                "-Xmodule-path=${a.path}"
+            "$testDataDirectory/someOtherDirectoryWithTheActualModuleInfo/module-info.java",
+            "-jdk-home", KotlinTestUtils.getJdk9Home().path,
+            "-Xmodule-path=${a.path}"
         )
         compileLibrary(
                 "moduleB",
@@ -189,8 +175,6 @@ class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
     }
 
     fun testMultiReleaseLibrary() {
-        val jdk9Home = KotlinTestUtils.getJdk9HomeIfPossible() ?: return
-
         val librarySrc = FileUtil.findFilesByMask(JAVA_FILES, File(testDataDirectory, "library"))
         val libraryOut = File(tmpdir, "out")
         KotlinTestUtils.compileJavaFilesExternallyWithJava9(librarySrc, listOf("-d", libraryOut.path))
@@ -200,22 +184,16 @@ class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
         File(libraryOut, "module-info.class").renameTo(File(libraryOut9, "module-info.class"))
 
         // Use the name other from 'library' to prevent it from being loaded as an automatic module if module-info.class is not found
-        val libraryJar = createMultiReleaseJar(jdk9Home, File(tmpdir, "multi-release-library.jar"), libraryOut, libraryOut9)
+        val libraryJar = createMultiReleaseJar(
+            KotlinTestUtils.getJdk9Home(), File(tmpdir, "multi-release-library.jar"), libraryOut, libraryOut9
+        )
 
         module("main", listOf(libraryJar))
     }
 
     fun testAutomaticModuleNames() {
-        // Automatic module names are computed differently starting from some build of 9-ea
-        // TODO: remove this as soon as Java 9 is released and installed on all TeamCity agents
-        val version = java9BuildVersion()
-        if (version == null || version < 176) {
-            System.err.println("Java 9 build is not recognized or is too old (build $version), skipping the test")
-            return
-        }
-
         // This name should be sanitized to just "auto.mat1c.m0d.ule"
-        val m1 = File(tmpdir, ".auto--mat1c-_-!@#\$%^&*()m0d_ule--1.0..0-release..jar")
+        val m1 = File(tmpdir, ".auto--mat1c-_-!@#\$%^&()m0d_ule--1.0..0-release..jar")
         module("automatic-module1").renameTo(m1)
 
         val m2 = module("automatic-module2", manifest = Manifest().apply {
@@ -249,7 +227,28 @@ class Java9ModulesIntegrationTest : AbstractKotlinCompilerIntegrationTest() {
 
     fun testDependencyOnStdlib() {
         module("unnamed")
-        module("namedWithExplicitDependency")
+        val namedWithExplicitDependency = module("namedWithExplicitDependency")
         module("namedWithoutExplicitDependency")
+        module("namedWithIndirectDependencyViaOtherModule", listOf(namedWithExplicitDependency))
+        module("namedWithIndirectDependencyViaReflect", listOf(ForTestCompileRuntime.reflectJarForTests()))
+    }
+
+    fun testDependencyOnStdlibJdk78() {
+        module("usage", listOf(File("dist/kotlinc/lib/kotlin-stdlib-jdk7.jar"), File("dist/kotlinc/lib/kotlin-stdlib-jdk8.jar")))
+    }
+
+    fun testDependencyOnReflect() {
+        module("usage", listOf(ForTestCompileRuntime.reflectJarForTests()))
+    }
+
+    fun testWithBuildFile() {
+        // This test checks that module path is configured correctly when the compiler is invoked in the '-Xbuild-file' mode. Note that
+        // the "'-d' option is ignored" warning in this test is an artifact of the test infrastructure and is not a part of the test.
+        val buildFile = AbstractCliTest.replacePathsInBuildXml(
+            "-Xbuild-file=${File(testDataDirectory, "build.xml").path}",
+            testDataDirectory.absolutePath,
+            tmpdir.absolutePath
+        )
+        module("usage", additionalKotlinArguments = listOf("-no-stdlib", buildFile))
     }
 }

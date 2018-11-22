@@ -17,7 +17,6 @@
 package org.jetbrains.kotlin.idea.intentions.loopToCallChain.result
 
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
-import org.jetbrains.kotlin.descriptors.VariableDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.intentions.loopToCallChain.*
 import org.jetbrains.kotlin.idea.intentions.loopToCallChain.sequence.FilterTransformationBase
@@ -30,13 +29,14 @@ class CountTransformation(
         private val filter: KtExpression?
 ) : AssignToVariableResultTransformation(loop, initialization) {
 
-    override fun mergeWithPrevious(previousTransformation: SequenceTransformation): ResultTransformation? {
+    override fun mergeWithPrevious(previousTransformation: SequenceTransformation, reformat: Boolean): ResultTransformation? {
         if (previousTransformation !is FilterTransformationBase) return null
         if (previousTransformation.indexVariable != null) return null
         val newFilter = if (filter == null)
-            previousTransformation.effectiveCondition.asExpression()
+            previousTransformation.effectiveCondition.asExpression(reformat)
         else
-            KtPsiFactory(filter).createExpressionByPattern("$0 && $1", previousTransformation.effectiveCondition.asExpression(), filter)
+            KtPsiFactory(filter).createExpressionByPattern("$0 && $1", previousTransformation.effectiveCondition.asExpression(reformat), filter,
+                                                           reformat = reformat)
         return CountTransformation(loop, previousTransformation.inputVariable, initialization, newFilter)
     }
 
@@ -44,8 +44,9 @@ class CountTransformation(
         get() = "count" + (if (filter != null) "{}" else "()")
 
     override fun generateCode(chainedCallGenerator: ChainedCallGenerator): KtExpression {
+        val reformat = chainedCallGenerator.reformat
         val call = if (filter != null) {
-            val lambda = generateLambda(inputVariable, filter)
+            val lambda = generateLambda(inputVariable, filter, reformat)
             chainedCallGenerator.generate("count $0:'{}'", lambda)
         }
         else {
@@ -56,7 +57,7 @@ class CountTransformation(
             call
         }
         else {
-            KtPsiFactory(call).createExpressionByPattern("$0 + $1", initialization.initializer, call)
+            KtPsiFactory(call).createExpressionByPattern("$0 + $1", initialization.initializer, call, reformat = reformat)
         }
     }
 
@@ -81,7 +82,7 @@ class CountTransformation(
 
             if (initialization.variable.countUsages(state.outerLoop) != 1) return null // this should be the only usage of this variable inside the loop
 
-            val variableType = (initialization.variable.resolveToDescriptorIfAny() as? VariableDescriptor)?.type ?: return null
+            val variableType = initialization.variable.resolveToDescriptorIfAny()?.type ?: return null
             if (!KotlinBuiltIns.isInt(variableType)) return null
 
             val transformation = CountTransformation(state.outerLoop, state.inputVariable, initialization, null)

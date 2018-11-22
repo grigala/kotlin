@@ -20,17 +20,17 @@ import com.intellij.execution.process.OSProcessHandler
 import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.TextRange
-import com.intellij.openapi.util.text.StringUtil
+import org.jetbrains.kotlin.cli.common.repl.replNormalizeLineBreaks
+import org.jetbrains.kotlin.cli.common.repl.replUnescapeLineBreaks
 import org.jetbrains.kotlin.console.actions.logError
 import org.jetbrains.kotlin.diagnostics.Severity
+import org.jetbrains.kotlin.utils.repl.ReplEscapeType
+import org.jetbrains.kotlin.utils.repl.ReplEscapeType.*
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
 import java.io.ByteArrayInputStream
 import java.nio.charset.Charset
 import javax.xml.parsers.DocumentBuilderFactory
-
-val XML_REPLACEMENTS: Array<String> = arrayOf("#n", "#diez")
-val SOURCE_CHARS: Array<String>     = arrayOf("\n", "#")
 
 data class SeverityDetails(val severity: Severity, val description: String, val range: TextRange)
 
@@ -47,7 +47,7 @@ class ReplOutputHandler(
 
     override fun isSilentlyDestroyOnClose() = true
 
-    override fun notifyTextAvailable(text: String, key: Key<*>?) {
+    override fun notifyTextAvailable(text: String, key: Key<*>) {
         // hide warning about adding test folder to classpath
         if (text.startsWith("warning: classpath entry points to a non-existent location")) return
 
@@ -70,30 +70,30 @@ class ReplOutputHandler(
             factory.newDocumentBuilder().parse(strToSource(text))
         }
         catch (e: Exception) {
-            logError(ReplOutputHandler::class.java, "Couldn't parse REPL output: $text")
+            logError(ReplOutputHandler::class.java, "Couldn't parse REPL output: $text", e)
             return
         }
 
         val root = output.firstChild as Element
-        val outputType = root.getAttribute("type")
-        val content = StringUtil.replace(root.textContent, XML_REPLACEMENTS, SOURCE_CHARS)
+        val outputType = ReplEscapeType.valueOfOrNull(root.getAttribute("type"))
+        val content = root.textContent.replUnescapeLineBreaks().replNormalizeLineBreaks()
 
         when (outputType) {
-            "INITIAL_PROMPT"  -> buildWarningIfNeededBeforeInit(content)
-            "HELP_PROMPT"     -> outputProcessor.printHelp(content)
-            "USER_OUTPUT"     -> outputProcessor.printUserOutput(content)
-            "REPL_RESULT"     -> outputProcessor.printResultWithGutterIcon(content)
-            "READLINE_START"  -> runner.isReadLineMode = true
-            "READLINE_END"    -> runner.isReadLineMode = false
-            "REPL_INCOMPLETE",
-            "COMPILE_ERROR"   -> outputProcessor.highlightCompilerErrors(createCompilerMessages(content))
-            "RUNTIME_ERROR"   -> outputProcessor.printRuntimeError("${content.trim()}\n")
-            "INTERNAL_ERROR"  -> outputProcessor.printInternalErrorMessage(content)
-            "SUCCESS"         -> runner.commandHistory.lastUnprocessedEntry()?.entryText?.let { runner.successfulLine(it) }
-            else -> logError(ReplOutputHandler::class.java, "Unexpected output type:\n$outputType")
+            INITIAL_PROMPT  -> buildWarningIfNeededBeforeInit(content)
+            HELP_PROMPT     -> outputProcessor.printHelp(content)
+            USER_OUTPUT     -> outputProcessor.printUserOutput(content)
+            REPL_RESULT     -> outputProcessor.printResultWithGutterIcon(content)
+            READLINE_START  -> runner.isReadLineMode = true
+            READLINE_END    -> runner.isReadLineMode = false
+            REPL_INCOMPLETE,
+            COMPILE_ERROR   -> outputProcessor.highlightCompilerErrors(createCompilerMessages(content))
+            RUNTIME_ERROR   -> outputProcessor.printRuntimeError("${content.trim()}\n")
+            INTERNAL_ERROR  -> outputProcessor.printInternalErrorMessage(content)
+            SUCCESS         -> runner.commandHistory.lastUnprocessedEntry()?.entryText?.let { runner.successfulLine(it) }
+            null -> logError(ReplOutputHandler::class.java, "Unexpected output type:\n$outputType")
         }
 
-        if (outputType in setOf("SUCCESS", "COMPILE_ERROR", "INTERNAL_ERROR", "RUNTIME_ERROR", "READLINE_END")) {
+        if (outputType in setOf(SUCCESS, COMPILE_ERROR, INTERNAL_ERROR, RUNTIME_ERROR, READLINE_END)) {
             runner.commandHistory.entryProcessed()
         }
     }

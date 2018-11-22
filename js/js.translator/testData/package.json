@@ -7,6 +7,8 @@
     "mocha-teamcity-reporter": "1.1.1"
   },
   "scripts": {
-    "test": "mocha --reporter mocha-teamcity-reporter"
+    "runOnTeamcity": "mocha --reporter mocha-teamcity-reporter",
+    "test": "mocha",
+    "runIrTestInNode" : "node $NODE_DEBUG_OPTION runIrTestInNode.js"
   }
 }

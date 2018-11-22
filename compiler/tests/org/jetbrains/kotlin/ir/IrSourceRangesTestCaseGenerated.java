@@ -1,17 +1,6 @@
 /*
- * Copyright 2010-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2010-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.ir;
@@ -32,19 +21,84 @@ import java.util.regex.Pattern;
 @TestDataPath("$PROJECT_ROOT")
 @RunWith(JUnit3RunnerWithInners.class)
 public class IrSourceRangesTestCaseGenerated extends AbstractIrSourceRangesTestCase {
+    private void runTest(String testDataFilePath) throws Exception {
+        KotlinTestUtils.runTest(this::doTest, TargetBackend.ANY, testDataFilePath);
+    }
+
     public void testAllFilesPresentInSourceRanges() throws Exception {
         KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/ir/sourceRanges"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
     }
 
     @TestMetadata("augmentedAssignmentWithExpression.kt")
     public void testAugmentedAssignmentWithExpression() throws Exception {
-        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/ir/sourceRanges/augmentedAssignmentWithExpression.kt");
-        doTest(fileName);
+        runTest("compiler/testData/ir/sourceRanges/augmentedAssignmentWithExpression.kt");
+    }
+
+    @TestMetadata("comments.kt")
+    public void testComments() throws Exception {
+        runTest("compiler/testData/ir/sourceRanges/comments.kt");
     }
 
     @TestMetadata("kt17108.kt")
     public void testKt17108() throws Exception {
-        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/ir/sourceRanges/kt17108.kt");
-        doTest(fileName);
+        runTest("compiler/testData/ir/sourceRanges/kt17108.kt");
+    }
+
+    @TestMetadata("compiler/testData/ir/sourceRanges/declarations")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class Declarations extends AbstractIrSourceRangesTestCase {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, TargetBackend.ANY, testDataFilePath);
+        }
+
+        public void testAllFilesPresentInDeclarations() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/ir/sourceRanges/declarations"), Pattern.compile("^(.+)\\.kt$"), TargetBackend.ANY, true);
+        }
+
+        @TestMetadata("classFuns.kt")
+        public void testClassFuns() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/classFuns.kt");
+        }
+
+        @TestMetadata("classProperties.kt")
+        public void testClassProperties() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/classProperties.kt");
+        }
+
+        @TestMetadata("classes.kt")
+        public void testClasses() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/classes.kt");
+        }
+
+        @TestMetadata("fakeOverrides.kt")
+        public void testFakeOverrides() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/fakeOverrides.kt");
+        }
+
+        @TestMetadata("primaryConstructors.kt")
+        public void testPrimaryConstructors() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/primaryConstructors.kt");
+        }
+
+        @TestMetadata("secondaryConstructors.kt")
+        public void testSecondaryConstructors() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/secondaryConstructors.kt");
+        }
+
+        @TestMetadata("synthesizedDataClassMembers.kt")
+        public void testSynthesizedDataClassMembers() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/synthesizedDataClassMembers.kt");
+        }
+
+        @TestMetadata("topLevelFuns.kt")
+        public void testTopLevelFuns() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/topLevelFuns.kt");
+        }
+
+        @TestMetadata("topLevelProperties.kt")
+        public void testTopLevelProperties() throws Exception {
+            runTest("compiler/testData/ir/sourceRanges/declarations/topLevelProperties.kt");
+        }
     }
 }

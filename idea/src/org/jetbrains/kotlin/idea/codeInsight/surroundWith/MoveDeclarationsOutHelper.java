@@ -31,7 +31,6 @@ import org.jetbrains.kotlin.idea.codeInsight.CodeInsightUtils;
 import org.jetbrains.kotlin.idea.core.ShortenReferences;
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers;
 import org.jetbrains.kotlin.psi.*;
-import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode;
 import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.KotlinTypeKt;
@@ -117,11 +116,9 @@ public class MoveDeclarationsOutHelper {
 
     @NotNull
     private static KotlinType getPropertyType(@NotNull KtProperty property) {
-        BindingContext bindingContext = ResolutionUtils.analyze(property, BodyResolveMode.PARTIAL);
-
-        VariableDescriptor propertyDescriptor = bindingContext.get(BindingContext.VARIABLE, property);
-        assert propertyDescriptor != null : "Couldn't resolve property to property descriptor " + property.getText();
-        return propertyDescriptor.getType();
+        VariableDescriptor variableDescriptor = ResolutionUtils.resolveToDescriptorIfAny(property, BodyResolveMode.PARTIAL);
+        assert variableDescriptor != null : "Couldn't resolve property to property descriptor " + property.getText();
+        return variableDescriptor.getType();
     }
 
     @NotNull

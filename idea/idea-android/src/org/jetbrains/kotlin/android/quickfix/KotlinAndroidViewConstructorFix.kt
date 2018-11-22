@@ -19,7 +19,6 @@ package org.jetbrains.kotlin.android.quickfix
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
-import com.intellij.psi.PsiFile
 import org.jetbrains.android.facet.AndroidFacet
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.diagnostics.Diagnostic
@@ -43,9 +42,8 @@ class KotlinAndroidViewConstructorFix(element: KtSuperTypeEntry) : KotlinQuickFi
     override fun getText() = "Add Android View constructors using '@JvmOverloads'"
     override fun getFamilyName() = text
 
-    override fun isAvailable(project: Project, editor: Editor?, file: PsiFile): Boolean {
-        if (AndroidFacet.getInstance(file) == null) return false
-        return super.isAvailable(project, editor, file)
+    override fun isAvailable(project: Project, editor: Editor?, file: KtFile): Boolean {
+        return AndroidFacet.getInstance(file) != null
     }
 
     override fun invoke(project: Project, editor: Editor?, file: KtFile) {
@@ -54,17 +52,15 @@ class KotlinAndroidViewConstructorFix(element: KtSuperTypeEntry) : KotlinQuickFi
 
         val factory = KtPsiFactory(element)
 
-        val newPrimaryConstructor = factory.createDeclarationByPattern<KtClass>(
-                "class A constructor(\n $0, $1, $2\n)",
-                factory.createParameter("context: android.content.Context"),
-                factory.createParameter("attrs: android.util.AttributeSet? = null"),
-                factory.createParameter("defStyleAttr: Int = 0")
-        ).primaryConstructor ?: return
+        val newPrimaryConstructor = factory.createPrimaryConstructor(
+            """(
+            context: android.content.Context, attrs: android.util.AttributeSet? = null, defStyleAttr: Int = 0
+            )""".trimIndent()
+        )
 
         val primaryConstructor = ktClass.createPrimaryConstructorIfAbsent().replaced(newPrimaryConstructor)
         primaryConstructor.valueParameterList?.let { ShortenReferences.DEFAULT.process(it) }
-
-        primaryConstructor.addAnnotation(fqNameAnnotation, whiteSpaceText = " ")
+        primaryConstructor.addAnnotation(fqNameAnnotation)
 
         element.replace(factory.createSuperTypeCallEntry(element.text + "(context, attrs, defStyleAttr)"))
     }
@@ -74,7 +70,7 @@ class KotlinAndroidViewConstructorFix(element: KtSuperTypeEntry) : KotlinQuickFi
         private val fqNameAnnotation = FqName("kotlin.jvm.JvmOverloads")
 
         private val requiredConstructorParameterTypes =
-                listOf("android.content.Context", "android.util.AttributeSet", "kotlin.Int")
+            listOf("android.content.Context", "android.util.AttributeSet", "kotlin.Int")
 
         override fun createAction(diagnostic: Diagnostic): IntentionAction? {
             val superTypeEntry = SUPERTYPE_NOT_INITIALIZED.cast(diagnostic).psiElement
@@ -100,7 +96,7 @@ class KotlinAndroidViewConstructorFix(element: KtSuperTypeEntry) : KotlinQuickFi
         private fun KotlinType.constructorParameters(): List<List<String?>>? {
             val classDescriptor = constructor.declarationDescriptor as? ClassDescriptor ?: return null
             return classDescriptor.constructors.map {
-                it.valueParameters.map { it.type.getFqNameAsString() }
+                it.valueParameters.map { parameter -> parameter.type.getFqNameAsString() }
             }
         }
     }

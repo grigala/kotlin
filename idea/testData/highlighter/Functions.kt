@@ -1,3 +1,4 @@
+// WITH_RUNTIME
 fun <info textAttributesKey="KOTLIN_FUNCTION_DECLARATION">global</info>() {
     fun <info textAttributesKey="KOTLIN_FUNCTION_DECLARATION">inner</info>() {
 
@@ -18,5 +19,11 @@ fun <info textAttributesKey="KOTLIN_CLASS">Int</info>.<info textAttributesKey="K
         5.<info textAttributesKey="KOTLIN_EXTENSION_FUNCTION_CALL">ext</info>()
         <info textAttributesKey="KOTLIN_FUNCTION_CALL">member</info>()
         5 <info textAttributesKey="KOTLIN_EXTENSION_FUNCTION_CALL">fif</info> 6
+    }
+}
+
+fun <info descr="null" textAttributesKey="KOTLIN_FUNCTION_DECLARATION">foo</info>() {
+    <info descr="null" textAttributesKey="KOTLIN_KEYWORD">suspend</info> {
+
     }
 }

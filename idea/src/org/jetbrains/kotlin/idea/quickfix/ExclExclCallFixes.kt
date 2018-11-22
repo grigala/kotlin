@@ -21,17 +21,19 @@ import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiFile
 import com.intellij.psi.impl.source.tree.LeafPsiElement
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassifierDescriptor
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.diagnostics.Errors
+import org.jetbrains.kotlin.diagnostics.Errors.UNSAFE_CALL
 import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.findModuleDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.intentions.branchedTransformations.isNullExpression
+import org.jetbrains.kotlin.idea.resolve.frontendService
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
@@ -50,15 +52,13 @@ abstract class ExclExclCallFix(psiElement: PsiElement) : KotlinQuickFixAction<Ps
     override fun getFamilyName(): String = text
 
     override fun startInWriteAction(): Boolean = true
-
-    override fun isAvailable(project: Project, editor: Editor?, file: PsiFile) = file is KtFile
 }
 
 class RemoveExclExclCallFix(psiElement: PsiElement) : ExclExclCallFix(psiElement), CleanupFix {
     override fun getText(): String = KotlinBundle.message("remove.unnecessary.non.null.assertion")
 
-    override fun isAvailable(project: Project, editor: Editor?, file: PsiFile): Boolean
-        = super.isAvailable(project, editor, file) && getExclExclPostfixExpression() != null
+    override fun isAvailable(project: Project, editor: Editor?, file: KtFile): Boolean =
+        getExclExclPostfixExpression() != null
 
     override fun invoke(project: Project, editor: Editor?, file: KtFile) {
         if (!FileModificationService.getInstance().prepareFileForWrite(file)) return
@@ -77,8 +77,7 @@ class RemoveExclExclCallFix(psiElement: PsiElement) : ExclExclCallFix(psiElement
     }
 
     companion object : KotlinSingleIntentionActionFactory() {
-        override fun createAction(diagnostic: Diagnostic): IntentionAction
-            = RemoveExclExclCallFix(diagnostic.psiElement)
+        override fun createAction(diagnostic: Diagnostic): IntentionAction = RemoveExclExclCallFix(diagnostic.psiElement)
     }
 }
 
@@ -87,9 +86,8 @@ class AddExclExclCallFix(psiElement: PsiElement, val checkImplicitReceivers: Boo
 
     override fun getText() = KotlinBundle.message("introduce.non.null.assertion")
 
-    override fun isAvailable(project: Project, editor: Editor?, file: PsiFile): Boolean
-            = super.isAvailable(project, editor, file) &&
-              getExpressionForIntroduceCall() != null
+    override fun isAvailable(project: Project, editor: Editor?, file: KtFile): Boolean =
+        getExpressionForIntroduceCall() != null
 
     override fun invoke(project: Project, editor: Editor?, file: KtFile) {
         if (!FileModificationService.getInstance().prepareFileForWrite(file)) return
@@ -117,7 +115,7 @@ class AddExclExclCallFix(psiElement: PsiElement, val checkImplicitReceivers: Boo
             return (psiElement.prevSibling as? KtExpression).expressionForCall()
         }
         return when (psiElement) {
-            is KtArrayAccessExpression -> psiElement.arrayExpression.expressionForCall()
+            is KtArrayAccessExpression -> psiElement.expressionForCall()
             is KtOperationReferenceExpression -> {
                 val parent = psiElement.parent
                 when (parent) {
@@ -134,13 +132,15 @@ class AddExclExclCallFix(psiElement: PsiElement, val checkImplicitReceivers: Boo
                 if (checkImplicitReceivers && psiElement.getResolvedCall(context)?.getImplicitReceiverValue() != null) {
                     val expressionToReplace = psiElement.parent as? KtCallExpression ?: psiElement
                     expressionToReplace.expressionForCall(implicitReceiver = true)
-                }
-                else {
+                } else {
                     context[BindingContext.EXPRESSION_TYPE_INFO, psiElement]?.let {
                         val type = it.type
+
+                        val dataFlowValueFactory = psiElement.getResolutionFacade().frontendService<DataFlowValueFactory>()
+
                         if (type != null) {
                             val nullability = it.dataFlowInfo.getStableNullability(
-                                    DataFlowValueFactory.createDataFlowValue(psiElement, type, context, psiElement.findModuleDescriptor())
+                                dataFlowValueFactory.createDataFlowValue(psiElement, type, context, psiElement.findModuleDescriptor())
                             )
                             if (!nullability.canBeNonNull()) return null
                         }
@@ -153,11 +153,17 @@ class AddExclExclCallFix(psiElement: PsiElement, val checkImplicitReceivers: Boo
     }
 
     companion object : KotlinSingleIntentionActionFactory() {
-        override fun createAction(diagnostic: Diagnostic): IntentionAction = AddExclExclCallFix(diagnostic.psiElement)
+        override fun createAction(diagnostic: Diagnostic): IntentionAction {
+            val psiElement = diagnostic.psiElement
+            if (diagnostic.factory == UNSAFE_CALL && psiElement is KtArrayAccessExpression) {
+                psiElement.arrayExpression?.let { return AddExclExclCallFix(it) }
+            }
+            return AddExclExclCallFix(psiElement)
+        }
     }
 }
 
-object SmartCastImpossibleExclExclFixFactory: KotlinSingleIntentionActionFactory() {
+object SmartCastImpossibleExclExclFixFactory : KotlinSingleIntentionActionFactory() {
     override fun createAction(diagnostic: Diagnostic): IntentionAction? {
         if (diagnostic.factory !== Errors.SMARTCAST_IMPOSSIBLE) return null
         val element = diagnostic.psiElement as? KtExpression ?: return null
@@ -183,10 +189,10 @@ object MissingIteratorExclExclFixFactory : KotlinSingleIntentionActionFactory() 
         val analyze = element.analyze(BodyResolveMode.PARTIAL)
         val type = analyze.getType(element)
         if (type == null || !TypeUtils.isNullableType(type)) return null
-        
+
         val descriptor = type.constructor.declarationDescriptor
 
-        fun hasIteratorFunction(classifierDescriptor: ClassifierDescriptor?) : Boolean {
+        fun hasIteratorFunction(classifierDescriptor: ClassifierDescriptor?): Boolean {
             if (classifierDescriptor !is ClassDescriptor) return false
 
             val memberScope = classifierDescriptor.unsubstitutedMemberScope

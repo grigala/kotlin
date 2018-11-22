@@ -30,7 +30,7 @@ import org.jetbrains.kotlin.types.KotlinType
 
 object OverloadabilitySpecificityCallbacks : SpecificityComparisonCallbacks {
     override fun isNonSubtypeNotLessSpecific(specific: KotlinType, general: KotlinType): Boolean =
-            false
+        false
 }
 
 class OverloadChecker(val specificityComparator: TypeSpecificityComparator) {
@@ -55,14 +55,18 @@ class OverloadChecker(val specificityComparator: TypeSpecificityComparator) {
         // They can be disambiguated by providing explicit type parameters.
         if (a.typeParameters.isEmpty() != b.typeParameters.isEmpty()) return true
 
-        if (ErrorUtils.containsErrorType(a) || ErrorUtils.containsErrorType(b)) return true
+        if (a is FunctionDescriptor && ErrorUtils.containsErrorTypeInParameters(a) ||
+            b is FunctionDescriptor && ErrorUtils.containsErrorTypeInParameters(b)
+        ) return true
         if (a.varargParameterPosition() != b.varargParameterPosition()) return true
 
         val aSignature = FlatSignature.createFromCallableDescriptor(a)
         val bSignature = FlatSignature.createFromCallableDescriptor(b)
 
-        val aIsNotLessSpecificThanB = ConstraintSystemBuilderImpl.forSpecificity().isSignatureNotLessSpecific(aSignature, bSignature, OverloadabilitySpecificityCallbacks, specificityComparator)
-        val bIsNotLessSpecificThanA = ConstraintSystemBuilderImpl.forSpecificity().isSignatureNotLessSpecific(bSignature, aSignature, OverloadabilitySpecificityCallbacks, specificityComparator)
+        val aIsNotLessSpecificThanB = ConstraintSystemBuilderImpl.forSpecificity()
+            .isSignatureNotLessSpecific(aSignature, bSignature, OverloadabilitySpecificityCallbacks, specificityComparator)
+        val bIsNotLessSpecificThanA = ConstraintSystemBuilderImpl.forSpecificity()
+            .isSignatureNotLessSpecific(bSignature, aSignature, OverloadabilitySpecificityCallbacks, specificityComparator)
 
         return !(aIsNotLessSpecificThanB && bIsNotLessSpecificThanA)
     }
@@ -74,18 +78,18 @@ class OverloadChecker(val specificityComparator: TypeSpecificityComparator) {
     }
 
     private fun getDeclarationCategory(a: DeclarationDescriptor): DeclarationCategory =
-            when (a) {
-                is PropertyDescriptor ->
-                    if (a.isExtensionProperty)
-                        DeclarationCategory.EXTENSION_PROPERTY
-                    else
-                        DeclarationCategory.TYPE_OR_VALUE
-                is FunctionDescriptor ->
-                    DeclarationCategory.FUNCTION
-                is ClassifierDescriptor ->
+        when (a) {
+            is PropertyDescriptor ->
+                if (a.isExtensionProperty)
+                    DeclarationCategory.EXTENSION_PROPERTY
+                else
                     DeclarationCategory.TYPE_OR_VALUE
-                else ->
-                    error("Unexpected declaration kind: $a")
-            }
+            is FunctionDescriptor ->
+                DeclarationCategory.FUNCTION
+            is ClassifierDescriptor ->
+                DeclarationCategory.TYPE_OR_VALUE
+            else ->
+                error("Unexpected declaration kind: $a")
+        }
 
 }

@@ -37,9 +37,10 @@ var a : Int
 // EXIST:  tailrec
 // EXIST:  external
 // EXIST:  annotation class
-// EXIST:  const
+// EXIST:  const val
 // EXIST:  suspend
 // EXIST:  typealias
 // EXIST:  expect
 // EXIST:  actual
+// EXIST:  lateinit var
 // NOTHING_ELSE

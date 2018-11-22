@@ -1,17 +1,6 @@
 /*
- * Copyright 2010-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license
+ * that can be found in the license/LICENSE.txt file.
  */
 
 package org.jetbrains.kotlin.idea.inspections
@@ -37,60 +26,88 @@ import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 class ConstantConditionIfInspection : AbstractKotlinInspection() {
 
     override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
-        return object : KtVisitorVoid() {
-            override fun visitIfExpression(expression: KtIfExpression) {
-                super.visitIfExpression(expression)
-
-                val condition = expression.condition ?: return
-
-                val context = condition.analyze(BodyResolveMode.PARTIAL)
-                val constantValue = condition.constantBooleanValue(context) ?: return
-
-                val fixes = mutableListOf<LocalQuickFix>()
-
-                if (expression.branch(constantValue) != null) {
-                    val keepBraces = expression.isElseIf() && expression.branch(constantValue) is KtBlockExpression
-                    fixes += SimplifyFix(constantValue, expression.isUsedAsExpression(context), keepBraces)
-                }
-
-                if (!constantValue && expression.`else` == null) {
-                    fixes += RemoveFix()
-                }
-
-                holder.registerProblem(condition,
-                                       "Condition is always '$constantValue'",
-                                       *fixes.toTypedArray())
-            }
+        return ifExpressionVisitor { expression ->
+            val constantValue = expression.getConditionConstantValueIfAny() ?: return@ifExpressionVisitor
+            val fixes = collectFixes(expression, constantValue)
+            holder.registerProblem(
+                expression.condition!!,
+                "Condition is always '$constantValue'",
+                *fixes.toTypedArray()
+            )
         }
     }
 
+    companion object {
+        private fun KtIfExpression.getConditionConstantValueIfAny(): Boolean? {
+            val context = condition?.analyze(BodyResolveMode.PARTIAL_WITH_CFA) ?: return null
+            return condition?.constantBooleanValue(context)
+        }
+
+        private fun collectFixes(
+            expression: KtIfExpression,
+            constantValue: Boolean? = expression.getConditionConstantValueIfAny()
+        ): List<ConstantConditionIfFix> {
+            if (constantValue == null) return emptyList()
+            val fixes = mutableListOf<ConstantConditionIfFix>()
+
+            if (expression.branch(constantValue) != null) {
+                val keepBraces = expression.isElseIf() && expression.branch(constantValue) is KtBlockExpression
+                fixes += SimplifyFix(
+                    constantValue,
+                    expression.isUsedAsExpression(expression.analyze(BodyResolveMode.PARTIAL_WITH_CFA)),
+                    keepBraces
+                )
+            }
+
+            if (!constantValue && expression.`else` == null) {
+                fixes += RemoveFix()
+            }
+
+            return fixes
+        }
+
+        fun applyFixIfSingle(ifExpression: KtIfExpression) {
+            collectFixes(ifExpression).singleOrNull()?.applyFix(ifExpression)
+        }
+    }
+
+    private interface ConstantConditionIfFix : LocalQuickFix {
+        fun applyFix(ifExpression: KtIfExpression)
+    }
+
     private class SimplifyFix(
-            private val conditionValue: Boolean,
-            private val isUsedAsExpression: Boolean,
-            private val keepBraces: Boolean
-    ) : LocalQuickFix {
+        private val conditionValue: Boolean,
+        private val isUsedAsExpression: Boolean,
+        private val keepBraces: Boolean
+    ) : ConstantConditionIfFix {
         override fun getFamilyName() = name
 
         override fun getName() = "Simplify expression"
 
         override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
             val ifExpression = descriptor.psiElement.getParentOfType<KtIfExpression>(strict = true) ?: return
+            applyFix(ifExpression)
+        }
 
+        override fun applyFix(ifExpression: KtIfExpression) {
             val branch = ifExpression.branch(conditionValue)?.let {
                 if (keepBraces) it else it.unwrapBlockOrParenthesis()
             } ?: return
-
             ifExpression.replaceWithBranch(branch, isUsedAsExpression, keepBraces)
         }
     }
 
-    private class RemoveFix : LocalQuickFix {
+    private class RemoveFix : ConstantConditionIfFix {
         override fun getFamilyName() = name
 
         override fun getName() = "Delete expression"
 
         override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
             val ifExpression = descriptor.psiElement.getParentOfType<KtIfExpression>(strict = true) ?: return
+            applyFix(ifExpression)
+        }
+
+        override fun applyFix(ifExpression: KtIfExpression) {
             ifExpression.delete()
         }
     }
@@ -118,8 +135,7 @@ fun KtExpression.replaceWithBranch(branch: KtExpression, isUsedAsExpression: Boo
             if (firstChildSibling != lastChild) {
                 if (keepBraces) {
                     parent.addAfter(branch, this)
-                }
-                else {
+                } else {
                     parent.addRangeAfter(firstChildSibling, lastChild.prevSibling, this)
                 }
             }

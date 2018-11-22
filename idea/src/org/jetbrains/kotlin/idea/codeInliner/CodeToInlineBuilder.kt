@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.idea.codeInliner
 
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
+import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.diagnostics.Errors
@@ -54,15 +55,26 @@ class CodeToInlineBuilder(
     fun prepareCodeToInline(
             mainExpression: KtExpression?,
             statementsBefore: List<KtExpression>,
-            analyze: () -> BindingContext
+            analyze: () -> BindingContext,
+            reformat: Boolean
     ): CodeToInline {
         var bindingContext = analyze()
 
-        val codeToInline = MutableCodeToInline(mainExpression, statementsBefore.toMutableList(), mutableSetOf())
+        val descriptor = mainExpression.getResolvedCall(bindingContext)?.resultingDescriptor
+        val alwaysKeepMainExpression = when (descriptor) {
+            is PropertyDescriptor -> descriptor.getter?.isDefault == false
+            else -> false
+        }
+        val codeToInline = MutableCodeToInline(
+            mainExpression,
+            statementsBefore.toMutableList(),
+            mutableSetOf(),
+            alwaysKeepMainExpression
+        )
 
         bindingContext = insertExplicitTypeArguments(codeToInline, bindingContext, analyze)
 
-        processReferences(codeToInline, bindingContext)
+        processReferences(codeToInline, bindingContext, reformat)
 
         if (mainExpression != null) {
             val functionLiteralExpression = mainExpression.unpackFunctionLiteral(true)
@@ -81,7 +93,10 @@ class CodeToInlineBuilder(
 
     private fun getParametersForFunctionLiteral(functionLiteralExpression: KtLambdaExpression, context: BindingContext): String? {
         val lambdaDescriptor = context.get(BindingContext.FUNCTION, functionLiteralExpression.functionLiteral)
-        if (lambdaDescriptor == null || ErrorUtils.containsErrorType(lambdaDescriptor)) return null
+        if (lambdaDescriptor == null ||
+            ErrorUtils.containsErrorTypeInParameters(lambdaDescriptor) ||
+            ErrorUtils.containsErrorType(lambdaDescriptor.returnType)
+        ) return null
         return lambdaDescriptor.valueParameters.joinToString {
             it.name.render() + ": " + IdeDescriptorRenderers.SOURCE_CODE.renderType(it.type)
         }
@@ -134,7 +149,7 @@ class CodeToInlineBuilder(
         return analyze()
     }
 
-    private fun processReferences(codeToInline: MutableCodeToInline, bindingContext: BindingContext) {
+    private fun processReferences(codeToInline: MutableCodeToInline, bindingContext: BindingContext, reformat: Boolean) {
         val receiversToAdd = ArrayList<Pair<KtExpression, KtExpression>>()
 
         codeToInline.forEachDescendantOfType<KtSimpleNameExpression> { expression ->
@@ -174,7 +189,8 @@ class CodeToInlineBuilder(
         for ((expr, receiverExpression) in receiversToAdd.asReversed()) {
             val expressionToReplace = expr.parent as? KtCallExpression ?: expr
             codeToInline.replaceExpression(expressionToReplace,
-                                           psiFactory.createExpressionByPattern("$0.$1", receiverExpression, expressionToReplace))
+                                           psiFactory.createExpressionByPattern("$0.$1", receiverExpression, expressionToReplace,
+                                                                                reformat = reformat))
         }
     }
 }

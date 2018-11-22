@@ -18,81 +18,71 @@ package org.jetbrains.kotlin.gradle.plugin
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.Task
-import org.gradle.api.internal.file.UnionFileCollection
-import org.gradle.api.internal.file.UnionFileTree
-import org.gradle.api.plugins.JavaPluginConvention
-import org.gradle.api.tasks.Copy
-import org.gradle.api.tasks.SourceSet
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.dsl.KotlinSingleJavaTargetExtension
+import org.jetbrains.kotlin.gradle.dsl.kotlinExtension
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinWithJavaTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.multiplatformExtension
 import org.jetbrains.kotlin.gradle.tasks.Kotlin2JsCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinJsDce
+import org.jetbrains.kotlin.gradle.utils.lowerCamelCaseName
 import java.io.File
 
 class KotlinJsDcePlugin : Plugin<Project> {
     override fun apply(project: Project) {
-        project.pluginManager.apply(Kotlin2JsPluginWrapper::class.java)
+        val kotlinExtension = project.multiplatformExtension ?: run {
+            project.pluginManager.apply(Kotlin2JsPluginWrapper::class.java)
+            project.kotlinExtension as KotlinSingleJavaTargetExtension
+        }
 
-        val javaPluginConvention = project.convention.getPlugin(JavaPluginConvention::class.java)
-        javaPluginConvention.sourceSets?.forEach { processSourceSet(project, it) }
+        fun forEachJsTarget(action: (KotlinTarget) -> Unit) {
+            when (kotlinExtension) {
+                is KotlinSingleJavaTargetExtension -> action(kotlinExtension.target)
+                is KotlinMultiplatformExtension ->
+                    kotlinExtension.targets
+                        .matching { it.platformType == KotlinPlatformType.js }
+                        .all { action(it) }
+            }
+        }
+
+        forEachJsTarget {
+            it.compilations.all { processCompilation(project, it) }
+        }
     }
 
-    private fun processSourceSet(project: Project, sourceSet: SourceSet) {
-        val kotlinTaskName = sourceSet.getCompileTaskName("kotlin2Js")
+    private fun processCompilation(project: Project, kotlinCompilation: KotlinCompilation) {
+        val kotlinTaskName = kotlinCompilation.compileKotlinTaskName
         val kotlinTask = project.tasks.findByName(kotlinTaskName) as? Kotlin2JsCompile ?: return
-        val dceTaskName = sourceSet.getTaskName(DCE_TASK_PREFIX, TASK_SUFFIX)
+        val dceTaskName = lowerCamelCaseName(
+            DCE_TASK_PREFIX,
+            kotlinCompilation.target.disambiguationClassifier,
+            kotlinCompilation.name.takeIf { it != KotlinCompilation.MAIN_COMPILATION_NAME },
+            if (kotlinCompilation.target is KotlinWithJavaTarget) TASK_SUFFIX else MPP_TASK_SUFFIX
+        )
         val dceTask = project.tasks.create(dceTaskName, KotlinJsDce::class.java).also {
             it.dependsOn(kotlinTask)
-            project.tasks.findByName("build")?.dependsOn(it)
+            project.tasks.findByName("build")!!.dependsOn(it)
         }
 
         project.afterEvaluate {
-            val outputDir = File(kotlinTask.outputFile).parentFile
+            val outputDir = project.buildDir
+                .resolve(DEFAULT_OUT_DIR)
+                .resolve(kotlinCompilation.target.disambiguationClassifier?.let { "$it/" }.orEmpty() + kotlinCompilation.name)
 
-            val dependenciesDir = File(outputDir, "dependencies")
-            val dependenciesTemporaryDir = File(outputDir, "dependencies-tmp")
-            copyDependencies(project, sourceSet, dependenciesDir, dependenciesTemporaryDir, dceTask)
+            val configuration = project.configurations.getByName(kotlinCompilation.compileDependencyConfigurationName)
 
-            val dceInputTrees = listOf(project.fileTree(kotlinTask.outputFile), project.fileTree(dependenciesDir))
-            val dceInputFiles = UnionFileTree("dce-input", dceInputTrees)
-
-            with (dceTask) {
-                classpath = sourceSet.compileClasspath
-                destinationDir = File(outputDir, "min")
-                source(dceInputFiles.filter { it.path.endsWith(".js") })
+            with(dceTask) {
+                classpath = configuration
+                destinationDir = dceTask.dceOptions.outputDirectory?.let { File(it) } ?: outputDir
+                source(kotlinTask.outputFile)
             }
-        }
-    }
-
-    private fun copyDependencies(project: Project, sourceSet: SourceSet, outputDir: File, tmpDir: File, dceTask: Task) {
-        val configuration = project.configurations.findByName(sourceSet.compileConfigurationName) ?: return
-
-        val zippedFiles = UnionFileCollection(configuration.map { project.zipTree(it) })
-        val files = project.fileTree(tmpDir)
-                .filter { file -> SUFFIXES.any { file.path.endsWith(it) } }
-                .filter { file -> SUFFIXES.any { File(file.path.removeSuffix(it) + ".meta.js").exists() } }
-
-        // This intermediate task is needed due to bug in Gradle that causes infinite loops in continuous build mode
-        val unpackName = sourceSet.getTaskName(UNPACK_DEPENDENCIES_TASK_PREFIX, TASK_SUFFIX)
-        val unpackTask = project.tasks.create(unpackName, Copy::class.java).apply {
-            from(zippedFiles)
-            into(tmpDir)
-        }
-
-        val name = sourceSet.getTaskName(DEPENDENCIES_TASK_PREFIX, TASK_SUFFIX)
-        with(project.tasks.create(name, Copy::class.java)) {
-            from(files)
-            into(outputDir)
-            includeEmptyDirs = true
-            dceTask.dependsOn(this)
-            dependsOn(unpackTask)
         }
     }
 
     companion object {
         private const val TASK_SUFFIX = "kotlinJs"
-        private const val UNPACK_DEPENDENCIES_TASK_PREFIX = "unpackDependencies"
-        private const val DEPENDENCIES_TASK_PREFIX = "copyDependencies"
+        private const val MPP_TASK_SUFFIX = "kotlin"
         private const val DCE_TASK_PREFIX = "runDce"
-        private val SUFFIXES = listOf(".js", ".js.map")
+        private const val DEFAULT_OUT_DIR = "kotlin-js-min"
     }
 }

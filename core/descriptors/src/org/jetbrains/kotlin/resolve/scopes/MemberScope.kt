@@ -20,18 +20,21 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.incremental.components.LookupLocation
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.utils.Printer
+import org.jetbrains.kotlin.utils.addToStdlib.flatMapToNullable
 import java.lang.reflect.Modifier
 
 interface MemberScope : ResolutionScope {
 
-    override fun getContributedVariables(name: Name, location: LookupLocation): Collection<PropertyDescriptor>
-    override fun getContributedFunctions(name: Name, location: LookupLocation): Collection<SimpleFunctionDescriptor>
+    override fun getContributedVariables(name: Name, location: LookupLocation): Collection<@JvmWildcard PropertyDescriptor>
+
+    override fun getContributedFunctions(name: Name, location: LookupLocation): Collection<@JvmWildcard SimpleFunctionDescriptor>
 
     /**
      * These methods may return a superset of an actual names' set
      */
     fun getFunctionNames(): Set<Name>
     fun getVariableNames(): Set<Name>
+    fun getClassifierNames(): Set<Name>?
 
     /**
      * Is supposed to be used in tests and debug only
@@ -45,12 +48,18 @@ interface MemberScope : ResolutionScope {
 
         override fun getFunctionNames() = emptySet<Name>()
         override fun getVariableNames() = emptySet<Name>()
+        override fun getClassifierNames() = emptySet<Name>()
     }
 
     companion object {
         val ALL_NAME_FILTER: (Name) -> Boolean = { true }
     }
 }
+
+fun MemberScope.computeAllNames() = getClassifierNames()?.let { getFunctionNames() + getVariableNames() + it }
+
+fun Collection<MemberScope>.flatMapClassifierNamesOrNull(): MutableSet<Name>? =
+        flatMapToNullable(hashSetOf(), MemberScope::getClassifierNames)
 
 /**
  * The same as getDescriptors(kindFilter, nameFilter) but the result is guaranteed to be filtered by kind and name.

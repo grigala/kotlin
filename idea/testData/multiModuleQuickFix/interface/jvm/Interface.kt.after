@@ -1,10 +1,13 @@
 // Interface: to be implemented
 actual interface Interface {
-    fun foo(param: String): Int
+    actual fun foo(param: String): Int
+    actual fun String.bar(y: Double): Boolean
+    actual val isGood: Boolean
+    actual var status: Int
 
-    fun String.bar(y: Double): Boolean
+    actual class Nested {
+        actual fun bar() {
+        }
+    }
 
-    val isGood: Boolean
-
-    var status: Int
 }
